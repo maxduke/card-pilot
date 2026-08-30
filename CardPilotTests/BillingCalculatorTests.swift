@@ -64,4 +64,44 @@ final class BillingCalculatorTests: XCTestCase {
             XCTAssertEqual(error as? BillingCalculationError, .duplicateBaselineRule)
         }
     }
+
+    func testFixedRepaymentMustBeStrictlyAfterStatement() throws {
+        for (repaymentDay, expected) in [(20, 20260120), (15, 20260215), (10, 20260210)] {
+            let cycle = try BillingCalculator.calculate(
+                accountStatus: .active,
+                closedOn: nil,
+                cycleKey: 202601,
+                rules: [BillingRuleInput(
+                    effectiveCycleKey: nil,
+                    statementDay: 15,
+                    repaymentKind: .fixedDay,
+                    repaymentValue: repaymentDay
+                )],
+                today: try LocalDate(rawValue: 20260101),
+                timeZone: utc
+            )
+            XCTAssertEqual(cycle.repaymentDate.rawValue, expected)
+        }
+    }
+
+    func testDaysAfterStatementCrossesLeapDayAndYear() throws {
+        let leapCycle = try BillingCalculator.calculate(
+            accountStatus: .active,
+            closedOn: nil,
+            cycleKey: 202402,
+            rules: [BillingRuleInput(effectiveCycleKey: nil, statementDay: 28, repaymentKind: .daysAfterStatement, repaymentValue: 2)],
+            today: try LocalDate(rawValue: 20240201),
+            timeZone: utc
+        )
+        let yearCycle = try BillingCalculator.calculate(
+            accountStatus: .active,
+            closedOn: nil,
+            cycleKey: 202412,
+            rules: [BillingRuleInput(effectiveCycleKey: nil, statementDay: 31, repaymentKind: .daysAfterStatement, repaymentValue: 1)],
+            today: try LocalDate(rawValue: 20241201),
+            timeZone: utc
+        )
+        XCTAssertEqual(leapCycle.repaymentDate.rawValue, 20240301)
+        XCTAssertEqual(yearCycle.repaymentDate.rawValue, 20250101)
+    }
 }

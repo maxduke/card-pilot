@@ -63,6 +63,7 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 authenticate()
+                Task { await rebuildNotifications() }
             } else {
                 appLock.applicationDidEnterBackground()
             }
@@ -96,8 +97,10 @@ struct RootView: View {
 
     private func rebuildNotifications() async {
         let parts = reminderTime.split(separator: ":").compactMap { Int($0) }
-        guard parts.count == 2,
-              let timeZone = TimeZone(identifier: homeTimeZone) else { return }
+        let validTime = parts.count == 2 && (0...23).contains(parts[0]) && (0...59).contains(parts[1])
+        let hour = validTime ? parts[0] : 9
+        let minute = validTime ? parts[1] : 0
+        let timeZone = TimeZone(identifier: homeTimeZone) ?? .current
         let today = LocalDate(date: .now, timeZone: timeZone)
         let reminderCycles = accounts.flatMap { account -> [BillingReminderCycle] in
             (0...3).compactMap { offset in
@@ -121,8 +124,8 @@ struct RootView: View {
             cycles: reminderCycles,
             statementOffsets: parseOffsets(statementOffsets),
             repaymentOffsets: parseOffsets(repaymentOffsets),
-            reminderHour: parts[0],
-            reminderMinute: parts[1],
+            reminderHour: hour,
+            reminderMinute: minute,
             timeZone: timeZone
         )
     }

@@ -14,6 +14,8 @@ struct CardsView: View {
     @State private var showingBankEditor = false
     @State private var showingAccountEditor = false
     @State private var showingCardEditor = false
+    @State private var showingArchivedBanks = false
+    @State private var showingInactiveCards = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -27,7 +29,7 @@ struct CardsView: View {
                     )
                 } else {
                     List {
-                        ForEach(banks.filter { $0.archivedAt == nil }, id: \.id) { bank in
+                        ForEach(banks.filter { showingArchivedBanks || $0.archivedAt == nil || !$0.accounts.isEmpty }, id: \.id) { bank in
                             Section {
                                 let bankAccounts = accounts.filter { $0.bank.id == bank.id }
                                 if bankAccounts.isEmpty {
@@ -40,7 +42,7 @@ struct CardsView: View {
                                             onEdit: { editingAccount = account; showingAccountEditor = true },
                                             onDelete: { deleteAccount(account) }
                                         )
-                                        ForEach(account.cards.sorted { ($0.nickname.isEmpty ? $0.productName : $0.nickname) < ($1.nickname.isEmpty ? $1.productName : $1.nickname) }, id: \.id) { card in
+                                        ForEach(account.cards.filter { showingInactiveCards || $0.status == .active }.sorted { ($0.nickname.isEmpty ? $0.productName : $0.nickname) < ($1.nickname.isEmpty ? $1.productName : $1.nickname) }, id: \.id) { card in
                                             CardRow(card: card) {
                                                 editingCard = card
                                                 showingCardEditor = true
@@ -87,6 +89,12 @@ struct CardsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button(showingArchivedBanks ? "隐藏已归档银行" : "显示已归档银行") {
+                            showingArchivedBanks.toggle()
+                        }
+                        Button(showingInactiveCards ? "隐藏停用卡" : "显示停用卡") {
+                            showingInactiveCards.toggle()
+                        }
                         Button {
                             editingBank = nil
                             showingBankEditor = true
@@ -259,12 +267,14 @@ private struct BankEditorView: View {
     let bank: Bank?
     @State private var name: String
     @State private var notes: String
+    @State private var archived: Bool
     @State private var errorMessage: String?
 
     init(bank: Bank?) {
         self.bank = bank
         _name = State(initialValue: bank?.name ?? "")
         _notes = State(initialValue: bank?.notes ?? "")
+        _archived = State(initialValue: bank?.archivedAt != nil)
     }
 
     var body: some View {
@@ -274,6 +284,9 @@ private struct BankEditorView: View {
                     TextField("名称", text: $name)
                         .accessibilityLabel("银行名称")
                     TextField("备注（可选）", text: $notes, axis: .vertical)
+                    if bank != nil {
+                        Toggle("归档", isOn: $archived)
+                    }
                 }
                 if let errorMessage {
                     InlineErrorView(message: errorMessage)
@@ -293,6 +306,7 @@ private struct BankEditorView: View {
         let target = bank ?? Bank(name: trimmed, notes: notes)
         target.name = trimmed
         target.notes = notes
+        target.archivedAt = archived ? (target.archivedAt ?? Date()) : nil
         do {
             try target.validate()
             if bank == nil { modelContext.insert(target) }
@@ -345,7 +359,7 @@ private struct AccountEditorView: View {
             Form {
                 Section("账户") {
                     Picker("银行", selection: $bankID) {
-                        ForEach(banks.filter { $0.archivedAt == nil }, id: \.id) { bank in
+                        ForEach(banks.filter { $0.archivedAt == nil || $0.id == account?.bank.id }, id: \.id) { bank in
                             Text(bank.name).tag(bank.id)
                         }
                     }

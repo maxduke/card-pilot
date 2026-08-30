@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import SwiftUI
 
@@ -6,13 +7,16 @@ struct CardPilotApp: App {
     private let container: ModelContainer
 
     init() {
+        if UserDefaults.standard.string(forKey: "cardPilot.homeTimeZone") == nil {
+            UserDefaults.standard.set(TimeZone.current.identifier, forKey: "cardPilot.homeTimeZone")
+        }
         do {
             let container = try CardPilotPersistence.makeContainer()
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<CardNetwork>()
-            if (try? context.fetchCount(descriptor)) == 0 {
+            if try context.fetchCount(descriptor) == 0 {
                 CardNetwork.makeBuiltIns().forEach(context.insert)
-                try? context.save()
+                try context.save()
             }
             self.container = container
         } catch {

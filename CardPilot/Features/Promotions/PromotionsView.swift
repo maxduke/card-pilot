@@ -10,6 +10,7 @@ struct PromotionsView: View {
 
     @State private var showingEditor = false
     @State private var editingPromotion: Promotion?
+    @State private var showingArchived = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -52,6 +53,11 @@ struct PromotionsView: View {
             }
             .navigationTitle("促销")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(showingArchived ? "隐藏归档" : "显示归档") {
+                        showingArchived.toggle()
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         editingPromotion = nil
@@ -74,7 +80,7 @@ struct PromotionsView: View {
     }
 
     private var visiblePromotions: [Promotion] {
-        promotions.filter { $0.archivedAt == nil }
+        promotions.filter { showingArchived || $0.archivedAt == nil }
     }
 
     private var errorPresented: Binding<Bool> {
@@ -101,11 +107,9 @@ private struct PromotionRow: View {
                 Text(promotion.title)
                     .font(.headline)
                 Spacer()
-                if promotion.endOn >= CardPilotUI.rawDate(Date()) {
-                    Text("进行中")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(statusColor)
             }
             Text(CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn))
                 .font(.caption)
@@ -123,6 +127,17 @@ private struct PromotionRow: View {
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("促销 \(promotion.title)")
+    }
+
+    private var statusText: String {
+        let today = CardPilotUI.rawDate(Date())
+        if promotion.archivedAt != nil { return "已归档" }
+        if promotion.startOn > today { return "即将开始" }
+        return promotion.endOn >= today ? "进行中" : "已结束"
+    }
+
+    private var statusColor: Color {
+        statusText == "进行中" ? .green : .secondary
     }
 }
 

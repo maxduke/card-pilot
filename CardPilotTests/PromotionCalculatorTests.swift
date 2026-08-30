@@ -39,4 +39,32 @@ final class PromotionCalculatorTests: XCTestCase {
             XCTAssertEqual(error as? PromotionCalculationError, .currencyMismatch)
         }
     }
+
+    func testUnknownDateBasisAcceptsEitherTransactionOrPostingDate() {
+        let bank = Bank(name: "测试银行")
+        let account = CreditCardAccount(bank: bank)
+        let network = CardNetwork.makeBuiltIns()[0]
+        let card = Card(account: account, productName: "测试卡", network: network, lastFour: "1234")
+        let promotion = Promotion(
+            title: "测试活动",
+            startOn: 20260801,
+            endOn: 20260831,
+            eligibleCards: [card],
+            qualificationDateBasis: .unknown,
+            targetAmount: 100,
+            progressCurrencyCode: "CNY"
+        )
+        let transaction = Transaction(
+            card: card,
+            transactionOn: 20260731,
+            postingOn: 20260801,
+            amount: 100,
+            currencyCode: "CNY",
+            merchant: "测试商户"
+        )
+
+        XCTAssertTrue(PromotionCalculator.includes(transaction, in: promotion))
+        transaction.postingOn = 20260901
+        XCTAssertFalse(PromotionCalculator.includes(transaction, in: promotion))
+    }
 }

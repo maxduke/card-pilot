@@ -60,7 +60,7 @@ struct SettingsView: View {
             .navigationTitle("设置")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
+                    Button("完成", action: finish)
                 }
             }
             .task { await refreshNotificationStatus() }
@@ -95,6 +95,31 @@ struct SettingsView: View {
             await refreshNotificationStatus()
         } catch {
             errorMessage = "无法请求通知权限：\(error.localizedDescription)"
+        }
+    }
+
+    private func finish() {
+        guard validOffsets(statementReminderOffsets), validOffsets(repaymentReminderOffsets) else {
+            errorMessage = "提醒提前天数应为逗号分隔的非负整数。"
+            return
+        }
+        let parts = reminderTime.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2, (0...23).contains(parts[0]), (0...59).contains(parts[1]) else {
+            errorMessage = "提醒时刻应使用 HH:mm 格式。"
+            return
+        }
+        guard TimeZone(identifier: homeTimeZone) != nil else {
+            errorMessage = "请输入有效的 IANA 时区，例如 Asia/Shanghai。"
+            return
+        }
+        dismiss()
+    }
+
+    private func validOffsets(_ value: String) -> Bool {
+        let parts = value.split(separator: ",", omittingEmptySubsequences: false)
+        return !parts.isEmpty && parts.allSatisfy {
+            guard let number = Int(String($0).trimmingCharacters(in: .whitespaces)) else { return false }
+            return number >= 0
         }
     }
 
