@@ -1,0 +1,574 @@
+import SwiftData
+import SwiftUI
+
+struct PromotionsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
+    @Query(sort: \Bank.name) private var banks: [Bank]
+    @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
+    @Query private var cards: [Card]
+
+    @State private var showingEditor = false
+    @State private var editingPromotion: Promotion?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if visiblePromotions.isEmpty {
+                    EmptyStateView(
+                        title: "还没有促销活动",
+                        systemImage: "gift",
+                        message: "把银行或卡组织活动记录下来，就能手动追踪累计消费进度。"
+                    )
+                } else {
+                    List {
+                        ForEach(visiblePromotions, id: \.id) { promotion in
+                            NavigationLink {
+                                PromotionDetailView(promotion: promotion)
+                            } label: {
+                                PromotionRow(promotion: promotion)
+                            }
+                            .contextMenu {
+                                Button {
+                                    editingPromotion = promotion
+                                    showingEditor = true
+                                } label: {
+                                    Label("编辑促销", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    delete(promotion)
+                                } label: {
+                                    Label("删除促销", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .onDelete { offsets in
+                            offsets.map { visiblePromotions[$0] }.forEach(delete)
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("促销")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        editingPromotion = nil
+                        showingEditor = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("添加促销活动")
+                }
+            }
+            .sheet(isPresented: $showingEditor) {
+                PromotionEditorView(promotion: editingPromotion, banks: banks, networks: networks, cards: cards)
+            }
+            .alert("无法完成操作", isPresented: errorPresented) {
+                Button("好", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "未知错误")
+            }
+        }
+    }
+
+    private var visiblePromotions: [Promotion] {
+        promotions.filter { $0.archivedAt == nil }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func delete(_ promotion: Promotion) {
+        guard promotion.allocations.isEmpty else {
+            errorMessage = "该促销已有交易分配，不能删除；如不再使用可在编辑中归档。"
+            return
+        }
+        modelContext.delete(promotion)
+        do { try modelContext.save() } catch { errorMessage = "促销未删除：\(error.localizedDescription)" }
+    }
+}
+
+private struct PromotionRow: View {
+    let promotion: Promotion
+    private var progress: PromotionProgress? { try? PromotionCalculator.progress(for: promotion) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(promotion.title)
+                    .font(.headline)
+                Spacer()
+                if promotion.endOn >= CardPilotUI.rawDate(Date()) {
+                    Text("进行中")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            Text(CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let progress {
+                ProgressView(
+                    value: max(0, NSDecimalNumber(decimal: progress.qualifiedAmount).doubleValue),
+                    total: NSDecimalNumber(decimal: progress.targetAmount).doubleValue
+                )
+                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(progress.targetAmount, currencyCode: promotion.progressCurrencyCode))")
+                    .font(.caption)
+                    .foregroundStyle(progress.isComplete ? .green : .secondary)
+            }
+        }
+        .padding(.vertical, 5)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("促销 \(promotion.title)")
+    }
+}
+
+private struct PromotionEditorView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    let promotion: Promotion?
+    let banks: [Bank]
+    let networks: [CardNetwork]
+    let cards: [Card]
+
+    @State private var title: String
+    @State private var startDate: Date
+    @State private var endDate: Date
+    @State private var targetText: String
+    @State private var currencyCode: String
+    @State private var selectedBankIDs: Set<UUID>
+    @State private var selectedNetworkIDs: Set<UUID>
+    @State private var selectedCardIDs: Set<UUID>
+    @State private var enrollmentStatus: EnrollmentStatus
+    @State private var enrolledOn: Date
+    @State private var enrollmentDeadline: Date
+    @State private var qualificationDateBasis: QualificationDateBasis
+    @State private var stackingAllowed: Bool
+    @State private var rules: String
+    @State private var exclusions: String
+    @State private var rewardDescription: String
+    @State private var notes: String
+    @State private var archived: Bool
+    @State private var errorMessage: String?
+
+    init(promotion: Promotion?, banks: [Bank], networks: [CardNetwork], cards: [Card]) {
+        self.promotion = promotion
+        self.banks = banks
+        self.networks = networks
+        self.cards = cards
+        _title = State(initialValue: promotion?.title ?? "")
+        _startDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.startOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
+        _endDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.endOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
+        _targetText = State(initialValue: promotion.map { CardPilotUI.amountText($0.targetAmount) } ?? "")
+        _currencyCode = State(initialValue: promotion?.progressCurrencyCode ?? "CNY")
+        _selectedBankIDs = State(initialValue: Set(promotion?.organizingBanks.map(\.id) ?? []))
+        _selectedNetworkIDs = State(initialValue: Set(promotion?.organizingNetworks.map(\.id) ?? []))
+        _selectedCardIDs = State(initialValue: Set(promotion?.eligibleCards.map(\.id) ?? []))
+        _enrollmentStatus = State(initialValue: promotion?.enrollmentStatus ?? .notRequired)
+        _enrolledOn = State(initialValue: promotion.flatMap { $0.enrolledOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
+        _enrollmentDeadline = State(initialValue: promotion.flatMap { $0.enrollmentDeadline.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
+        _qualificationDateBasis = State(initialValue: promotion?.qualificationDateBasis ?? .transactionDate)
+        _stackingAllowed = State(initialValue: promotion?.stackingAllowed ?? true)
+        _rules = State(initialValue: promotion?.rules ?? "")
+        _exclusions = State(initialValue: promotion?.exclusions ?? "")
+        _rewardDescription = State(initialValue: promotion?.rewardDescription ?? "")
+        _notes = State(initialValue: promotion?.notes ?? "")
+        _archived = State(initialValue: promotion?.archivedAt != nil)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("基本信息") {
+                    TextField("活动标题", text: $title)
+                    DatePicker("开始日期", selection: $startDate, displayedComponents: .date)
+                    DatePicker("结束日期", selection: $endDate, displayedComponents: .date)
+                    TextField("累计目标金额", text: $targetText)
+                        .keyboardType(.decimalPad)
+                    TextField("进度币种", text: $currencyCode)
+                        .textInputAutocapitalization(.characters)
+                    Toggle("允许与其他活动叠加", isOn: $stackingAllowed)
+                    Toggle("归档", isOn: $archived)
+                }
+
+                Section("主办方") {
+                    if banks.isEmpty && networks.isEmpty {
+                        Text("可稍后补充银行或卡组织主办方")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(banks.filter { $0.archivedAt == nil }, id: \.id) { bank in
+                        Toggle(bank.name, isOn: binding(for: bank.id, in: $selectedBankIDs))
+                    }
+                    ForEach(networks, id: \.id) { network in
+                        Toggle(network.displayName, isOn: binding(for: network.id, in: $selectedNetworkIDs))
+                    }
+                }
+
+                Section("适用卡") {
+                    if cards.isEmpty {
+                        Text("请先添加卡片")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(cards.sorted { $0.productName < $1.productName }, id: \.id) { card in
+                            Toggle(cardLabel(card), isOn: binding(for: card.id, in: $selectedCardIDs))
+                        }
+                    }
+                    Text("适用卡需明确勾选；主办方不会自动推导适用卡。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("报名与资格") {
+                    Picker("报名状态", selection: $enrollmentStatus) {
+                        Text("不需要报名").tag(EnrollmentStatus.notRequired)
+                        Text("尚未报名").tag(EnrollmentStatus.notEnrolled)
+                        Text("已报名").tag(EnrollmentStatus.enrolled)
+                    }
+                    if enrollmentStatus == .enrolled {
+                        DatePicker("报名日期", selection: $enrolledOn, displayedComponents: .date)
+                    }
+                    if enrollmentStatus != .notRequired {
+                        DatePicker("报名截止日（可选）", selection: $enrollmentDeadline, displayedComponents: .date)
+                    }
+                    Picker("资格日期依据", selection: $qualificationDateBasis) {
+                        Text("交易日期").tag(QualificationDateBasis.transactionDate)
+                        Text("入账日期").tag(QualificationDateBasis.postingDate)
+                        Text("未知（交易日或入账日）").tag(QualificationDateBasis.unknown)
+                    }
+                }
+
+                Section("规则说明") {
+                    TextField("规则（首版仅自动计算累计消费）", text: $rules, axis: .vertical)
+                    TextField("排除项", text: $exclusions, axis: .vertical)
+                    TextField("奖励说明", text: $rewardDescription, axis: .vertical)
+                    TextField("备注", text: $notes, axis: .vertical)
+                }
+
+                if let errorMessage {
+                    InlineErrorView(message: errorMessage)
+                }
+            }
+            .navigationTitle(promotion == nil ? "添加促销" : "编辑促销")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+            }
+        }
+    }
+
+    private func binding(for id: UUID, in set: Binding<Set<UUID>>) -> Binding<Bool> {
+        Binding(
+            get: { set.wrappedValue.contains(id) },
+            set: { isSelected in
+                if isSelected { set.wrappedValue.insert(id) } else { set.wrappedValue.remove(id) }
+            }
+        )
+    }
+
+    private func cardLabel(_ card: Card) -> String {
+        let name = card.nickname.isEmpty ? card.productName : card.nickname
+        return "\(name) · •••• \(card.lastFour)"
+    }
+
+    private func save() {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !normalizedTitle.isEmpty else { errorMessage = "活动标题不能为空。"; return }
+        guard startDate <= endDate else { errorMessage = "结束日期不能早于开始日期。"; return }
+        guard let targetAmount = CardPilotUI.decimal(targetText), targetAmount > .zero else {
+            errorMessage = "累计目标金额应为大于 0 的数字。"
+            return
+        }
+        guard isValidCurrencyCode(normalizedCurrency) else {
+            errorMessage = "进度币种应为 3 位大写字母。"
+            return
+        }
+        if let promotion,
+           !promotion.allocations.isEmpty,
+           promotion.progressCurrencyCode != normalizedCurrency {
+            errorMessage = "已有促销分配后不能修改进度币种。"
+            return
+        }
+        if let promotion, promotion.progressCurrencyCode != normalizedCurrency, !promotion.allocations.isEmpty {
+            errorMessage = "该促销已有交易分配，不能直接更改进度币种。"
+            return
+        }
+
+        let startOn = CardPilotUI.rawDate(startDate)
+        let endOn = CardPilotUI.rawDate(endDate)
+        let status = enrollmentStatus
+        let enrolledValue = status == .enrolled ? CardPilotUI.rawDate(enrolledOn) : nil
+        let deadlineValue = status == .notRequired ? nil : CardPilotUI.rawDate(enrollmentDeadline)
+        if let deadlineValue, deadlineValue > endOn {
+            errorMessage = "报名截止日不能晚于活动结束日。"
+            return
+        }
+        let selectedBanks = banks.filter { selectedBankIDs.contains($0.id) }
+        let selectedNetworks = networks.filter { selectedNetworkIDs.contains($0.id) }
+        let selectedCards = cards.filter { selectedCardIDs.contains($0.id) }
+        let target = promotion ?? Promotion(
+            title: normalizedTitle,
+            startOn: startOn,
+            endOn: endOn,
+            organizingBanks: selectedBanks,
+            organizingNetworks: selectedNetworks,
+            eligibleCards: selectedCards,
+            enrollmentStatus: status,
+            enrolledOn: enrolledValue,
+            enrollmentDeadline: deadlineValue,
+            qualificationDateBasis: qualificationDateBasis,
+            stackingAllowed: stackingAllowed,
+            targetAmount: targetAmount,
+            progressCurrencyCode: normalizedCurrency,
+            rules: rules,
+            exclusions: exclusions,
+            rewardDescription: rewardDescription,
+            notes: notes,
+            archivedAt: archived ? Date() : nil
+        )
+        target.title = normalizedTitle
+        target.startOn = startOn
+        target.endOn = endOn
+        target.organizingBanks = selectedBanks
+        target.organizingNetworks = selectedNetworks
+        target.eligibleCards = selectedCards
+        target.enrollmentStatus = status
+        target.enrolledOn = enrolledValue
+        target.enrollmentDeadline = deadlineValue
+        target.qualificationDateBasis = qualificationDateBasis
+        target.stackingAllowed = stackingAllowed
+        target.targetAmount = targetAmount
+        target.progressCurrencyCode = normalizedCurrency
+        target.rules = rules
+        target.exclusions = exclusions
+        target.rewardDescription = rewardDescription
+        target.notes = notes
+        target.archivedAt = archived ? (target.archivedAt ?? Date()) : nil
+        do {
+            try target.validate()
+            if promotion == nil { modelContext.insert(target) }
+            try modelContext.save()
+            dismiss()
+        } catch {
+            errorMessage = "促销未保存：\(error.localizedDescription)"
+        }
+    }
+}
+
+struct PromotionDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    let promotion: Promotion
+    @State private var showingAllocationEditor = false
+    @State private var editingAllocation: PromotionAllocation?
+    @State private var errorMessage: String?
+
+    private var progress: PromotionProgress? { try? PromotionCalculator.progress(for: promotion) }
+
+    var body: some View {
+        List {
+            Section("进度") {
+                if let progress {
+                    Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(progress.targetAmount, currencyCode: promotion.progressCurrencyCode))")
+                    ProgressView(
+                        value: max(0, NSDecimalNumber(decimal: progress.qualifiedAmount).doubleValue),
+                        total: NSDecimalNumber(decimal: progress.targetAmount).doubleValue
+                    )
+                    Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingAmount, currencyCode: promotion.progressCurrencyCode))")
+                        .foregroundStyle(progress.isComplete ? .green : .secondary)
+                }
+            }
+            Section("促销分配") {
+                if promotion.allocations.isEmpty {
+                    Text("还没有分配交易。")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(promotion.allocations.sorted { $0.transaction.transactionOn > $1.transaction.transactionOn }, id: \.id) { allocation in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(allocation.transaction.merchant.isEmpty ? "未填写商户" : allocation.transaction.merchant)
+                                Text(CardPilotUI.dateText(allocation.transaction.transactionOn))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("\(allocation.transaction.kind == .refund ? "−" : "+")\(CardPilotUI.amountText(allocation.qualifyingAmount, currencyCode: allocation.currencyCode))")
+                                .foregroundStyle(allocation.transaction.kind == .refund ? .orange : .primary)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            editingAllocation = allocation
+                            showingAllocationEditor = true
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                    .onDelete { offsets in
+                        offsets.map { promotion.allocations.sorted { $0.transaction.transactionOn > $1.transaction.transactionOn }[$0] }.forEach { allocation in
+                            modelContext.delete(allocation)
+                        }
+                        do { try modelContext.save() } catch { errorMessage = "分配未删除：\(error.localizedDescription)" }
+                    }
+                }
+            }
+            Section("活动信息") {
+                LabeledContent("有效期", value: CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn))
+                LabeledContent("叠加", value: promotion.stackingAllowed ? "允许" : "不允许")
+                if !promotion.organizingBanks.isEmpty {
+                    LabeledContent("银行主办方", value: promotion.organizingBanks.map(\.name).joined(separator: "、"))
+                }
+                if !promotion.organizingNetworks.isEmpty {
+                    LabeledContent("卡组织主办方", value: promotion.organizingNetworks.map(\.displayName).joined(separator: "、"))
+                }
+            }
+        }
+        .navigationTitle(promotion.title)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    editingAllocation = nil
+                    showingAllocationEditor = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("添加促销分配")
+            }
+        }
+        .sheet(isPresented: $showingAllocationEditor) {
+            AllocationEditorView(promotion: promotion, allocation: editingAllocation)
+        }
+        .alert("无法完成操作", isPresented: errorPresented) {
+            Button("好", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "未知错误")
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+}
+
+private struct AllocationEditorView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    let promotion: Promotion
+    let allocation: PromotionAllocation?
+    @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
+
+    @State private var transactionID: UUID
+    @State private var amountText: String
+    @State private var errorMessage: String?
+
+    init(promotion: Promotion, allocation: PromotionAllocation?) {
+        self.promotion = promotion
+        self.allocation = allocation
+        _transactionID = State(initialValue: allocation?.transaction.id ?? UUID())
+        _amountText = State(initialValue: allocation.map { CardPilotUI.amountText($0.qualifyingAmount) } ?? "")
+    }
+
+    private var candidateTransactions: [Transaction] {
+        transactions.filter { transaction in
+            PromotionCalculator.includes(transaction, in: promotion)
+                || allocation?.transaction.id == transaction.id
+        }
+    }
+
+    private var selectedTransaction: Transaction? {
+        transactions.first { $0.id == transactionID }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("交易") {
+                    if transactions.isEmpty {
+                        Text("请先添加交易。")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("选择交易", selection: $transactionID) {
+                            ForEach(candidateTransactions, id: \.id) { transaction in
+                                Text(transactionLabel(transaction))
+                                    .tag(transaction.id)
+                            }
+                            ForEach(transactions.filter { transaction in
+                                !candidateTransactions.contains(where: { candidate in candidate.id == transaction.id })
+                            }, id: \.id) { transaction in
+                                Text("手动：\(transactionLabel(transaction))")
+                                    .tag(transaction.id)
+                            }
+                        }
+                        if let selectedTransaction, !PromotionCalculator.includes(selectedTransaction, in: promotion) {
+                            Text("这笔交易不是自动候选，仍可按条款手动分配。")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    TextField("计入活动的金额（\(promotion.progressCurrencyCode)）", text: $amountText)
+                        .keyboardType(.decimalPad)
+                    if let selectedTransaction, selectedTransaction.currencyCode != promotion.progressCurrencyCode {
+                        Text("交易币种为 \(selectedTransaction.currencyCode)，请填写银行认可的合格金额。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let errorMessage {
+                    InlineErrorView(message: errorMessage)
+                }
+            }
+            .onAppear(perform: setInitialAmount)
+            .onChange(of: transactionID) { _, _ in setInitialAmountIfBlank() }
+            .navigationTitle(allocation == nil ? "添加促销分配" : "编辑促销分配")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+            }
+        }
+    }
+
+    private func transactionLabel(_ transaction: Transaction) -> String {
+        let merchant = transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant
+        return "\(CardPilotUI.dateText(transaction.transactionOn)) · \(merchant) · \(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))"
+    }
+
+    private func setInitialAmount() {
+        let transaction = selectedTransaction ?? candidateTransactions.first ?? transactions.first
+        if selectedTransaction == nil, let transaction {
+            transactionID = transaction.id
+        }
+        guard amountText.isEmpty, let transaction else { return }
+        amountText = transaction.currencyCode == promotion.progressCurrencyCode ? CardPilotUI.amountText(transaction.amount) : "0"
+    }
+
+    private func setInitialAmountIfBlank() {
+        guard allocation == nil else { return }
+        amountText = ""
+        setInitialAmount()
+    }
+
+    private func save() {
+        guard let transaction = selectedTransaction else { errorMessage = "请选择交易。"; return }
+        guard let amount = CardPilotUI.decimal(amountText), amount >= .zero else {
+            errorMessage = "合格金额应为不小于 0 的数字。"
+            return
+        }
+        if allocation == nil && promotion.allocations.contains(where: { $0.transaction.id == transaction.id }) {
+            errorMessage = "这笔交易已经分配给该促销。"
+            return
+        }
+        let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion, qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)
+        target.transaction = transaction
+        target.promotion = promotion
+        target.qualifyingAmount = amount
+        target.currencyCode = promotion.progressCurrencyCode
+        do {
+            try target.validate()
+            if allocation == nil { modelContext.insert(target) }
+            try modelContext.save()
+            dismiss()
+        } catch {
+            errorMessage = "分配未保存：\(error.localizedDescription)"
+        }
+    }
+}

@@ -1,0 +1,451 @@
+import SwiftData
+import SwiftUI
+
+struct TransactionsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
+    @Query private var cards: [Card]
+    @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
+
+    @State private var editingTransaction: Transaction?
+    @State private var showingEditor = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if transactions.isEmpty {
+                    EmptyStateView(
+                        title: "还没有交易",
+                        systemImage: "list.bullet.rectangle",
+                        message: "记录一笔消费后，可以从候选促销中选择要计入的活动。"
+                    )
+                } else {
+                    List {
+                        ForEach(transactions, id: \.id) { transaction in
+                            TransactionRow(transaction: transaction)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    editingTransaction = transaction
+                                    showingEditor = true
+                                }
+                                .contextMenu {
+                                    Button {
+                                        editingTransaction = transaction
+                                        showingEditor = true
+                                    } label: {
+                                        Label("编辑交易", systemImage: "pencil")
+                                    }
+                                    if transaction.status == .active {
+                                        Button {
+                                            transaction.reverse()
+                                            save()
+                                        } label: {
+                                            Label("标记为已冲正", systemImage: "arrow.uturn.backward")
+                                        }
+                                    }
+                                    Button(role: .destructive) {
+                                        delete(transaction)
+                                    } label: {
+                                        Label("删除交易", systemImage: "trash")
+                                    }
+                                }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("交易")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        editingTransaction = nil
+                        showingEditor = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("添加交易")
+                    .disabled(cards.isEmpty)
+                }
+            }
+            .sheet(isPresented: $showingEditor) {
+                TransactionEditorView(transaction: editingTransaction, cards: cards, promotions: promotions, transactions: transactions)
+            }
+            .alert("无法完成操作", isPresented: errorPresented) {
+                Button("好", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "未知错误")
+            }
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func save() {
+        do { try modelContext.save() } catch { errorMessage = "数据未保存：\(error.localizedDescription)" }
+    }
+
+    private func delete(_ transaction: Transaction) {
+        guard transaction.refunds.isEmpty, transaction.allocations.isEmpty else {
+            errorMessage = "该交易仍被退款或促销分配引用，不能删除。"
+            return
+        }
+        modelContext.delete(transaction)
+        save()
+    }
+}
+
+private struct TransactionRow: View {
+    let transaction: Transaction
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: transaction.kind == .refund ? "arrow.uturn.left.circle" : "cart")
+                .foregroundStyle(transaction.kind == .refund ? .orange : .blue)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
+                    .font(.subheadline.weight(.medium))
+                Text("\(CardPilotUI.dateText(transaction.transactionOn)) · \(cardName(transaction.card))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if transaction.status == .reversed {
+                    Text("已冲正")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            Spacer()
+            Text("\(transaction.kind == .refund ? "−" : "")\(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))")
+                .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
+                .strikethrough(transaction.status == .reversed)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(transaction.kind == .refund ? "退款" : "消费")，\(transaction.merchant)，\(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))")
+    }
+
+    private func cardName(_ card: Card) -> String {
+        let name = card.nickname.isEmpty ? card.productName : card.nickname
+        return "\(name) · •••• \(card.lastFour)"
+    }
+}
+
+private struct TransactionEditorView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    let transaction: Transaction?
+    let cards: [Card]
+    let promotions: [Promotion]
+    let transactions: [Transaction]
+
+    @State private var cardID: UUID
+    @State private var kind: TransactionKind
+    @State private var transactionDate: Date
+    @State private var postingDate: Date
+    @State private var hasPostingDate: Bool
+    @State private var amountText: String
+    @State private var currencyCode: String
+    @State private var merchant: String
+    @State private var category: String
+    @State private var notes: String
+    @State private var status: TransactionStatus
+    @State private var originalTransactionID: UUID
+    @State private var selectedPromotionIDs: Set<UUID>
+    @State private var allocationAmounts: [UUID: String]
+    @State private var didInitializePromotions = false
+    @State private var errorMessage: String?
+
+    private static let noOriginalTransactionID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
+    init(transaction: Transaction?, cards: [Card], promotions: [Promotion], transactions: [Transaction]) {
+        self.transaction = transaction
+        self.cards = cards
+        self.promotions = promotions
+        self.transactions = transactions
+        _cardID = State(initialValue: transaction?.card.id ?? cards.first?.id ?? UUID())
+        _kind = State(initialValue: transaction?.kind ?? .purchase)
+        _transactionDate = State(initialValue: transaction.flatMap { try? LocalDate(rawValue: $0.transactionOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
+        _postingDate = State(initialValue: transaction.flatMap { $0.postingOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
+        _hasPostingDate = State(initialValue: transaction?.postingOn != nil)
+        _amountText = State(initialValue: transaction.map { CardPilotUI.amountText($0.amount) } ?? "")
+        _currencyCode = State(initialValue: transaction?.currencyCode ?? cards.first?.account.limitCurrencyCode ?? "CNY")
+        _merchant = State(initialValue: transaction?.merchant ?? "")
+        _category = State(initialValue: transaction?.category ?? "")
+        _notes = State(initialValue: transaction?.notes ?? "")
+        _status = State(initialValue: transaction?.status ?? .active)
+        _originalTransactionID = State(initialValue: transaction?.originalTransaction?.id ?? Self.noOriginalTransactionID)
+        _selectedPromotionIDs = State(initialValue: Set(transaction?.allocations.map { $0.promotion.id } ?? []))
+        _allocationAmounts = State(initialValue: Dictionary(uniqueKeysWithValues: (transaction?.allocations ?? []).map { ($0.promotion.id, CardPilotUI.amountText($0.qualifyingAmount)) }))
+    }
+
+    private var selectedCard: Card? { cards.first { $0.id == cardID } }
+
+    private var originalTransactions: [Transaction] {
+        transactions.filter {
+            $0.id != transaction?.id
+                && $0.kind == .purchase
+                && $0.card.id == cardID
+        }
+    }
+
+    private var candidatePromotions: [Promotion] {
+        guard let selectedCard else { return [] }
+        let date = CardPilotUI.rawDate(transactionDate)
+        return promotions.filter { promotion in
+            guard promotion.archivedAt == nil,
+                  promotion.eligibleCards.contains(where: { $0.id == selectedCard.id }) else { return false }
+            let qualificationDates: [Int]
+            switch promotion.qualificationDateBasis {
+            case .transactionDate:
+                qualificationDates = [date]
+            case .postingDate:
+                qualificationDates = hasPostingDate ? [CardPilotUI.rawDate(postingDate)] : []
+            case .unknown:
+                qualificationDates = [date] + (hasPostingDate ? [CardPilotUI.rawDate(postingDate)] : [])
+            }
+            return qualificationDates.contains { promotion.startOn <= $0 && $0 <= promotion.endOn }
+        }
+    }
+
+    private var visiblePromotionIDs: Set<UUID> {
+        Set(candidatePromotions.map(\.id)).union(selectedPromotionIDs)
+    }
+
+    private var visiblePromotions: [Promotion] {
+        promotions.filter { visiblePromotionIDs.contains($0.id) }.sorted { $0.endOn < $1.endOn }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("交易") {
+                    Picker("卡片", selection: $cardID) {
+                        ForEach(cards, id: \.id) { card in
+                            Text(cardLabel(card)).tag(card.id)
+                        }
+                    }
+                    Picker("类型", selection: $kind) {
+                        Text("消费").tag(TransactionKind.purchase)
+                        Text("退款").tag(TransactionKind.refund)
+                    }
+                    if kind == .refund {
+                        Picker("原消费", selection: $originalTransactionID) {
+                            Text("请选择原消费").tag(Self.noOriginalTransactionID)
+                            ForEach(originalTransactions, id: \.id) { original in
+                                Text(transactionLabel(original)).tag(original.id)
+                            }
+                        }
+                    }
+                    DatePicker("交易日期", selection: $transactionDate, displayedComponents: .date)
+                    Toggle("记录入账日期", isOn: $hasPostingDate)
+                    if hasPostingDate {
+                        DatePicker("入账日期", selection: $postingDate, displayedComponents: .date)
+                    }
+                    TextField("金额", text: $amountText)
+                        .keyboardType(.decimalPad)
+                    TextField("币种", text: $currencyCode)
+                        .textInputAutocapitalization(.characters)
+                    TextField("商户（可选）", text: $merchant)
+                    TextField("分类（可选）", text: $category)
+                    TextField("备注（可选）", text: $notes, axis: .vertical)
+                    Picker("状态", selection: $status) {
+                        Text("有效").tag(TransactionStatus.active)
+                        Text("已冲正").tag(TransactionStatus.reversed)
+                    }
+                }
+
+                Section("促销分配") {
+                    if visiblePromotions.isEmpty {
+                        Text("没有匹配的候选促销；保存交易后仍可在促销详情中手动分配。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(visiblePromotions, id: \.id) { promotion in
+                            Toggle(promotion.title, isOn: promotionBinding(promotion.id))
+                            if selectedPromotionIDs.contains(promotion.id) {
+                                TextField(
+                                    "计入金额（\(promotion.progressCurrencyCode)）",
+                                    text: amountBinding(promotion.id)
+                                )
+                                .keyboardType(.decimalPad)
+                                .padding(.leading, 24)
+                            }
+                        }
+                        Text("候选活动会默认勾选；可取消或调整计入金额。不同币种请填写银行认可的合格金额。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if selectedPromotionIDs.count > 1,
+                           selectedPromotionsContainNonStacking {
+                            Text("所选活动中包含“不允许叠加”的活动，请按活动条款确认。")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        if selectedPromotionIDs.contains(where: { id in
+                            promotions.first(where: { $0.id == id })?.enrollmentStatus == .notEnrolled
+                        }) {
+                            Text("所选活动中有尚未报名的活动，请确认报名状态。")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
+                if let errorMessage {
+                    InlineErrorView(message: errorMessage)
+                }
+            }
+            .onAppear(perform: initializePromotions)
+            .onChange(of: cardID) { _, _ in refreshCandidates() }
+            .onChange(of: transactionDate) { _, _ in refreshCandidates() }
+            .onChange(of: postingDate) { _, _ in refreshCandidates() }
+            .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
+            .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+            }
+        }
+    }
+
+    private func promotionBinding(_ id: UUID) -> Binding<Bool> {
+        Binding(
+            get: { selectedPromotionIDs.contains(id) },
+            set: { selected in
+                if selected {
+                    selectedPromotionIDs.insert(id)
+                    if allocationAmounts[id] == nil, let promotion = promotions.first(where: { $0.id == id }) {
+                        allocationAmounts[id] = defaultAmount(for: promotion)
+                    }
+                } else {
+                    selectedPromotionIDs.remove(id)
+                }
+            }
+        )
+    }
+
+    private func amountBinding(_ id: UUID) -> Binding<String> {
+        Binding(get: { allocationAmounts[id] ?? "" }, set: { allocationAmounts[id] = $0 })
+    }
+
+    private func initializePromotions() {
+        guard !didInitializePromotions else { return }
+        if transaction == nil {
+            selectedPromotionIDs = Set(candidatePromotions.map(\.id))
+            for promotion in candidatePromotions {
+                allocationAmounts[promotion.id] = defaultAmount(for: promotion)
+            }
+        }
+        didInitializePromotions = true
+    }
+
+    private func refreshCandidates() {
+        guard didInitializePromotions, transaction == nil else { return }
+        let ids = Set(candidatePromotions.map(\.id))
+        selectedPromotionIDs.formUnion(ids)
+        for promotion in candidatePromotions where allocationAmounts[promotion.id] == nil {
+            allocationAmounts[promotion.id] = defaultAmount(for: promotion)
+        }
+    }
+
+    private func defaultAmount(for promotion: Promotion) -> String {
+        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return normalizedCurrency == promotion.progressCurrencyCode ? amountText : "0"
+    }
+
+    private var selectedPromotionsContainNonStacking: Bool {
+        promotions.contains { selectedPromotionIDs.contains($0.id) && !$0.stackingAllowed }
+    }
+
+    private func cardLabel(_ card: Card) -> String {
+        let name = card.nickname.isEmpty ? card.productName : card.nickname
+        return "\(name) · •••• \(card.lastFour)"
+    }
+
+    private func transactionLabel(_ transaction: Transaction) -> String {
+        let merchant = transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant
+        return "\(CardPilotUI.dateText(transaction.transactionOn)) · \(merchant) · \(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))"
+    }
+
+    private func save() {
+        guard let card = selectedCard else { errorMessage = "请选择卡片。"; return }
+        guard let amount = CardPilotUI.decimal(amountText), amount > .zero else {
+            errorMessage = "金额应为大于 0 的数字。"
+            return
+        }
+        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard isValidCurrencyCode(normalizedCurrency) else {
+            errorMessage = "币种应为 3 位大写字母。"
+            return
+        }
+        let original = kind == .refund ? originalTransactions.first(where: { $0.id == originalTransactionID }) : nil
+        if kind == .refund && original == nil {
+            errorMessage = "退款必须关联同一卡片的一笔原消费。"
+            return
+        }
+        let target = transaction ?? Transaction(
+            card: card,
+            kind: kind,
+            transactionOn: CardPilotUI.rawDate(transactionDate),
+            postingOn: hasPostingDate ? CardPilotUI.rawDate(postingDate) : nil,
+            amount: amount,
+            currencyCode: normalizedCurrency,
+            merchant: merchant,
+            category: category,
+            notes: notes,
+            originalTransaction: original,
+            status: status
+        )
+        target.card = card
+        target.kind = kind
+        target.transactionOn = CardPilotUI.rawDate(transactionDate)
+        target.postingOn = hasPostingDate ? CardPilotUI.rawDate(postingDate) : nil
+        target.amount = amount
+        target.currencyCode = normalizedCurrency
+        target.merchant = merchant
+        target.category = category
+        target.notes = notes
+        target.originalTransaction = original
+        target.status = status
+
+        let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
+        var parsedAmounts: [UUID: Decimal] = [:]
+        for promotion in selectedPromotions {
+            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? ""), amount >= .zero else {
+                errorMessage = "活动“\(promotion.title)”的计入金额格式不正确。"
+                return
+            }
+            parsedAmounts[promotion.id] = amount
+        }
+
+        do {
+            try target.validate()
+            let existingAllocations = Dictionary(uniqueKeysWithValues: target.allocations.map { ($0.promotion.id, $0) })
+            if transaction == nil { modelContext.insert(target) }
+            for allocation in target.allocations where !selectedPromotionIDs.contains(allocation.promotion.id) {
+                modelContext.delete(allocation)
+            }
+            for promotion in selectedPromotions {
+                if let allocation = existingAllocations[promotion.id] {
+                    allocation.qualifyingAmount = parsedAmounts[promotion.id] ?? .zero
+                    allocation.currencyCode = promotion.progressCurrencyCode
+                    try allocation.validate()
+                } else {
+                    let allocation = PromotionAllocation(
+                        transaction: target,
+                        promotion: promotion,
+                        qualifyingAmount: parsedAmounts[promotion.id] ?? .zero,
+                        currencyCode: promotion.progressCurrencyCode
+                    )
+                    try allocation.validate()
+                    modelContext.insert(allocation)
+                }
+            }
+            try modelContext.save()
+            dismiss()
+        } catch {
+            errorMessage = "交易未保存：\(error.localizedDescription)"
+        }
+    }
+}
