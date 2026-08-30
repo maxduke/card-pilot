@@ -142,7 +142,6 @@ final class CreditCardAccount {
     var closedOn: Int?
     var notes: String
 
-    @Relationship(inverse: \Bank.accounts)
     var bank: Bank
 
     @Relationship(deleteRule: .deny, inverse: \Card.account)
@@ -225,16 +224,14 @@ final class Card {
     var statusRaw: String
     var notes: String
 
-    @Relationship(inverse: \CreditCardAccount.cards)
     var account: CreditCardAccount
 
-    @Relationship(inverse: \CardNetwork.cards)
     var network: CardNetwork
 
     @Relationship(deleteRule: .deny, inverse: \Transaction.card)
     var transactions: [Transaction] = []
 
-    @Relationship(inverse: \Promotion.eligibleCards)
+    @Relationship(deleteRule: .deny, inverse: \Promotion.eligibleCards)
     var eligiblePromotions: [Promotion] = []
 
     var status: CardStatus {
@@ -280,7 +277,6 @@ final class BillingRuleVersion {
     var repaymentKindRaw: String
     var repaymentValue: Int
 
-    @Relationship(inverse: \CreditCardAccount.billingRuleVersions)
     var account: CreditCardAccount
 
     var repaymentKind: RepaymentRuleKind {
@@ -330,7 +326,6 @@ final class BillingCycleRecord {
     var repaymentDateOverride: Int?
     var repaidAt: Date?
 
-    @Relationship(inverse: \CreditCardAccount.billingCycles)
     var account: CreditCardAccount
 
     init(
@@ -379,13 +374,10 @@ final class Promotion {
     var notes: String
     var archivedAt: Date?
 
-    @Relationship(inverse: \Bank.organizedPromotions)
     var organizingBanks: [Bank] = []
 
-    @Relationship(inverse: \CardNetwork.organizedPromotions)
     var organizingNetworks: [CardNetwork] = []
 
-    @Relationship(inverse: \Card.eligiblePromotions)
     var eligibleCards: [Card] = []
 
     @Relationship(deleteRule: .deny, inverse: \PromotionAllocation.promotion)
@@ -493,10 +485,8 @@ final class Transaction {
     var notes: String
     var statusRaw: String
 
-    @Relationship(inverse: \Card.transactions)
     var card: Card
 
-    @Relationship(inverse: \Transaction.refunds)
     var originalTransaction: Transaction?
 
     @Relationship(deleteRule: .deny, inverse: \Transaction.originalTransaction)
@@ -579,10 +569,8 @@ final class PromotionAllocation {
     var qualifyingAmount: Decimal
     var currencyCode: String
 
-    @Relationship(inverse: \Transaction.allocations)
     var transaction: Transaction
 
-    @Relationship(inverse: \Promotion.allocations)
     var promotion: Promotion
 
     init(
