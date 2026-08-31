@@ -517,19 +517,42 @@ private struct TransactionEditorView: View {
             }
             parsedAmounts[promotion.id] = amount
         }
-        if !allowingOverRefund,
-           kind == .purchase,
-           let transaction,
-           PromotionCalculator.refundExceedsOriginalAmount(
-               originalAmount: amount,
-               proposedRefundAmount: .zero,
-               otherRefunds: transaction.refunds
-                   .filter { $0.currencyCode == normalizedCurrency }
-                   .map { (transactionID: $0.id, amount: $0.amount, status: $0.status) },
-               excludingTransactionID: nil
-           ) {
-            overRefundWarningMessage = "关联有效退款合计高于修改后的原消费金额。"
-            return
+        if !allowingOverRefund, kind == .purchase, let transaction {
+            var warnings: [String] = []
+            if PromotionCalculator.refundExceedsOriginalAmount(
+                originalAmount: amount,
+                proposedRefundAmount: .zero,
+                otherRefunds: transaction.refunds
+                    .filter { $0.currencyCode == normalizedCurrency }
+                    .map { (transactionID: $0.id, amount: $0.amount, status: $0.status) },
+                excludingTransactionID: nil
+            ) {
+                warnings.append("关联有效退款合计高于修改后的原消费金额。")
+            }
+            let overRefundedPromotionIDs = PromotionCalculator.overRefundedPromotionIDs(
+                originalAllocations: selectedPromotions.map {
+                    (promotionID: $0.id, qualifyingAmount: parsedAmounts[$0.id] ?? .zero)
+                },
+                refundAllocations: transaction.refunds
+                    .filter { $0.status == .active && $0.currencyCode == normalizedCurrency }
+                    .flatMap { refund in
+                        refund.allocations.map {
+                            (promotionID: $0.promotion.id, qualifyingAmount: $0.qualifyingAmount)
+                        }
+                    },
+                otherRefundAllocations: [],
+                excludingTransactionID: nil
+            )
+            let overRefundedPromotionNames = promotions
+                .filter { overRefundedPromotionIDs.contains($0.id) }
+                .map(\.title)
+            if !overRefundedPromotionNames.isEmpty {
+                warnings.append("促销分配高于修改后的原消费分配：" + overRefundedPromotionNames.joined(separator: "、") + "。")
+            }
+            if !warnings.isEmpty {
+                overRefundWarningMessage = warnings.joined(separator: "\n")
+                return
+            }
         }
         if !allowingOverRefund,
            let original,
@@ -550,7 +573,10 @@ private struct TransactionEditorView: View {
                     (promotionID: $0.promotion.id, qualifyingAmount: $0.qualifyingAmount)
                 },
                 refundAllocations: selectedPromotions.map {
-                    (promotionID: $0.id, qualifyingAmount: parsedAmounts[$0.id] ?? .zero)
+                    (
+                        promotionID: $0.id,
+                        qualifyingAmount: status == .active ? (parsedAmounts[$0.id] ?? .zero) : .zero
+                    )
                 },
                 otherRefundAllocations: original.refunds.flatMap { refund in
                     refund.allocations.map {

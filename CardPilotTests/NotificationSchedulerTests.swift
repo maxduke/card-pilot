@@ -122,4 +122,15 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 0, maxReminderOffset: 29)), Array(-1...3))
         XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 0, maxReminderOffset: 90)), Array(-1...4))
     }
+
+    func testReminderCycleKeysExcludeGeneratedHistoryButKeepSavedHistory() {
+        XCTAssertEqual(
+            RootView.reminderCycleKeys(
+                generated: [202607, 202608, 202609],
+                savedUnpaid: [202606],
+                trackingStartCycleKey: 202608
+            ),
+            Set([202606, 202608, 202609])
+        )
+    }
 }

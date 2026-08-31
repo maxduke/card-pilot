@@ -55,10 +55,13 @@ enum PromotionCalculator {
                   allocation.transactionID != excludingTransactionID else { return }
             amounts[allocation.promotionID, default: .zero] += allocation.qualifyingAmount
         }
-        return Set(refundAllocations.compactMap { allocation in
-            let balance = max(.zero, (originalAmounts[allocation.promotionID] ?? .zero)
-                - (refundedAmounts[allocation.promotionID] ?? .zero))
-            return allocation.qualifyingAmount > balance ? allocation.promotionID : nil
+        let proposedAmounts = refundAllocations.reduce(into: [UUID: Decimal]()) { amounts, allocation in
+            amounts[allocation.promotionID, default: .zero] += allocation.qualifyingAmount
+        }
+        return Set(proposedAmounts.compactMap { promotionID, proposedAmount in
+            let balance = max(.zero, (originalAmounts[promotionID] ?? .zero)
+                - (refundedAmounts[promotionID] ?? .zero))
+            return proposedAmount > balance ? promotionID : nil
         })
     }
 
