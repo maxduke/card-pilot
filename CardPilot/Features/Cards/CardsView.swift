@@ -169,8 +169,6 @@ struct CardsView: View {
             errorMessage = "请先删除该账户下的卡片。"
             return
         }
-        account.billingCycles.forEach { modelContext.delete($0) }
-        account.billingRuleVersions.forEach { modelContext.delete($0) }
         modelContext.delete(account)
         save()
     }

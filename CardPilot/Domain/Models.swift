@@ -147,10 +147,10 @@ final class CreditCardAccount {
     @Relationship(deleteRule: .deny, inverse: \Card.account)
     var cards: [Card] = []
 
-    @Relationship(deleteRule: .deny, inverse: \BillingRuleVersion.account)
+    @Relationship(deleteRule: .cascade, inverse: \BillingRuleVersion.account)
     var billingRuleVersions: [BillingRuleVersion] = []
 
-    @Relationship(deleteRule: .deny, inverse: \BillingCycleRecord.account)
+    @Relationship(deleteRule: .cascade, inverse: \BillingCycleRecord.account)
     var billingCycles: [BillingCycleRecord] = []
 
     var status: CreditCardAccountStatus {

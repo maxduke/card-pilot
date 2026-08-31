@@ -81,8 +81,6 @@ final class PersistenceTests: XCTestCase {
         context.insert(cycle)
         try context.save()
 
-        account.billingCycles.forEach { context.delete($0) }
-        account.billingRuleVersions.forEach { context.delete($0) }
         context.delete(account)
         try context.save()
 

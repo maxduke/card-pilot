@@ -103,7 +103,7 @@ CardPilotUITests/
 
 删除交易只用于纠正误录：存在促销分配时先移除分配，存在关联退款时先删除退款或解除关联。不得隐式级联删除历史事实。
 
-关系删除规则写死为：Bank 被账户或促销主办方引用时 `deny`；Account 被卡片、规则版本或账期记录引用时 `deny`；Card 被交易或促销适用卡引用时 `deny`；Promotion 和 Transaction 被分配引用时 `deny`；原消费被退款引用时 `deny`。所有写入在主 actor 的单个 `ModelContext` 中完成，UI 检查负责解释原因，SwiftData `deny` 负责最后防线。
+关系删除规则写死为：Bank 被账户或促销主办方引用时 `deny`；Account 被卡片引用时 `deny`，账户拥有的规则版本和账期记录使用 `cascade`；Card 被交易或促销适用卡引用时 `deny`；Promotion 和 Transaction 被分配引用时 `deny`；原消费被退款引用时 `deny`。所有写入在主 actor 的单个 `ModelContext` 中完成，UI 检查负责解释原因，SwiftData `deny` 负责最后防线，账户内部记录随账户级联删除。
 
 ### 设置
 
