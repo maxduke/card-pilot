@@ -64,7 +64,7 @@ CardPilotUITests/
 |---|---|---|
 | `Bank` | `id`, `name`, `notes`, `archivedAt` | 名称必填；有引用后只能归档；名称是当前规范显示名 |
 | `CardNetwork` | `id`, 稳定 `code`, `displayName`, `isBuiltIn` | 预置银联、Visa、Mastercard、Amex、JCB；“其他”在选择器内创建，不做独立管理页 |
-| `CreditCardAccount` | `id`, `bank`, `creditLimit`, `limitCurrencyCode`, `status`, `closedOn`, `notes` | 额度可空，填写时必须大于零；active 必须无关闭日期，closed 必须有关闭日期，关闭动作原子更新两者 |
+| `CreditCardAccount` | `id`, `bank`, `trackingStartCycleKey`, `creditLimit`, `limitCurrencyCode`, `status`, `closedOn`, `notes` | 追踪起始账期必须是有效 `YYYYMM`，新账户默认加入当月且首版不可编辑；额度可空，填写时必须大于零；active 必须无关闭日期，closed 必须有关闭日期，关闭动作原子更新两者 |
 | `Card` | `id`, `account`, `productName`, `nickname`, `network`, `lastFour`, `status`, `notes` | 末四位严格为四位数字；停用卡保留历史并可显式选择 |
 
 一个账户可以有多张卡；共享额度、账单日和还款日的卡放在同一账户，各自独立的卡使用不同账户。首版不拆出 `CreditLine`，因此不支持“共用额度但账单规则不同”。
@@ -78,7 +78,7 @@ CardPilotUITests/
 | `BillingRuleVersion` | `id`, `account`, 可选 `effectiveCycleKey`, `statementDay`, `repaymentKind`, `repaymentValue` | 每个账户恰有一个无生效下界的基线版本；后续版本按生效账期排序；账单日和固定还款日为 1...31；“N 天后”要求 N ≥ 1 |
 | `BillingCycleRecord` | `id`, `account`, `cycleKey`, `statementDateOverride`, `repaymentDateOverride`, `repaidAt` | 稀疏保存：只有发生覆盖或还款完成时才建记录；每账户每账期最多一条 |
 
-`cycleKey` 是名义账单月份 `YYYYMM`，即使本期覆盖日期跨月也不改变。基线规则用于首个有日期版本之前的账期，保证月中首次录入时仍能计算当前待还事项；未持久化的账期由规则即时计算。已保存的规则版本不得原地改写或删除已生效历史，银行变更必须新增版本，个别纠错使用账期覆盖。
+`cycleKey` 是名义账单月份 `YYYYMM`，即使本期覆盖日期跨月也不改变。账户从追踪起始账期到当前日期后两个月生成 Dashboard 账期，并合并明确保存的未还账期，避免无限历史和旧未还账期消失；追踪起始账期之前的普通未持久化账期首版不生成。基线规则用于首个有日期版本之前的账期，保证月中首次录入时仍能计算当前待还事项；未持久化的账期由规则即时计算。已保存的规则版本不得原地改写或删除已生效历史，银行变更必须新增仅从未来账期生效的版本，当前或历史个别纠错使用账期覆盖。
 
 每个账户恰有一个 `effectiveCycleKey == nil` 的基线版本；新增或删除规则版本时先查询验证。`BillingCycleRecord` 和 `PromotionAllocation` 的复合唯一性同样由保存前查询与单元测试保证；SwiftData/iOS 17 不为此引入额外兼容层。
 
@@ -103,14 +103,14 @@ CardPilotUITests/
 
 删除交易只用于纠正误录：存在促销分配时先移除分配，存在关联退款时先删除退款或解除关联。不得隐式级联删除历史事实。
 
-关系删除规则写死为：Bank 被账户或促销主办方引用时 `deny`；Account 被卡片、规则版本或账期记录引用时 `deny`；Card 被交易或促销适用卡引用时 `deny`；Promotion 和 Transaction 被分配引用时 `deny`；原消费被退款引用时 `deny`。所有写入在主 actor 的单个 `ModelContext` 中完成，UI 检查负责解释原因，SwiftData `deny` 负责最后防线。
+关系删除规则写死为：Bank 被账户或促销主办方引用时 `deny`；Account 被卡片引用时 `deny`，账户拥有的规则版本和账期记录使用 `cascade`；Card 被交易或促销适用卡引用时 `deny`；Promotion 和 Transaction 被分配引用时 `deny`；原消费被退款引用时 `deny`。所有写入在主 actor 的单个 `ModelContext` 中完成，UI 检查负责解释原因，SwiftData `deny` 负责最后防线，账户内部记录随账户级联删除。
 
 ### 设置
 
 以下个人设备设置使用 `AppStorage`，不进入 SwiftData：
 
-- 账单提醒提前天数，默认 `[7, 3, 1, 0]`；
-- 还款提醒提前天数，默认 `[7, 3, 1, 0]`；
+- 账单提醒提前天数，允许 `0...365`，默认 `[7, 3, 1, 0]`；
+- 还款提醒提前天数，允许 `0...365`，默认 `[7, 3, 1, 0]`；
 - 全局提醒时刻，默认 09:00；
 - 常用时区，首次启动取当前系统时区，之后不随旅行自动变化；
 - 应用锁是否启用。
@@ -183,6 +183,7 @@ CardPilotUITests/
 - 银行管理从卡片页工具栏进入，提供创建、编辑、归档和无引用删除。
 - 账户表单同时录入初始账务规则；规则变更要求选择首个受影响账期并新增版本。
 - 账户详情管理卡片、账期日期覆盖、还款完成记录、关闭账户。
+- 账户追踪起始账期默认加入当月，首版不可编辑；Dashboard 从该账期生成至当前日期后两个月，并合并保存的未还账期。
 - 默认隐藏停用卡；“显示停用卡”可用于历史交易录入。
 
 ### 促销
@@ -281,6 +282,7 @@ CardPilotUITests/
 - 账单覆盖后重新推算还款，再由还款覆盖最终替换；
 - 新规则从指定账期生效，旧账期结果不变；
 - 每个账户只能保存一个基线规则，缺失或重复时保存失败且计算器返回明确错误；
+- Dashboard 从追踪起始账期生成至当前日期后两个月，合并保存的未还账期；更早未保存账期不生成，非法或未来起始账期不会导致历史反向生成；
 - 账户关闭前的未还账期保留，关闭后不再生成；
 - active/closed 与关闭日期组合不一致时保存失败；
 - 到期日当天仍为待还，下一自然日才为逾期；标记完成后为已还。
@@ -288,6 +290,7 @@ CardPilotUITests/
 ### 促销与交易
 
 - 促销开始日、结束日均可成为候选；七日“即将结束”阈值在第 7 天内包含边界、第 8 天不命中；
+- 报名截止日在今天至未来七天（含边界）的未归档、未报名促销进入 Dashboard，即使活动尚未开始；
 - 三种资格日期依据及缺少入账日期；
 - 非适用卡、未报名、日期冲突和不可叠加只警告；
 - 同一交易向多个促销分配不同金额；同一交易与促销不能重复分配；
