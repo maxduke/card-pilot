@@ -121,49 +121,26 @@ jobs:
           set -euo pipefail
           ipa_path="release/CardPilot-unsigned.ipa"
           checksum_path="release/CardPilot-unsigned.ipa.sha256"
-          checksum=$(awk '{print $1}' "$checksum_path")
-          existing_dir=$(mktemp -d)
           release_error=$(mktemp)
-          trap 'rm -rf "$existing_dir" "$release_error"' EXIT
+          trap 'rm -f "$release_error"' EXIT
 
           set +e
-          release_json=$(gh release view "$TAG_NAME" --json isDraft,isPrerelease,assets 2>"$release_error")
+          release_json=$(gh release view "$TAG_NAME" --json isDraft,assets 2>"$release_error")
           release_status=$?
           set -e
           if (( release_status == 0 )); then
             if [[ "$(jq -r '.isDraft' <<<"$release_json")" == "true" ]]; then
-              echo "Release $TAG_NAME is a draft; refusing to publish or replace it" >&2
-              exit 1
-            fi
-
-            for asset_name in CardPilot-unsigned.ipa CardPilot-unsigned.ipa.sha256; do
-              if jq -e --arg name "$asset_name" '.assets[] | select(.name == $name)' <<<"$release_json" >/dev/null; then
-                gh release download "$TAG_NAME" --pattern "$asset_name" --dir "$existing_dir"
-              fi
-            done
-
-            if [[ -f "$existing_dir/CardPilot-unsigned.ipa" ]]; then
-              existing_ipa_checksum=$(shasum -a 256 "$existing_dir/CardPilot-unsigned.ipa" | awk '{print $1}')
-              [[ "$existing_ipa_checksum" == "$checksum" ]] || {
-                echo "Existing release IPA checksum differs; refusing to replace it" >&2
-                exit 1
-              }
-            fi
-            if [[ -f "$existing_dir/CardPilot-unsigned.ipa.sha256" ]]; then
-              existing_checksum=$(awk '{print $1}' "$existing_dir/CardPilot-unsigned.ipa.sha256")
-              [[ "$existing_checksum" == "$checksum" ]] || {
-                echo "Existing release checksum differs; refusing to replace it" >&2
-                exit 1
-              }
-            fi
-
-            missing_assets=()
-            [[ -f "$existing_dir/CardPilot-unsigned.ipa" ]] || missing_assets+=("$ipa_path")
-            [[ -f "$existing_dir/CardPilot-unsigned.ipa.sha256" ]] || missing_assets+=("$checksum_path")
-            if (( ${#missing_assets[@]} > 0 )); then
-              gh release upload "$TAG_NAME" "${missing_assets[@]}"
+              gh release upload "$TAG_NAME" "$ipa_path" "$checksum_path" --clobber
+              gh release edit "$TAG_NAME" --draft=false
+              echo "Updated and published draft release $TAG_NAME"
             else
-              echo "Release $TAG_NAME already has matching assets; nothing to replace"
+              expected_asset_count=$(jq -r '[.assets[].name] | map(select(. == "CardPilot-unsigned.ipa" or . == "CardPilot-unsigned.ipa.sha256")) | length' <<<"$release_json")
+              if [[ "$expected_asset_count" == "2" ]]; then
+                echo "Release $TAG_NAME already contains both expected assets; nothing to replace"
+              else
+                echo "Published release $TAG_NAME is missing an expected asset; refusing to modify it" >&2
+                exit 1
+              fi
             fi
           elif grep -Eiq 'not found|HTTP 404' "$release_error"; then
             gh release create "$TAG_NAME" "$ipa_path" "$checksum_path" \
