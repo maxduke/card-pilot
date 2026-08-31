@@ -115,8 +115,7 @@ struct SettingsView: View {
             errorMessage = "提醒提前天数应为逗号分隔的非负整数。"
             return
         }
-        let parts = reminderTime.split(separator: ":").compactMap { Int($0) }
-        guard parts.count == 2, (0...23).contains(parts[0]), (0...59).contains(parts[1]) else {
+        guard CardPilotUI.parseReminderTime(reminderTime) != nil else {
             errorMessage = "提醒时刻应使用 HH:mm 格式。"
             return
         }

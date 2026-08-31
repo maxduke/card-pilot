@@ -574,7 +574,7 @@ private struct AllocationEditorView: View {
             transactionID = transaction.id
         }
         guard amountText.isEmpty, let transaction else { return }
-        amountText = transaction.currencyCode == promotion.progressCurrencyCode ? CardPilotUI.amountText(transaction.amount) : "0"
+        amountText = transaction.currencyCode == promotion.progressCurrencyCode ? CardPilotUI.editableAmountText(transaction.amount) : ""
     }
 
     private func setInitialAmountIfBlank() {

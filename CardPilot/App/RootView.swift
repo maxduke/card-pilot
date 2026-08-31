@@ -95,7 +95,7 @@ struct RootView: View {
             let cycles = account.billingCycles.map {
                 "\($0.cycleKey)-\($0.statementDateOverride ?? 0)-\($0.repaymentDateOverride ?? 0)-\($0.repaidAt?.timeIntervalSince1970 ?? 0)"
             }.sorted().joined(separator: ",")
-            return "\(account.id)-\(account.statusRaw)-\(account.closedOn ?? 0)-\(rules)-\(cycles)"
+            return "\(account.id)-\(account.bank.name)-\(account.statusRaw)-\(account.closedOn ?? 0)-\(rules)-\(cycles)"
         }.joined(separator: "|")
         return "\(statementOffsets)|\(repaymentOffsets)|\(reminderTime)|\(homeTimeZone)|\(accountKey)"
     }
@@ -113,18 +113,21 @@ struct RootView: View {
     }
 
     private func rebuildNotifications() async {
-        let parts = reminderTime.split(separator: ":").compactMap { Int($0) }
-        let validTime = parts.count == 2 && (0...23).contains(parts[0]) && (0...59).contains(parts[1])
-        let hour = validTime ? parts[0] : 9
-        let minute = validTime ? parts[1] : 0
+        let parsedTime = CardPilotUI.parseReminderTime(reminderTime)
+        let hour = parsedTime?.hour ?? 9
+        let minute = parsedTime?.minute ?? 0
         let timeZone = TimeZone(identifier: homeTimeZone) ?? .current
         let today = LocalDate(date: .now, timeZone: timeZone)
+        let maxReminderOffset = (parseOffsets(statementOffsets) + parseOffsets(repaymentOffsets)).max() ?? 0
         let reminderCycles = accounts.flatMap { account -> [BillingReminderCycle] in
             let maxDaysAfterStatement = account.billingRuleVersions
                 .filter { $0.repaymentKind == .daysAfterStatement }
                 .map(\.repaymentValue)
                 .max() ?? 0
-            let upcomingCycleKeys = Self.reminderCycleOffsets(maxDaysAfterStatement: maxDaysAfterStatement)
+            let upcomingCycleKeys = Self.reminderCycleOffsets(
+                maxDaysAfterStatement: maxDaysAfterStatement,
+                maxReminderOffset: maxReminderOffset
+            )
                 .map { today.addingMonths($0, timeZone: timeZone).monthKey }
             let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
             return Set(upcomingCycleKeys + savedUnpaidCycleKeys).compactMap { cycleKey in
@@ -163,10 +166,12 @@ struct RootView: View {
         value.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
     }
 
-    static func reminderCycleOffsets(maxDaysAfterStatement: Int) -> ClosedRange<Int> {
+    static func reminderCycleOffsets(maxDaysAfterStatement: Int, maxReminderOffset: Int = 0) -> ClosedRange<Int> {
         let days = max(0, maxDaysAfterStatement)
         let lookbackMonths = max(1, days / 28 + (days % 28 == 0 ? 0 : 1))
-        return -lookbackMonths...3
+        let reminderDays = max(0, maxReminderOffset)
+        let futureMonths = max(3, reminderDays / 28 + (reminderDays % 28 == 0 ? 0 : 1))
+        return -lookbackMonths...futureMonths
     }
 }
 

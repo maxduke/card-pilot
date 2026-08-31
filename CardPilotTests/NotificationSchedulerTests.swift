@@ -119,5 +119,7 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 28)), Array(-1...3))
         XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 29)), Array(-2...3))
         XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 90)), Array(-4...3))
+        XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 0, maxReminderOffset: 29)), Array(-1...3))
+        XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 0, maxReminderOffset: 90)), Array(-1...4))
     }
 }

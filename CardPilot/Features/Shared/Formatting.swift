@@ -11,6 +11,11 @@ extension TransactionKind: Hashable {}
 extension TransactionStatus: Hashable {}
 
 enum CardPilotUI {
+    struct ReminderTime: Equatable {
+        let hour: Int
+        let minute: Int
+    }
+
     static var homeTimeZone: TimeZone {
         let identifier = UserDefaults.standard.string(forKey: "cardPilot.homeTimeZone")
         return identifier.flatMap(TimeZone.init(identifier:)) ?? .current
@@ -53,6 +58,19 @@ enum CardPilotUI {
         guard trimmed.range(of: pattern, options: .regularExpression) != nil else { return nil }
         let normalized = trimmed.replacingOccurrences(of: ",", with: "")
         return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    static func parseReminderTime(_ value: String) -> ReminderTime? {
+        let bytes = Array(value.utf8)
+        guard bytes.count == 5,
+              bytes[2] == 58,
+              bytes[0..<2].allSatisfy({ (48...57).contains($0) }),
+              bytes[3..<5].allSatisfy({ (48...57).contains($0) }),
+              let hour = Int(String(decoding: bytes[0..<2], as: UTF8.self)),
+              let minute = Int(String(decoding: bytes[3..<5], as: UTF8.self)),
+              (0...23).contains(hour),
+              (0...59).contains(minute) else { return nil }
+        return ReminderTime(hour: hour, minute: minute)
     }
 
     static func rawDate(_ date: Date) -> Int {

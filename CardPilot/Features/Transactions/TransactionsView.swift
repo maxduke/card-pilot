@@ -427,7 +427,7 @@ private struct TransactionEditorView: View {
 
     private func defaultAmount(for promotion: Promotion) -> String {
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return normalizedCurrency == promotion.progressCurrencyCode ? amountText : "0"
+        return normalizedCurrency == promotion.progressCurrencyCode ? amountText : ""
     }
 
     private var selectedPromotionsContainNonStacking: Bool {

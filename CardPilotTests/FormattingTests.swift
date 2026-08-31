@@ -19,4 +19,11 @@ final class FormattingTests: XCTestCase {
             XCTAssertNil(CardPilotUI.decimal(value), "应拒绝：\(value)")
         }
     }
+
+    func testReminderTimeRequiresExactlyTwoAsciiDigitsPerComponent() {
+        XCTAssertEqual(CardPilotUI.parseReminderTime("09:30"), .init(hour: 9, minute: 30))
+        for value in ["9:30", "09:3", "09:x:30", "09:30:00", "09:300", "090:30", "24:00", "09:60"] {
+            XCTAssertNil(CardPilotUI.parseReminderTime(value), "应拒绝：\(value)")
+        }
+    }
 }
