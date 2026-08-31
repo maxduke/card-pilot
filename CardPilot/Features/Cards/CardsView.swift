@@ -353,7 +353,7 @@ private struct AccountEditorView: View {
             ($0.effectiveCycleKey ?? Int.min) < ($1.effectiveCycleKey ?? Int.min)
         }
         _bankID = State(initialValue: account?.bank.id ?? banks.first?.id ?? UUID())
-        _limitText = State(initialValue: account.flatMap { $0.creditLimit.map { CardPilotUI.amountText($0) } } ?? "")
+        _limitText = State(initialValue: account.flatMap { $0.creditLimit.map { CardPilotUI.editableAmountText($0) } } ?? "")
         _currencyCode = State(initialValue: account?.limitCurrencyCode ?? "CNY")
         _status = State(initialValue: account?.status ?? .active)
         _closedDate = State(initialValue: account.flatMap { $0.closedOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
@@ -499,7 +499,15 @@ private struct AccountEditorView: View {
             }
             overrideCycleKey = parsedCycleKey
         }
-        let target = account ?? CreditCardAccount(bank: bank, creditLimit: limit, limitCurrencyCode: normalizedCurrency, status: status, closedOn: status == .closed ? CardPilotUI.rawDate(closedDate) : nil, notes: notes)
+        let target = account ?? CreditCardAccount(
+            bank: bank,
+            trackingStartCycleKey: CardPilotUI.localDate(from: Date()).monthKey,
+            creditLimit: limit,
+            limitCurrencyCode: normalizedCurrency,
+            status: status,
+            closedOn: status == .closed ? CardPilotUI.rawDate(closedDate) : nil,
+            notes: notes
+        )
         target.bank = bank
         target.creditLimit = limit
         target.limitCurrencyCode = normalizedCurrency

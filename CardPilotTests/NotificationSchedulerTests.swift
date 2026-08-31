@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import CardPilot
 
@@ -63,6 +64,54 @@ final class NotificationSchedulerTests: XCTestCase {
         )
 
         XCTAssertEqual(plans.map(\.cycleKey), [202609, 202608])
+    }
+
+    func testPriorityPlansKeepBothEventsForEachAccountBeforeTheLimit() throws {
+        let timeZone = TimeZone(secondsFromGMT: 0)!
+        let cycle = BillingCycle(
+            cycleKey: 202609,
+            statementDate: try LocalDate(rawValue: 20260920),
+            repaymentDate: try LocalDate(rawValue: 20260925),
+            status: .pending,
+            repaidAt: nil
+        )
+        let accountIDs = (1...13).map { index in
+            UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index))!
+        }
+        let plans = try LocalNotificationScheduler.plans(
+            cycles: accountIDs.map { id in
+                BillingReminderCycle(accountID: id, accountName: "账户", cycle: cycle)
+            },
+            statementOffsets: [0, 1],
+            repaymentOffsets: [0, 1],
+            reminderHour: 9,
+            reminderMinute: 0,
+            timeZone: timeZone,
+            now: try LocalDate(rawValue: 20260901).date(in: timeZone)
+        )
+
+        let first48 = plans.prefix(LocalNotificationScheduler.requestLimit)
+        for accountID in accountIDs {
+            let accountPlans = first48.filter { $0.accountID == accountID }
+            XCTAssertTrue(accountPlans.contains { $0.event == .statement }, "缺少账单提醒：\(accountID)")
+            XCTAssertTrue(accountPlans.contains { $0.event == .repayment }, "缺少还款提醒：\(accountID)")
+        }
+        XCTAssertEqual(plans.count, 52)
+    }
+
+    func testNotificationWarningReflectsAuthorizationStatus() {
+        let timeZone = TimeZone(secondsFromGMT: 0)!
+        let noOmissions = NotificationScheduleResult(scheduledCount: 4, omittedCount: 0, lastScheduledDate: nil)
+        let omitted = NotificationScheduleResult(
+            scheduledCount: 48,
+            omittedCount: 4,
+            lastScheduledDate: try! LocalDate(rawValue: 20260920).date(in: timeZone)
+        )
+
+        XCTAssertEqual(notificationWarningMessage(status: .denied, result: omitted, timeZone: timeZone), "通知权限已关闭，请前往系统设置开启。")
+        XCTAssertEqual(notificationWarningMessage(status: .notDetermined, result: noOmissions, timeZone: timeZone), "尚未授权通知权限。")
+        XCTAssertEqual(notificationWarningMessage(status: .authorized, result: noOmissions, timeZone: timeZone), "")
+        XCTAssertTrue(notificationWarningMessage(status: .authorized, result: omitted, timeZone: timeZone).contains("另有 4 条"))
     }
 
     func testReminderCycleOffsetsLookBackForLongRelativeRepaymentRules() {

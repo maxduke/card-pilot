@@ -30,6 +30,10 @@ final class LocalNotificationScheduler {
         try await center.requestAuthorization(options: [.alert, .sound])
     }
 
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await center.notificationSettings().authorizationStatus
+    }
+
     func rebuild(
         cycles: [BillingReminderCycle],
         statementOffsets: [Int],
@@ -115,6 +119,7 @@ final class LocalNotificationScheduler {
                     plans.append(ReminderPlan(
                         accountID: item.accountID,
                         cycleKey: item.cycle.cycleKey,
+                        event: event,
                         identifier: "\(identifierPrefix)\(item.accountID.uuidString).\(item.cycle.cycleKey).\(event.rawValue).\(offset)",
                         title: event == .statement ? "CardPilot 账单日提醒" : "CardPilot 还款日提醒",
                         body: offset == 0
@@ -131,6 +136,18 @@ final class LocalNotificationScheduler {
             }
         }
         let accountIDs = groups.keys.sorted { $0.uuidString < $1.uuidString }
+        var priorityPlans: [ReminderPlan] = []
+        for accountID in accountIDs {
+            guard var group = groups[accountID] else { continue }
+            for event in [ReminderEvent.statement, .repayment] {
+                guard let index = group.firstIndex(where: { $0.event == event }) else { continue }
+                priorityPlans.append(group.remove(at: index))
+            }
+            groups[accountID] = group
+        }
+        priorityPlans.sort {
+            $0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate
+        }
         var fairPlans: [ReminderPlan] = []
         while groups.values.contains(where: { !$0.isEmpty }) {
             for accountID in accountIDs {
@@ -139,12 +156,13 @@ final class LocalNotificationScheduler {
                 groups[accountID] = group
             }
         }
-        return fairPlans
+        return priorityPlans + fairPlans
     }
 
     struct ReminderPlan: Equatable {
         let accountID: UUID
         let cycleKey: Int
+        let event: ReminderEvent
         let identifier: String
         let title: String
         let body: String
@@ -155,10 +173,31 @@ final class LocalNotificationScheduler {
         case invalidTime
     }
 
-    private enum ReminderEvent: String {
+    enum ReminderEvent: String, Equatable {
         case statement
         case repayment
 
         var action: String { self == .statement ? "出账" : "到期还款" }
+    }
+}
+
+func notificationWarningMessage(
+    status: UNAuthorizationStatus,
+    result: NotificationScheduleResult,
+    timeZone: TimeZone
+) -> String {
+    switch status {
+    case .denied:
+        return "通知权限已关闭，请前往系统设置开启。"
+    case .notDetermined:
+        return "尚未授权通知权限。"
+    case .authorized, .provisional, .ephemeral:
+        guard result.omittedCount > 0 else { return "" }
+        let lastDate = result.lastScheduledDate.map {
+            LocalDate(date: $0, timeZone: timeZone).description
+        } ?? "未知日期"
+        return "通知仅安排至 \(lastDate)，另有 \(result.omittedCount) 条待刷新。"
+    @unknown default:
+        return result.omittedCount > 0 ? "通知权限状态未知，另有 \(result.omittedCount) 条待刷新。" : "通知权限状态未知。"
     }
 }

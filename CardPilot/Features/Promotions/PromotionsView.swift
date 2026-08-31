@@ -184,7 +184,7 @@ private struct PromotionEditorView: View {
         _title = State(initialValue: promotion?.title ?? "")
         _startDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.startOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _endDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.endOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
-        _targetText = State(initialValue: promotion.map { CardPilotUI.amountText($0.targetAmount) } ?? "")
+        _targetText = State(initialValue: promotion.map { CardPilotUI.editableAmountText($0.targetAmount) } ?? "")
         _currencyCode = State(initialValue: promotion?.progressCurrencyCode ?? "CNY")
         _selectedBankIDs = State(initialValue: Set(promotion?.organizingBanks.map(\.id) ?? []))
         _selectedNetworkIDs = State(initialValue: Set(promotion?.organizingNetworks.map(\.id) ?? []))
@@ -501,7 +501,7 @@ private struct AllocationEditorView: View {
         self.promotion = promotion
         self.allocation = allocation
         _transactionID = State(initialValue: allocation?.transaction.id ?? UUID())
-        _amountText = State(initialValue: allocation.map { CardPilotUI.amountText($0.qualifyingAmount) } ?? "")
+        _amountText = State(initialValue: allocation.map { CardPilotUI.editableAmountText($0.qualifyingAmount) } ?? "")
     }
 
     private var candidateTransactions: [Transaction] {

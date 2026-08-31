@@ -5,5 +5,18 @@ final class FormattingTests: XCTestCase {
     func testDecimalParsesDisplayedChineseGroupingAndOrdinaryDecimals() {
         XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(8_000)), 8_000)
         XCTAssertEqual(CardPilotUI.decimal("8000.50"), 8_000.5)
+        XCTAssertEqual(CardPilotUI.decimal("+.5e1"), 5)
+    }
+
+    func testEditableAmountTextRoundTripsExactDecimal() {
+        let amount = Decimal(string: "1.005")!
+        XCTAssertEqual(CardPilotUI.editableAmountText(amount), "1.005")
+        XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.editableAmountText(amount)), amount)
+    }
+
+    func testDecimalRejectsPartialOrMalformedNumbers() {
+        for value in ["12abc", "1.2.3", "12,34", "", ".", "+", "1e", "1,000.2.3"] {
+            XCTAssertNil(CardPilotUI.decimal(value), "应拒绝：\(value)")
+        }
     }
 }

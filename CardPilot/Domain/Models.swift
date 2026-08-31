@@ -137,6 +137,8 @@ final class CardNetwork {
 @Model
 final class CreditCardAccount {
     var id: UUID
+    /// The nominal billing month from which this account participates in dashboard tracking.
+    var trackingStartCycleKey: Int
     var creditLimit: Decimal?
     var limitCurrencyCode: String
     var statusRaw: String
@@ -162,6 +164,7 @@ final class CreditCardAccount {
     init(
         id: UUID = UUID(),
         bank: Bank,
+        trackingStartCycleKey: Int = LocalDate(date: Date(), timeZone: .current).monthKey,
         creditLimit: Decimal? = nil,
         limitCurrencyCode: String = "CNY",
         status: CreditCardAccountStatus = .active,
@@ -169,6 +172,7 @@ final class CreditCardAccount {
         notes: String = ""
     ) {
         self.id = id
+        self.trackingStartCycleKey = trackingStartCycleKey
         self.bank = bank
         self.creditLimit = creditLimit
         self.limitCurrencyCode = limitCurrencyCode
@@ -183,6 +187,9 @@ final class CreditCardAccount {
     }
 
     func validate() throws {
+        guard LocalDate.isValidMonthKey(trackingStartCycleKey) else {
+            throw ModelValidationError.invalidCycleKey
+        }
         if let creditLimit, creditLimit <= .zero { throw ModelValidationError.invalidCreditLimit }
         guard isValidCurrencyCode(limitCurrencyCode) else {
             throw ModelValidationError.invalidCurrencyCode(limitCurrencyCode)

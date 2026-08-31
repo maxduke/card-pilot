@@ -21,7 +21,7 @@ struct DashboardView: View {
                             .foregroundStyle(.orange)
                             .accessibilityLabel("通知提示：\(notificationWarning)")
                     }
-                    if billingItems.isEmpty && activePromotions.isEmpty {
+                    if billingItems.isEmpty && activePromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
                         EmptyStateView(
                             title: "开始使用 CardPilot",
                             systemImage: "creditcard",
@@ -40,6 +40,45 @@ struct DashboardView: View {
                         }
                     }
 
+                    if !enrollmentClosingSoonPromotions.isEmpty {
+                        DashboardSection(title: "报名即将截止") {
+                            ForEach(enrollmentClosingSoonPromotions) { promotion in
+                                NavigationLink {
+                                    PromotionDetailView(promotion: promotion)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "person.badge.clock")
+                                            .foregroundStyle(.orange)
+                                        Text(promotion.title)
+                                        Spacer()
+                                        Text("截止于 \(CardPilotUI.dateText(promotion.enrollmentDeadline))")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .accessibilityElement(children: .combine)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if !endingSoonPromotions.isEmpty {
+                        DashboardSection(title: "即将结束") {
+                            ForEach(endingSoonPromotions) { promotion in
+                                HStack {
+                                    Image(systemName: "clock.badge.exclamationmark")
+                                        .foregroundStyle(.orange)
+                                    Text(promotion.title)
+                                    Spacer()
+                                    Text("结束于 \(CardPilotUI.dateText(promotion.endOn))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
+
                     if !activePromotions.isEmpty {
                         DashboardSection(title: "促销进度") {
                             ForEach(activePromotions) { promotion in
@@ -49,23 +88,6 @@ struct DashboardView: View {
                                     PromotionProgressRow(promotion: promotion)
                                 }
                                 .buttonStyle(.plain)
-                            }
-                        }
-
-                        if !endingSoonPromotions.isEmpty {
-                            DashboardSection(title: "即将结束") {
-                                ForEach(endingSoonPromotions) { promotion in
-                                    HStack {
-                                        Image(systemName: "clock.badge.exclamationmark")
-                                            .foregroundStyle(.orange)
-                                        Text(promotion.title)
-                                        Spacer()
-                                        Text("结束于 \(CardPilotUI.dateText(promotion.endOn))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .accessibilityElement(children: .combine)
-                                }
                             }
                         }
                     }
@@ -101,10 +123,17 @@ struct DashboardView: View {
         }
     }
 
+    private var enrollmentClosingSoonPromotions: [Promotion] {
+        promotionsWithEnrollmentDeadlineWithin(promotions, today: today)
+    }
+
     private var billingItems: [DashboardBillingItem] {
         var result: [DashboardBillingItem] = []
         for account in accounts {
-            let nearbyCycleKeys = (-2...2).map { today.addingMonths($0).monthKey }
+            let nearbyCycleKeys = LocalDate.monthKeys(
+                from: account.trackingStartCycleKey,
+                through: today.addingMonths(2).monthKey
+            )
             let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
             for cycleKey in Set(nearbyCycleKeys + savedUnpaidCycleKeys) {
                 let record = account.billingCycles.first { $0.cycleKey == cycleKey }
@@ -167,6 +196,20 @@ struct DashboardView: View {
             modelContext.rollback()
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+func promotionsWithEnrollmentDeadlineWithin(_ promotions: [Promotion], today: LocalDate) -> [Promotion] {
+    let lastDate = today.addingDays(7)
+    return promotions.filter { promotion in
+        guard promotion.archivedAt == nil,
+              promotion.enrollmentStatus == .notEnrolled,
+              let deadline = promotion.enrollmentDeadline else { return false }
+        return today.rawValue <= deadline && deadline <= lastDate.rawValue
+    }.sorted {
+        let lhs = $0.enrollmentDeadline ?? .max
+        let rhs = $1.enrollmentDeadline ?? .max
+        return lhs == rhs ? $0.title < $1.title : lhs < rhs
     }
 }
 

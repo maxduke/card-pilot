@@ -67,4 +67,30 @@ final class PromotionCalculatorTests: XCTestCase {
         transaction.postingOn = 20260901
         XCTAssertFalse(PromotionCalculator.includes(transaction, in: promotion))
     }
+
+    func testOverRefundedPromotionIDsUseOnlyOtherActiveRefunds() {
+        let promotionID = UUID()
+        let editingRefundID = UUID()
+        let otherRefundID = UUID()
+        let otherRefunds: [(transactionID: UUID, promotionID: UUID, qualifyingAmount: Decimal, status: TransactionStatus)] = [
+            (otherRefundID, promotionID, 30, .active),
+            (editingRefundID, promotionID, 90, .active),
+            (UUID(), promotionID, 100, .reversed)
+        ]
+        let withinBalance = PromotionCalculator.overRefundedPromotionIDs(
+            originalAllocations: [(promotionID, 100)],
+            refundAllocations: [(promotionID, 60)],
+            otherRefundAllocations: otherRefunds,
+            excludingTransactionID: editingRefundID
+        )
+        let overRefunded = PromotionCalculator.overRefundedPromotionIDs(
+            originalAllocations: [(promotionID, 100)],
+            refundAllocations: [(promotionID, 80)],
+            otherRefundAllocations: otherRefunds,
+            excludingTransactionID: editingRefundID
+        )
+
+        XCTAssertTrue(withinBalance.isEmpty)
+        XCTAssertEqual(overRefunded, Set([promotionID]))
+    }
 }

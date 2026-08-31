@@ -65,6 +65,18 @@ struct LocalDate: Codable, Comparable, Hashable, Identifiable, Sendable, CustomS
         return (1...9_999).contains(year) && (1...12).contains(month)
     }
 
+    /// Returns inclusive, ascending month keys. Invalid or reversed ranges are empty.
+    static func monthKeys(from startMonthKey: Int, through endMonthKey: Int) -> [Int] {
+        guard isValidMonthKey(startMonthKey), isValidMonthKey(endMonthKey), startMonthKey <= endMonthKey else {
+            return []
+        }
+        let startIndex = (startMonthKey / 100) * 12 + startMonthKey % 100 - 1
+        let endIndex = (endMonthKey / 100) * 12 + endMonthKey % 100 - 1
+        return (startIndex...endIndex).map { index in
+            (index / 12) * 100 + index % 12 + 1
+        }
+    }
+
     static func daysInMonth(year: Int, month: Int, timeZone: TimeZone = .current) -> Int {
         guard (1...9_999).contains(year), (1...12).contains(month) else { return 0 }
         let calendar = Self.calendar(timeZone: timeZone)

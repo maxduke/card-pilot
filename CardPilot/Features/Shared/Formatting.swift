@@ -43,10 +43,15 @@ enum CardPilotUI {
         return currencyCode.map { "\(value) \($0)" } ?? value
     }
 
+    static func editableAmountText(_ amount: Decimal) -> String {
+        NSDecimalNumber(decimal: amount).stringValue
+    }
+
     static func decimal(_ text: String) -> Decimal? {
-        let normalized = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: "")
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = #"^[+-]?(?:(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)|(?:[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?))(?:[eE][+-]?[0-9]+)?$"#
+        guard trimmed.range(of: pattern, options: .regularExpression) != nil else { return nil }
+        let normalized = trimmed.replacingOccurrences(of: ",", with: "")
         return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
     }
 

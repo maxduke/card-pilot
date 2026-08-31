@@ -152,14 +152,8 @@ struct RootView: View {
                 reminderMinute: minute,
                 timeZone: timeZone
             )
-            if result.omittedCount > 0 {
-                let lastDate = result.lastScheduledDate.map {
-                    LocalDate(date: $0, timeZone: timeZone).description
-                } ?? "未知日期"
-                notificationWarning = "通知仅安排至 \(lastDate)，另有 \(result.omittedCount) 条待刷新。"
-            } else {
-                notificationWarning = ""
-            }
+            let status = await notificationScheduler.authorizationStatus()
+            notificationWarning = notificationWarningMessage(status: status, result: result, timeZone: timeZone)
         } catch {
             notificationWarning = "本地提醒更新失败，请检查设置后重试。"
         }

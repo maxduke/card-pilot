@@ -41,6 +41,27 @@ enum PromotionCalculator {
         )
     }
 
+    static func overRefundedPromotionIDs(
+        originalAllocations: [(promotionID: UUID, qualifyingAmount: Decimal)],
+        refundAllocations: [(promotionID: UUID, qualifyingAmount: Decimal)],
+        otherRefundAllocations: [(transactionID: UUID, promotionID: UUID, qualifyingAmount: Decimal, status: TransactionStatus)],
+        excludingTransactionID: UUID?
+    ) -> Set<UUID> {
+        let originalAmounts = originalAllocations.reduce(into: [UUID: Decimal]()) { amounts, allocation in
+            amounts[allocation.promotionID, default: .zero] += allocation.qualifyingAmount
+        }
+        let refundedAmounts = otherRefundAllocations.reduce(into: [UUID: Decimal]()) { amounts, allocation in
+            guard allocation.status == .active,
+                  allocation.transactionID != excludingTransactionID else { return }
+            amounts[allocation.promotionID, default: .zero] += allocation.qualifyingAmount
+        }
+        return Set(refundAllocations.compactMap { allocation in
+            let balance = max(.zero, (originalAmounts[allocation.promotionID] ?? .zero)
+                - (refundedAmounts[allocation.promotionID] ?? .zero))
+            return allocation.qualifyingAmount > balance ? allocation.promotionID : nil
+        })
+    }
+
     static func includes(_ transaction: Transaction, in promotion: Promotion) -> Bool {
         let date: Int?
         switch promotion.qualificationDateBasis {

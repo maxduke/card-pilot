@@ -9,7 +9,7 @@ final class PersistenceTests: XCTestCase {
         let context = container.mainContext
         let bank = Bank(name: "测试银行")
         let network = CardNetwork.makeBuiltIns()[0]
-        let account = CreditCardAccount(bank: bank, creditLimit: 20_000)
+        let account = CreditCardAccount(bank: bank, trackingStartCycleKey: 202608, creditLimit: 20_000)
         let card = Card(account: account, productName: "测试卡", network: network, lastFour: "1234")
         let rule = BillingRuleVersion(
             account: account,
@@ -26,6 +26,7 @@ final class PersistenceTests: XCTestCase {
         try context.save()
 
         XCTAssertEqual(try context.fetch(FetchDescriptor<Card>()).first?.lastFour, "1234")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<CreditCardAccount>()).first?.trackingStartCycleKey, 202608)
         XCTAssertEqual(try context.fetch(FetchDescriptor<BillingRuleVersion>()).count, 1)
     }
 
