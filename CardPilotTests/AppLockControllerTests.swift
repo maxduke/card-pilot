@@ -4,15 +4,16 @@ import XCTest
 @MainActor
 final class AppLockControllerTests: XCTestCase {
     func testBackgroundInvalidatesAuthenticationAlreadyInFlight() async {
-        var continuation: CheckedContinuation<Bool, Never>?
+        let authenticationStarted = expectation(description: "authentication started")
         let controller = AppLockController(enabled: true) {
-            await withCheckedContinuation { continuation = $0 }
+            authenticationStarted.fulfill()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            return true
         }
         let authentication = Task { await controller.unlock() }
-        while continuation == nil { await Task.yield() }
+        await fulfillment(of: [authenticationStarted], timeout: 2)
 
         controller.applicationDidEnterBackground()
-        continuation?.resume(returning: true)
 
         let result = await authentication.value
         XCTAssertFalse(result)
