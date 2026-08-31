@@ -63,6 +63,28 @@ final class AccountSummaryTests: XCTestCase {
         XCTAssertEqual(summary.nextRepaymentStatus, .overdue)
     }
 
+    func testIncludesExplicitUnpaidCycleBeforeTrackingStart() throws {
+        let summary = CardAccountBillingSummaryCalculator.calculate(
+            status: .active,
+            closedOn: nil,
+            trackingStartCycleKey: 202608,
+            rules: [BillingRuleInput(
+                effectiveCycleKey: nil,
+                statementDay: 5,
+                repaymentKind: .fixedDay,
+                repaymentValue: 20
+            )],
+            overrides: [
+                202607: BillingCycleOverride(statementDate: nil, repaymentDate: nil, repaidAt: nil)
+            ],
+            today: try LocalDate(rawValue: 20260810),
+            timeZone: utc
+        )
+
+        XCTAssertEqual(summary.nextRepaymentDate, try LocalDate(rawValue: 20260720))
+        XCTAssertEqual(summary.nextRepaymentStatus, .overdue)
+    }
+
     func testAccountEditorBanksExcludeArchivedUnlessAlreadySelected() {
         let active = Bank(name: "使用中银行")
         let archived = Bank(name: "已归档银行", archivedAt: Date())

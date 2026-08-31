@@ -664,6 +664,26 @@ private struct AllocationEditorView: View {
             overRefundWarningMessage = "该促销的退款分配将超过原消费的可退余额。"
             return
         }
+        if !allowingOverRefund,
+           transaction.kind == .purchase,
+           PromotionCalculator.overRefundedPromotionIDs(
+               originalAllocations: transaction.allocations
+                   .filter { $0.id != allocation?.id }
+                   .map { (promotionID: $0.promotion.id, qualifyingAmount: $0.qualifyingAmount) }
+                   + [(promotionID: promotion.id, qualifyingAmount: amount)],
+               refundAllocations: transaction.refunds
+                   .filter { $0.status == .active && $0.currencyCode == transaction.currencyCode }
+                   .flatMap { refund in
+                       refund.allocations.map {
+                           (promotionID: $0.promotion.id, qualifyingAmount: $0.qualifyingAmount)
+                       }
+                   },
+               otherRefundAllocations: [],
+               excludingTransactionID: nil
+           ).contains(promotion.id) {
+            overRefundWarningMessage = "该促销的退款分配将超过修改后的原消费分配。"
+            return
+        }
         let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion, qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)
         target.transaction = transaction
         target.promotion = promotion

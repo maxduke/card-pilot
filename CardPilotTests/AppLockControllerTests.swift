@@ -11,4 +11,10 @@ final class AppLockControllerTests: XCTestCase {
         controller.applicationDidEnterBackground()
         XCTAssertTrue(controller.isLocked)
     }
+
+    func testAuthenticationUIInactivePhaseDoesNotCancelInFlightUnlock() {
+        XCTAssertFalse(RootView.shouldRelock(when: .inactive, isAuthenticating: true))
+        XCTAssertTrue(RootView.shouldRelock(when: .inactive, isAuthenticating: false))
+        XCTAssertTrue(RootView.shouldRelock(when: .background, isAuthenticating: true))
+    }
 }

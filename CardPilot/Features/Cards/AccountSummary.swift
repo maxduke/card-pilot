@@ -22,7 +22,9 @@ enum CardAccountBillingSummaryCalculator {
 
         let nearbyEnd = today.addingMonths(2, timeZone: timeZone).monthKey
         let nearbyCycleKeys = LocalDate.monthKeys(from: trackingStartCycleKey, through: nearbyEnd)
-        let savedCycleKeys = overrides.keys.filter { $0 >= trackingStartCycleKey }
+        let savedCycleKeys = overrides.compactMap { cycleKey, override in
+            override.repaidAt == nil ? cycleKey : nil
+        }
         let cycleKeys = Set(nearbyCycleKeys + savedCycleKeys).sorted()
 
         var nextStatement: LocalDate?

@@ -77,7 +77,7 @@ struct RootView: View {
             if phase == .active {
                 authenticate()
                 Task { await rebuildNotifications() }
-            } else {
+            } else if Self.shouldRelock(when: phase, isAuthenticating: isAuthenticating) {
                 authenticationAttempt += 1
                 isAuthenticating = false
                 appLock.applicationDidEnterBackground()
@@ -186,6 +186,10 @@ struct RootView: View {
         trackingStartCycleKey: Int
     ) -> Set<Int> {
         Set(generated.filter { $0 >= trackingStartCycleKey } + savedUnpaid)
+    }
+
+    static func shouldRelock(when phase: ScenePhase, isAuthenticating: Bool) -> Bool {
+        phase == .background || (phase == .inactive && !isAuthenticating)
     }
 }
 
