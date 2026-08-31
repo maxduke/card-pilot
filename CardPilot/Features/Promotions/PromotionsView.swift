@@ -524,7 +524,7 @@ private struct AllocationEditorView: View {
             .navigationTitle(allocation == nil ? "添加促销分配" : "编辑促销分配")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { save() } }
             }
             .alert("退款分配超出可退范围", isPresented: overRefundWarningPresented) {
                 Button("取消", role: .cancel) {}
