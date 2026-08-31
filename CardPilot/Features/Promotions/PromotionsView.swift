@@ -518,42 +518,7 @@ private struct AllocationEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("交易") {
-                    if transactions.isEmpty {
-                        Text("请先添加交易。")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("选择交易", selection: $transactionID) {
-                            ForEach(candidateTransactions, id: \.id) { transaction in
-                                Text(transactionLabel(transaction))
-                                    .tag(transaction.id)
-                            }
-                            ForEach(transactions.filter { transaction in
-                                !candidateTransactions.contains(where: { candidate in candidate.id == transaction.id })
-                            }, id: \.id) { transaction in
-                                Text("手动：\(transactionLabel(transaction))")
-                                    .tag(transaction.id)
-                            }
-                        }
-                        if let selectedTransaction, !PromotionCalculator.includes(selectedTransaction, in: promotion) {
-                            Text("这笔交易不是自动候选，仍可按条款手动分配。")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    TextField("计入活动的金额（\(promotion.progressCurrencyCode)）", text: $amountText)
-                        .keyboardType(.decimalPad)
-                    if let selectedTransaction, selectedTransaction.currencyCode != promotion.progressCurrencyCode {
-                        Text("交易币种为 \(selectedTransaction.currencyCode)，请填写银行认可的合格金额。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
-                }
-            }
+            editorForm
             .onAppear(perform: setInitialAmount)
             .onChange(of: transactionID) { _, _ in setInitialAmountIfBlank() }
             .navigationTitle(allocation == nil ? "添加促销分配" : "编辑促销分配")
@@ -566,6 +531,47 @@ private struct AllocationEditorView: View {
                 Button("仍然保存", role: .destructive) { save(allowingOverRefund: true) }
             } message: {
                 Text(overRefundWarningMessage ?? "")
+            }
+        }
+    }
+
+    private var editorForm: some View {
+        Form {
+            transactionSection
+            if let errorMessage {
+                InlineErrorView(message: errorMessage)
+            }
+        }
+    }
+
+    private var transactionSection: some View {
+        Section("交易") {
+            if transactions.isEmpty {
+                Text("请先添加交易。")
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("选择交易", selection: $transactionID) {
+                    ForEach(candidateTransactions, id: \.id) { transaction in
+                        Text(transactionLabel(transaction)).tag(transaction.id)
+                    }
+                    ForEach(transactions.filter { transaction in
+                        !candidateTransactions.contains(where: { $0.id == transaction.id })
+                    }, id: \.id) { transaction in
+                        Text("手动：\(transactionLabel(transaction))").tag(transaction.id)
+                    }
+                }
+                if let selectedTransaction, !PromotionCalculator.includes(selectedTransaction, in: promotion) {
+                    Text("这笔交易不是自动候选，仍可按条款手动分配。")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            TextField("计入活动的金额（\(promotion.progressCurrencyCode)）", text: $amountText)
+                .keyboardType(.decimalPad)
+            if let selectedTransaction, selectedTransaction.currencyCode != promotion.progressCurrencyCode {
+                Text("交易币种为 \(selectedTransaction.currencyCode)，请填写银行认可的合格金额。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
