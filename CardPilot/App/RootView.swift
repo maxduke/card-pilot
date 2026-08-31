@@ -164,7 +164,7 @@ struct RootView: View {
     }
 
     private func parseOffsets(_ value: String) -> [Int] {
-        value.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        CardPilotUI.parseReminderOffsets(value) ?? []
     }
 
     static func reminderCycleOffsets(maxDaysAfterStatement: Int, maxReminderOffset: Int = 0) -> ClosedRange<Int> {

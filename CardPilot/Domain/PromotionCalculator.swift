@@ -62,6 +62,23 @@ enum PromotionCalculator {
         })
     }
 
+    static func refundExceedsOriginalAmount(
+        originalAmount: Decimal,
+        currentRefundAmount: Decimal,
+        currentRefundStatus: TransactionStatus,
+        otherRefunds: [(transactionID: UUID, amount: Decimal, status: TransactionStatus)],
+        excludingTransactionID: UUID?
+    ) -> Bool {
+        let total = otherRefunds.reduce(
+            currentRefundStatus == .active ? currentRefundAmount : .zero
+        ) { total, refund in
+            guard refund.status == .active,
+                  refund.transactionID != excludingTransactionID else { return total }
+            return total + refund.amount
+        }
+        return total > originalAmount
+    }
+
     static func includes(_ transaction: Transaction, in promotion: Promotion) -> Bool {
         let date: Int?
         switch promotion.qualificationDateBasis {

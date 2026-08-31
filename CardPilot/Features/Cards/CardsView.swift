@@ -195,7 +195,7 @@ private struct AccountRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(account.bank.name)
                     .font(.subheadline.weight(.semibold))
-                let rule = account.billingRuleVersions.first { $0.effectiveCycleKey == nil }
+                let rule = displayedRule
                 if let rule {
                     Text("账单日每月 \(rule.statementDay) 日 · \(repaymentText(rule))")
                         .font(.caption)
@@ -228,6 +228,22 @@ private struct AccountRow: View {
         case .fixedDay: return "还款日每月 \(rule.repaymentValue) 日"
         case .daysAfterStatement: return "账单日后 \(rule.repaymentValue) 天还款"
         }
+    }
+
+    private var displayedRule: BillingRuleVersion? {
+        let currentCycleKey = CardPilotUI.localDate(from: Date()).monthKey
+        let inputs = account.billingRuleVersions.map {
+            BillingRuleInput(
+                effectiveCycleKey: $0.effectiveCycleKey,
+                statementDay: $0.statementDay,
+                repaymentKind: $0.repaymentKind,
+                repaymentValue: $0.repaymentValue
+            )
+        }
+        guard let selected = BillingCalculator.applicableRule(from: inputs, forCycleKey: currentCycleKey) else {
+            return nil
+        }
+        return account.billingRuleVersions.first { $0.effectiveCycleKey == selected.effectiveCycleKey }
     }
 }
 

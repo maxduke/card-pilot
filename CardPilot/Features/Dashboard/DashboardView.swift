@@ -165,7 +165,7 @@ struct DashboardView: View {
                 }
             }
         }
-        return result.sorted {
+        return selectDashboardBillingItems(result).sorted {
             $0.priority == $1.priority
                 ? ($0.date == $1.date ? $0.kind.sortOrder < $1.kind.sortOrder : $0.date < $1.date)
                 : $0.priority < $1.priority
@@ -199,6 +199,20 @@ struct DashboardView: View {
     }
 }
 
+func selectDashboardBillingItems(_ items: [DashboardBillingItem]) -> [DashboardBillingItem] {
+    let statements = items.filter { $0.kind == .statement }
+    let repayments = items.filter { $0.kind == .repayment }
+    let overdue = repayments.filter { $0.status == .overdue }
+    let nearestPending = Dictionary(grouping: repayments.filter { $0.status == .pending }, by: { $0.account.id })
+        .values
+        .compactMap { items in
+            items.min {
+                $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date
+            }
+        }
+    return statements + overdue + nearestPending
+}
+
 func promotionsWithEnrollmentDeadlineWithin(_ promotions: [Promotion], today: LocalDate) -> [Promotion] {
     let lastDate = today.addingDays(7)
     return promotions.filter { promotion in
@@ -213,7 +227,7 @@ func promotionsWithEnrollmentDeadlineWithin(_ promotions: [Promotion], today: Lo
     }
 }
 
-private struct DashboardBillingItem: Identifiable {
+struct DashboardBillingItem: Identifiable {
     enum Kind: Equatable {
         case statement
         case repayment

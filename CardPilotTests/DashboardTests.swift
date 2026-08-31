@@ -77,4 +77,41 @@ final class DashboardTests: XCTestCase {
         let after = LocalDate(date: .now, timeZone: .current).monthKey
         XCTAssertTrue(account.trackingStartCycleKey == before || account.trackingStartCycleKey == after)
     }
+
+    func testRepaymentSelectionKeepsAllOverdueAndNearestPendingPerAccount() throws {
+        let accountOne = CreditCardAccount(bank: Bank(name: "银行一"))
+        let accountTwo = CreditCardAccount(bank: Bank(name: "银行二"))
+        func item(
+            account: CreditCardAccount,
+            cycleKey: Int,
+            kind: DashboardBillingItem.Kind,
+            date: Int,
+            status: BillingCycle.Status
+        ) throws -> DashboardBillingItem {
+            DashboardBillingItem(
+                account: account,
+                cycleKey: cycleKey,
+                kind: kind,
+                date: try LocalDate(rawValue: date),
+                status: status
+            )
+        }
+
+        let items = try [
+            item(account: accountOne, cycleKey: 202608, kind: .statement, date: 20260805, status: .pending),
+            item(account: accountOne, cycleKey: 202606, kind: .repayment, date: 20260625, status: .overdue),
+            item(account: accountOne, cycleKey: 202607, kind: .repayment, date: 20260725, status: .overdue),
+            item(account: accountOne, cycleKey: 202609, kind: .repayment, date: 20260925, status: .pending),
+            item(account: accountOne, cycleKey: 202610, kind: .repayment, date: 20261025, status: .pending),
+            item(account: accountTwo, cycleKey: 202606, kind: .repayment, date: 20260620, status: .overdue),
+            item(account: accountTwo, cycleKey: 202609, kind: .repayment, date: 20260920, status: .pending),
+            item(account: accountTwo, cycleKey: 202610, kind: .repayment, date: 20261020, status: .pending)
+        ]
+
+        let selected = selectDashboardBillingItems(items)
+        XCTAssertEqual(selected.filter { $0.kind == .statement }.count, 1)
+        XCTAssertEqual(selected.filter { $0.status == .overdue }.count, 3)
+        XCTAssertEqual(selected.filter { $0.account.id == accountOne.id }.map(\.cycleKey).sorted(), [202606, 202607, 202608, 202609])
+        XCTAssertEqual(selected.filter { $0.account.id == accountTwo.id }.map(\.cycleKey).sorted(), [202606, 202609])
+    }
 }

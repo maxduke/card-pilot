@@ -11,6 +11,8 @@ extension TransactionKind: Hashable {}
 extension TransactionStatus: Hashable {}
 
 enum CardPilotUI {
+    static let maximumReminderOffset = 365
+
     struct ReminderTime: Equatable {
         let hour: Int
         let minute: Int
@@ -71,6 +73,15 @@ enum CardPilotUI {
               (0...23).contains(hour),
               (0...59).contains(minute) else { return nil }
         return ReminderTime(hour: hour, minute: minute)
+    }
+
+    static func parseReminderOffsets(_ value: String) -> [Int]? {
+        let parts = value.split(separator: ",", omittingEmptySubsequences: false)
+        guard !parts.isEmpty else { return nil }
+        let offsets = parts.compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard offsets.count == parts.count,
+              offsets.allSatisfy({ (0...maximumReminderOffset).contains($0) }) else { return nil }
+        return offsets
     }
 
     static func rawDate(_ date: Date) -> Int {

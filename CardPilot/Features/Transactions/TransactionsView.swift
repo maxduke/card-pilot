@@ -484,8 +484,16 @@ private struct TransactionEditorView: View {
            let original,
            original.currencyCode == normalizedCurrency {
             var warnings: [String] = []
-            if amount > original.amount {
-                warnings.append("退款金额高于原消费金额。")
+            if PromotionCalculator.refundExceedsOriginalAmount(
+                originalAmount: original.amount,
+                currentRefundAmount: amount,
+                currentRefundStatus: status,
+                otherRefunds: original.refunds.map {
+                    (transactionID: $0.id, amount: $0.amount, status: $0.status)
+                },
+                excludingTransactionID: transaction?.id
+            ) {
+                warnings.append("关联有效退款合计高于原消费金额。")
             }
             let overRefundedPromotionIDs = PromotionCalculator.overRefundedPromotionIDs(
                 originalAllocations: original.allocations.map {

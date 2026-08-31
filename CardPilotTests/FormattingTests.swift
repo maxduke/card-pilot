@@ -26,4 +26,11 @@ final class FormattingTests: XCTestCase {
             XCTAssertNil(CardPilotUI.parseReminderTime(value), "应拒绝：\(value)")
         }
     }
+
+    func testReminderOffsetsAreStrictAndBounded() {
+        XCTAssertEqual(CardPilotUI.parseReminderOffsets("7, 3,1,0"), [7, 3, 1, 0])
+        for value in ["", "7,,1", "-1", "366", "7,x", "1.5"] {
+            XCTAssertNil(CardPilotUI.parseReminderOffsets(value), "应拒绝：\(value)")
+        }
+    }
 }

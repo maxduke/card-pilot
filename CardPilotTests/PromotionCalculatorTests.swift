@@ -93,4 +93,28 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertTrue(withinBalance.isEmpty)
         XCTAssertEqual(overRefunded, Set([promotionID]))
     }
+
+    func testRefundTotalExcludesReversedAndEditingRefunds() {
+        let editingRefundID = UUID()
+        let overRefunded = PromotionCalculator.refundExceedsOriginalAmount(
+            originalAmount: 100,
+            currentRefundAmount: 60,
+            currentRefundStatus: .active,
+            otherRefunds: [
+                (editingRefundID, 90, .active),
+                (UUID(), 50, .active),
+                (UUID(), 100, .reversed)
+            ],
+            excludingTransactionID: editingRefundID
+        )
+
+        XCTAssertTrue(overRefunded)
+        XCTAssertFalse(PromotionCalculator.refundExceedsOriginalAmount(
+            originalAmount: 100,
+            currentRefundAmount: 60,
+            currentRefundStatus: .reversed,
+            otherRefunds: [],
+            excludingTransactionID: nil
+        ))
+    }
 }

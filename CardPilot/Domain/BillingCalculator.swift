@@ -83,11 +83,7 @@ enum BillingCalculator {
             }
         }
 
-        let applicableRules = rules.filter {
-            guard let effectiveCycleKey = $0.effectiveCycleKey else { return true }
-            return effectiveCycleKey <= cycleKey
-        }
-        guard let rule = applicableRules.max(by: { effectiveKey($0) < effectiveKey($1) }) else {
+        guard let rule = applicableRule(from: rules, forCycleKey: cycleKey) else {
             throw BillingCalculationError.noApplicableRule
         }
 
@@ -186,6 +182,18 @@ enum BillingCalculator {
             today: today,
             timeZone: timeZone
         )
+    }
+
+    static func applicableRule(
+        from rules: [BillingRuleInput],
+        forCycleKey cycleKey: Int
+    ) -> BillingRuleInput? {
+        rules
+            .filter {
+                guard let effectiveCycleKey = $0.effectiveCycleKey else { return true }
+                return effectiveCycleKey <= cycleKey
+            }
+            .max { effectiveKey($0) < effectiveKey($1) }
     }
 
     private static func effectiveKey(_ rule: BillingRuleInput) -> Int {

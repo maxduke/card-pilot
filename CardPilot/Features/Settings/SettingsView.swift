@@ -111,8 +111,9 @@ struct SettingsView: View {
     }
 
     private func finish() {
-        guard validOffsets(statementReminderOffsets), validOffsets(repaymentReminderOffsets) else {
-            errorMessage = "提醒提前天数应为逗号分隔的非负整数。"
+        guard CardPilotUI.parseReminderOffsets(statementReminderOffsets) != nil,
+              CardPilotUI.parseReminderOffsets(repaymentReminderOffsets) != nil else {
+            errorMessage = "提醒提前天数应为逗号分隔的 0...\(CardPilotUI.maximumReminderOffset) 整数。"
             return
         }
         guard CardPilotUI.parseReminderTime(reminderTime) != nil else {
@@ -128,14 +129,6 @@ struct SettingsView: View {
         storedReminderTime = reminderTime
         storedHomeTimeZone = homeTimeZone
         dismiss()
-    }
-
-    private func validOffsets(_ value: String) -> Bool {
-        let parts = value.split(separator: ",", omittingEmptySubsequences: false)
-        return !parts.isEmpty && parts.allSatisfy {
-            guard let number = Int(String($0).trimmingCharacters(in: .whitespaces)) else { return false }
-            return number >= 0
-        }
     }
 
     private func refreshNotificationStatus() async {

@@ -47,6 +47,18 @@ final class BillingCalculatorTests: XCTestCase {
         XCTAssertEqual(cycle.repaymentDate.rawValue, 20260319)
     }
 
+    func testApplicableRuleUsesLatestEffectiveVersionAndKeepsBaselineUnbounded() {
+        let rules = [
+            BillingRuleInput(effectiveCycleKey: 202609, statementDay: 9, repaymentKind: .fixedDay, repaymentValue: 20),
+            BillingRuleInput(effectiveCycleKey: nil, statementDay: 5, repaymentKind: .fixedDay, repaymentValue: 15),
+            BillingRuleInput(effectiveCycleKey: 202608, statementDay: 8, repaymentKind: .fixedDay, repaymentValue: 18)
+        ]
+
+        XCTAssertEqual(BillingCalculator.applicableRule(from: rules, forCycleKey: 202607)?.statementDay, 5)
+        XCTAssertEqual(BillingCalculator.applicableRule(from: rules, forCycleKey: 202608)?.statementDay, 8)
+        XCTAssertEqual(BillingCalculator.applicableRule(from: rules, forCycleKey: 202610)?.statementDay, 9)
+    }
+
     func testDuplicateBaselineIsRejected() throws {
         XCTAssertThrowsError(
             try BillingCalculator.calculate(
