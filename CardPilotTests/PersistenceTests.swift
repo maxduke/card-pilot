@@ -117,6 +117,12 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNoThrow(try refund.validate())
     }
 
+    func testCurrencyCodeMustBeAnISO4217Identifier() {
+        XCTAssertTrue(isValidCurrencyCode("CNY"))
+        XCTAssertFalse(isValidCurrencyCode("ZZZ"))
+        XCTAssertFalse(isValidCurrencyCode("cny"))
+    }
+
     func testBillingChildrenRequireAnAccountOwner() throws {
         let bank = Bank(name: "孤儿记录测试银行")
         let account = CreditCardAccount(bank: bank)

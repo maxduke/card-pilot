@@ -66,6 +66,29 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(plans.map(\.cycleKey), [202609, 202608])
     }
 
+    func testPaidCycleKeepsStatementReminderAndDropsRepaymentReminder() throws {
+        let timeZone = TimeZone(secondsFromGMT: 0)!
+        let cycle = BillingCycle(
+            cycleKey: 202609,
+            statementDate: try LocalDate(rawValue: 20260905),
+            repaymentDate: try LocalDate(rawValue: 20260925),
+            status: .paid,
+            repaidAt: Date()
+        )
+
+        let plans = try LocalNotificationScheduler.plans(
+            cycles: [BillingReminderCycle(accountID: UUID(), accountName: "账户", cycle: cycle)],
+            statementOffsets: [0],
+            repaymentOffsets: [0],
+            reminderHour: 9,
+            reminderMinute: 0,
+            timeZone: timeZone,
+            now: try LocalDate(rawValue: 20260901).date(in: timeZone)
+        )
+
+        XCTAssertEqual(plans.map(\.event), [.statement])
+    }
+
     func testPriorityPlansKeepBothEventsForEachAccountBeforeTheLimit() throws {
         let timeZone = TimeZone(secondsFromGMT: 0)!
         let cycle = BillingCycle(

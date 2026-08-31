@@ -555,7 +555,7 @@ private struct AccountEditorView: View {
         }
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard isValidCurrencyCode(normalizedCurrency) else {
-            errorMessage = "额度币种应为 3 位大写字母。"
+            errorMessage = "额度币种应为有效的 ISO 4217 代码。"
             return
         }
         let limit = limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : CardPilotUI.decimal(limitText)

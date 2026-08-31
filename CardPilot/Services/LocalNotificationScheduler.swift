@@ -99,11 +99,12 @@ final class LocalNotificationScheduler {
         }
 
         var plans: [ReminderPlan] = []
-        for item in cycles where item.cycle.status != .paid {
+        for item in cycles {
             for (event, date, offsets) in [
                 (ReminderEvent.statement, item.cycle.statementDate, statementOffsets),
                 (ReminderEvent.repayment, item.cycle.repaymentDate, repaymentOffsets)
             ] {
+                guard event == .statement || item.cycle.status != .paid else { continue }
                 for offset in Set(offsets.filter { $0 >= 0 }).sorted() {
                     let reminderDate = date.addingDays(-offset, timeZone: timeZone)
                     var components = DateComponents(

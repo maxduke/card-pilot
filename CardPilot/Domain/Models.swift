@@ -64,8 +64,7 @@ enum ModelValidationError: Error, Equatable {
 }
 
 func isValidCurrencyCode(_ code: String) -> Bool {
-    let bytes = Array(code.utf8)
-    return bytes.count == 3 && bytes.allSatisfy { $0 >= 65 && $0 <= 90 }
+    code == code.uppercased() && Locale.Currency(code).isISOCurrency
 }
 
 private func hasText(_ value: String) -> Bool {

@@ -339,7 +339,7 @@ private struct PromotionEditorView: View {
             return
         }
         guard isValidCurrencyCode(normalizedCurrency) else {
-            errorMessage = "进度币种应为 3 位大写字母。"
+            errorMessage = "进度币种应为有效的 ISO 4217 代码。"
             return
         }
         if let promotion,
@@ -585,6 +585,12 @@ private struct AllocationEditorView: View {
                     }, id: \.id) { transaction in
                         Text("手动：\(transactionLabel(transaction))").tag(transaction.id)
                     }
+                }
+                .disabled(allocation != nil)
+                if allocation != nil {
+                    Text("编辑现有分配时不能更换交易；如需更换，请新建分配。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if let selectedTransaction, !PromotionCalculator.includes(selectedTransaction, in: promotion) {
                     Text("这笔交易不是自动候选，仍可按条款手动分配。")

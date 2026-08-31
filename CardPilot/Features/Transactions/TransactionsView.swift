@@ -516,7 +516,7 @@ private struct TransactionEditorView: View {
         }
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard isValidCurrencyCode(normalizedCurrency) else {
-            errorMessage = "币种应为 3 位大写字母。"
+            errorMessage = "币种应为有效的 ISO 4217 代码。"
             return
         }
         if let transaction,
