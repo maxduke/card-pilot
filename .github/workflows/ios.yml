@@ -22,4 +22,7 @@ jobs:
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 15 \
+            -maximum-test-execution-time-allowance 30 \
             CODE_SIGNING_ALLOWED=NO
