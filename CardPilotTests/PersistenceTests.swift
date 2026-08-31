@@ -116,4 +116,21 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNoThrow(try refund.validate())
     }
 
+    func testBillingChildrenRequireAnAccountOwner() throws {
+        let bank = Bank(name: "孤儿记录测试银行")
+        let account = CreditCardAccount(bank: bank)
+        let rule = BillingRuleVersion(account: account, statementDay: 5, repaymentKind: .fixedDay, repaymentValue: 10)
+        let cycle = BillingCycleRecord(account: account, cycleKey: 202608)
+
+        rule.account = nil
+        cycle.account = nil
+
+        XCTAssertThrowsError(try rule.validate()) { error in
+            XCTAssertEqual(error as? ModelValidationError, .missingAccountOwner)
+        }
+        XCTAssertThrowsError(try cycle.validate()) { error in
+            XCTAssertEqual(error as? ModelValidationError, .missingAccountOwner)
+        }
+    }
+
 }

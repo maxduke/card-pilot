@@ -120,7 +120,12 @@ struct RootView: View {
         let timeZone = TimeZone(identifier: homeTimeZone) ?? .current
         let today = LocalDate(date: .now, timeZone: timeZone)
         let reminderCycles = accounts.flatMap { account -> [BillingReminderCycle] in
-            let upcomingCycleKeys = (0...3).map { today.addingMonths($0, timeZone: timeZone).monthKey }
+            let maxDaysAfterStatement = account.billingRuleVersions
+                .filter { $0.repaymentKind == .daysAfterStatement }
+                .map(\.repaymentValue)
+                .max() ?? 0
+            let upcomingCycleKeys = Self.reminderCycleOffsets(maxDaysAfterStatement: maxDaysAfterStatement)
+                .map { today.addingMonths($0, timeZone: timeZone).monthKey }
             let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
             return Set(upcomingCycleKeys + savedUnpaidCycleKeys).compactMap { cycleKey in
                 let record = account.billingCycles.first { $0.cycleKey == cycleKey }
@@ -162,6 +167,12 @@ struct RootView: View {
 
     private func parseOffsets(_ value: String) -> [Int] {
         value.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    static func reminderCycleOffsets(maxDaysAfterStatement: Int) -> ClosedRange<Int> {
+        let days = max(0, maxDaysAfterStatement)
+        let lookbackMonths = max(1, days / 28 + (days % 28 == 0 ? 0 : 1))
+        return -lookbackMonths...3
     }
 }
 

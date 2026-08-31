@@ -159,10 +159,13 @@ private struct TransactionEditorView: View {
     @State private var originalTransactionID: UUID
     @State private var selectedPromotionIDs: Set<UUID>
     @State private var allocationAmounts: [UUID: String]
+    @State private var automaticallySelectedPromotionIDs: Set<UUID> = []
+    @State private var manuallyDeselectedPromotionIDs: Set<UUID> = []
     @State private var manuallyEditedAllocationIDs: Set<UUID> = []
     @State private var didInitializePromotions = false
     @State private var showingInactiveCards: Bool
     @State private var errorMessage: String?
+    @State private var showingOverRefundConfirmation = false
 
     private static let noOriginalTransactionID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
@@ -293,6 +296,11 @@ private struct TransactionEditorView: View {
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
+                        if !selectedPromotionsOutsideCandidates.isEmpty {
+                            Text("所选活动当前不再符合卡片或日期候选条件，请确认后再保存。")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                         if selectedPromotionIDs.contains(where: { id in
                             promotions.first(where: { $0.id == id })?.enrollmentStatus == .notEnrolled
                         }) {
@@ -317,7 +325,13 @@ private struct TransactionEditorView: View {
             .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { save() } }
+            }
+            .alert("退款金额超过原消费", isPresented: $showingOverRefundConfirmation) {
+                Button("取消", role: .cancel) {}
+                Button("仍然保存", role: .destructive) { save(allowingOverRefund: true) }
+            } message: {
+                Text("关联退款金额高于原消费金额。请确认这是银行实际记录后再保存。")
             }
         }
     }
@@ -331,8 +345,12 @@ private struct TransactionEditorView: View {
                     if allocationAmounts[id] == nil, let promotion = promotions.first(where: { $0.id == id }) {
                         allocationAmounts[id] = defaultAmount(for: promotion)
                     }
+                    automaticallySelectedPromotionIDs.remove(id)
+                    manuallyDeselectedPromotionIDs.remove(id)
                 } else {
                     selectedPromotionIDs.remove(id)
+                    automaticallySelectedPromotionIDs.remove(id)
+                    manuallyDeselectedPromotionIDs.insert(id)
                 }
             }
         )
@@ -343,6 +361,7 @@ private struct TransactionEditorView: View {
             get: { allocationAmounts[id] ?? "" },
             set: {
                 allocationAmounts[id] = $0
+                automaticallySelectedPromotionIDs.remove(id)
                 manuallyEditedAllocationIDs.insert(id)
             }
         )
@@ -351,7 +370,9 @@ private struct TransactionEditorView: View {
     private func initializePromotions() {
         guard !didInitializePromotions else { return }
         if transaction == nil {
-            selectedPromotionIDs = Set(candidatePromotions.map(\.id))
+            let candidateIDs = Set(candidatePromotions.map(\.id))
+            selectedPromotionIDs = candidateIDs
+            automaticallySelectedPromotionIDs = candidateIDs
             for promotion in candidatePromotions {
                 allocationAmounts[promotion.id] = defaultAmount(for: promotion)
             }
@@ -362,8 +383,16 @@ private struct TransactionEditorView: View {
     private func refreshCandidates() {
         guard didInitializePromotions, transaction == nil else { return }
         let ids = Set(candidatePromotions.map(\.id))
-        selectedPromotionIDs.formUnion(ids)
-        for promotion in candidatePromotions where allocationAmounts[promotion.id] == nil {
+        let staleAutomaticIDs = automaticallySelectedPromotionIDs.subtracting(ids)
+        automaticallySelectedPromotionIDs.subtract(staleAutomaticIDs)
+        selectedPromotionIDs.subtract(staleAutomaticIDs)
+
+        let newAutomaticIDs = ids
+            .subtract(selectedPromotionIDs)
+            .subtract(manuallyDeselectedPromotionIDs)
+        selectedPromotionIDs.formUnion(newAutomaticIDs)
+        automaticallySelectedPromotionIDs.formUnion(newAutomaticIDs)
+        for promotion in candidatePromotions where newAutomaticIDs.contains(promotion.id) {
             allocationAmounts[promotion.id] = defaultAmount(for: promotion)
         }
     }
@@ -385,6 +414,11 @@ private struct TransactionEditorView: View {
         promotions.contains { selectedPromotionIDs.contains($0.id) && !$0.stackingAllowed }
     }
 
+    private var selectedPromotionsOutsideCandidates: [Promotion] {
+        let candidateIDs = Set(candidatePromotions.map(\.id))
+        return promotions.filter { selectedPromotionIDs.contains($0.id) && !candidateIDs.contains($0.id) }
+    }
+
     private func cardLabel(_ card: Card) -> String {
         let name = card.nickname.isEmpty ? card.productName : card.nickname
         return "\(name) · •••• \(card.lastFour)"
@@ -395,7 +429,7 @@ private struct TransactionEditorView: View {
         return "\(CardPilotUI.dateText(transaction.transactionOn)) · \(merchant) · \(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))"
     }
 
-    private func save() {
+    private func save(allowingOverRefund: Bool = false) {
         guard let card = selectedCard else { errorMessage = "请选择卡片。"; return }
         guard let amount = CardPilotUI.decimal(amountText), amount > .zero else {
             errorMessage = "金额应为大于 0 的数字。"
@@ -413,6 +447,13 @@ private struct TransactionEditorView: View {
             return
         }
         let original = kind == .refund ? originalTransactions.first(where: { $0.id == originalTransactionID }) : nil
+        if !allowingOverRefund,
+           let original,
+           original.currencyCode == normalizedCurrency,
+           amount > original.amount {
+            showingOverRefundConfirmation = true
+            return
+        }
         let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
         var parsedAmounts: [UUID: Decimal] = [:]
         for promotion in selectedPromotions {

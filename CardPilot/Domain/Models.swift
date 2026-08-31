@@ -59,6 +59,7 @@ enum ModelValidationError: Error, Equatable {
     case duplicateBillingCycle
     case duplicatePromotionAllocation
     case promotionCurrencyLocked
+    case missingAccountOwner
 }
 
 func isValidCurrencyCode(_ code: String) -> Bool {
@@ -278,7 +279,7 @@ final class BillingRuleVersion {
     var repaymentKindRaw: String
     var repaymentValue: Int
 
-    var account: CreditCardAccount
+    var account: CreditCardAccount?
 
     var repaymentKind: RepaymentRuleKind {
         get { RepaymentRuleKind(rawValue: repaymentKindRaw) ?? .fixedDay }
@@ -302,6 +303,7 @@ final class BillingRuleVersion {
     }
 
     func validate() throws {
+        guard account != nil else { throw ModelValidationError.missingAccountOwner }
         guard (1...31).contains(statementDay) else { throw ModelValidationError.invalidStatementDay }
         guard RepaymentRuleKind(rawValue: repaymentKindRaw) != nil else {
             throw ModelValidationError.invalidRepaymentValue
@@ -327,7 +329,7 @@ final class BillingCycleRecord {
     var repaymentDateOverride: Int?
     var repaidAt: Date?
 
-    var account: CreditCardAccount
+    var account: CreditCardAccount?
 
     init(
         id: UUID = UUID(),
@@ -346,6 +348,7 @@ final class BillingCycleRecord {
     }
 
     func validate() throws {
+        guard account != nil else { throw ModelValidationError.missingAccountOwner }
         guard LocalDate.isValidMonthKey(cycleKey) else { throw ModelValidationError.invalidCycleKey }
         if let statementDateOverride, (try? LocalDate(rawValue: statementDateOverride)) == nil {
             throw ModelValidationError.invalidDate

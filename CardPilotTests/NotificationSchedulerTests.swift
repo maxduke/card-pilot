@@ -64,4 +64,11 @@ final class NotificationSchedulerTests: XCTestCase {
 
         XCTAssertEqual(plans.map(\.cycleKey), [202609, 202608])
     }
+
+    func testReminderCycleOffsetsLookBackForLongRelativeRepaymentRules() {
+        XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 0)), Array(-1...3))
+        XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 28)), Array(-1...3))
+        XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 29)), Array(-2...3))
+        XCTAssertEqual(Array(RootView.reminderCycleOffsets(maxDaysAfterStatement: 90)), Array(-4...3))
+    }
 }
