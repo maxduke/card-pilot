@@ -33,36 +33,40 @@ struct RootView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            DashboardView(showingSettings: $showingSettings)
-                .tabItem { Label("首页", systemImage: "rectangle.grid.2x2") }
-                .tag(Tab.dashboard)
-
-            CardsView()
-                .tabItem { Label("卡片", systemImage: "creditcard") }
-                .tag(Tab.cards)
-
-            PromotionsView()
-                .tabItem { Label("促销", systemImage: "gift") }
-                .tag(Tab.promotions)
-
-            TransactionsView()
-                .tabItem { Label("交易", systemImage: "list.bullet.rectangle") }
-                .tag(Tab.transactions)
-        }
-        .privacySensitive()
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
-                .environmentObject(appLock)
-        }
-        .overlay {
+        Group {
             if appLock.isLocked {
                 LockShield(isAuthenticating: isAuthenticating, unlock: authenticate)
+            } else {
+                TabView(selection: $selectedTab) {
+                    DashboardView(showingSettings: $showingSettings)
+                        .tabItem { Label("首页", systemImage: "rectangle.grid.2x2") }
+                        .tag(Tab.dashboard)
+
+                    CardsView()
+                        .tabItem { Label("卡片", systemImage: "creditcard") }
+                        .tag(Tab.cards)
+
+                    PromotionsView()
+                        .tabItem { Label("促销", systemImage: "gift") }
+                        .tag(Tab.promotions)
+
+                    TransactionsView()
+                        .tabItem { Label("交易", systemImage: "list.bullet.rectangle") }
+                        .tag(Tab.transactions)
+                }
+                .privacySensitive()
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView()
+                        .environmentObject(appLock)
+                }
             }
         }
         .onAppear {
             if !appLock.setEnabled(appLockEnabled) { appLockEnabled = false }
             authenticate()
+        }
+        .onChange(of: appLock.isLocked) { _, locked in
+            if locked { showingSettings = false }
         }
         .onChange(of: appLockEnabled) { _, enabled in
             if !appLock.setEnabled(enabled) { appLockEnabled = false }

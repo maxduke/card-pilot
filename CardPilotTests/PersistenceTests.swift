@@ -42,4 +42,53 @@ final class PersistenceTests: XCTestCase {
         }
     }
 
+    func testPromotionEnrollmentDeadlineMayBeUnsetUnlessEnrollmentIsNotRequired() throws {
+        let enrolledPromotion = Promotion(
+            title: "可选报名截止日",
+            startOn: 20260801,
+            endOn: 20260831,
+            enrollmentStatus: .notEnrolled,
+            enrollmentDeadline: nil,
+            targetAmount: 100,
+            progressCurrencyCode: "CNY"
+        )
+        XCTAssertNoThrow(try enrolledPromotion.validate())
+
+        let invalidPromotion = Promotion(
+            title: "不需要报名",
+            startOn: 20260801,
+            endOn: 20260831,
+            enrollmentStatus: .notRequired,
+            enrollmentDeadline: 20260810,
+            targetAmount: 100,
+            progressCurrencyCode: "CNY"
+        )
+        XCTAssertThrowsError(try invalidPromotion.validate()) { error in
+            XCTAssertEqual(error as? ModelValidationError, .invalidEnrollment)
+        }
+    }
+
+    func testDeletingAccountDependenciesAllowsAccountDeletion() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let bank = Bank(name: "可删除账户银行")
+        let account = CreditCardAccount(bank: bank)
+        let rule = BillingRuleVersion(account: account, statementDay: 5, repaymentKind: .fixedDay, repaymentValue: 10)
+        let cycle = BillingCycleRecord(account: account, cycleKey: 202608)
+        context.insert(bank)
+        context.insert(account)
+        context.insert(rule)
+        context.insert(cycle)
+        try context.save()
+
+        account.billingCycles.forEach { context.delete($0) }
+        account.billingRuleVersions.forEach { context.delete($0) }
+        context.delete(account)
+        try context.save()
+
+        XCTAssertTrue(try context.fetch(FetchDescriptor<CreditCardAccount>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<BillingCycleRecord>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<BillingRuleVersion>()).isEmpty)
+    }
+
 }

@@ -164,6 +164,7 @@ private struct PromotionEditorView: View {
     @State private var selectedCardIDs: Set<UUID>
     @State private var enrollmentStatus: EnrollmentStatus
     @State private var enrolledOn: Date
+    @State private var hasEnrollmentDeadline: Bool
     @State private var enrollmentDeadline: Date
     @State private var qualificationDateBasis: QualificationDateBasis
     @State private var stackingAllowed: Bool
@@ -189,6 +190,7 @@ private struct PromotionEditorView: View {
         _selectedCardIDs = State(initialValue: Set(promotion?.eligibleCards.map(\.id) ?? []))
         _enrollmentStatus = State(initialValue: promotion?.enrollmentStatus ?? .notRequired)
         _enrolledOn = State(initialValue: promotion.flatMap { $0.enrolledOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
+        _hasEnrollmentDeadline = State(initialValue: promotion?.enrollmentDeadline != nil)
         _enrollmentDeadline = State(initialValue: promotion.flatMap { $0.enrollmentDeadline.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
         _qualificationDateBasis = State(initialValue: promotion?.qualificationDateBasis ?? .transactionDate)
         _stackingAllowed = State(initialValue: promotion?.stackingAllowed ?? true)
@@ -251,7 +253,10 @@ private struct PromotionEditorView: View {
                         DatePicker("报名日期", selection: $enrolledOn, displayedComponents: .date)
                     }
                     if enrollmentStatus != .notRequired {
-                        DatePicker("报名截止日（可选）", selection: $enrollmentDeadline, displayedComponents: .date)
+                        Toggle("设置报名截止日", isOn: $hasEnrollmentDeadline)
+                        if hasEnrollmentDeadline {
+                            DatePicker("报名截止日", selection: $enrollmentDeadline, displayedComponents: .date)
+                        }
                     }
                     Picker("资格日期依据", selection: $qualificationDateBasis) {
                         Text("交易日期").tag(QualificationDateBasis.transactionDate)
@@ -321,7 +326,7 @@ private struct PromotionEditorView: View {
         let endOn = CardPilotUI.rawDate(endDate)
         let status = enrollmentStatus
         let enrolledValue = status == .enrolled ? CardPilotUI.rawDate(enrolledOn) : nil
-        let deadlineValue = status == .notRequired ? nil : CardPilotUI.rawDate(enrollmentDeadline)
+        let deadlineValue = status == .notRequired || !hasEnrollmentDeadline ? nil : CardPilotUI.rawDate(enrollmentDeadline)
         if let deadlineValue, deadlineValue > endOn {
             errorMessage = "报名截止日不能晚于活动结束日。"
             return

@@ -165,10 +165,11 @@ struct CardsView: View {
     }
 
     private func deleteAccount(_ account: CreditCardAccount) {
-        guard account.cards.isEmpty, account.billingCycles.isEmpty else {
-            errorMessage = "请先删除该账户下的卡片和账期记录。"
+        guard account.cards.isEmpty else {
+            errorMessage = "请先删除该账户下的卡片。"
             return
         }
+        account.billingCycles.forEach { modelContext.delete($0) }
         account.billingRuleVersions.forEach { modelContext.delete($0) }
         modelContext.delete(account)
         save()

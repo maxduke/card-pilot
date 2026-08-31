@@ -44,7 +44,10 @@ enum CardPilotUI {
     }
 
     static func decimal(_ text: String) -> Decimal? {
-        Decimal(string: text.trimmingCharacters(in: .whitespacesAndNewlines), locale: Locale(identifier: "en_US_POSIX"))
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: "")
+        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
     }
 
     static func rawDate(_ date: Date) -> Int {
