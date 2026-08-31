@@ -121,15 +121,20 @@ jobs:
           set -euo pipefail
           ipa_path="release/CardPilot-unsigned.ipa"
           checksum_path="release/CardPilot-unsigned.ipa.sha256"
+          workflow_marker='<!-- cardpilot-unsigned-ipa-workflow -->'
           release_error=$(mktemp)
           trap 'rm -f "$release_error"' EXIT
 
           set +e
-          release_json=$(gh release view "$TAG_NAME" --json isDraft,assets 2>"$release_error")
+          release_json=$(gh release view "$TAG_NAME" --json isDraft,assets,body 2>"$release_error")
           release_status=$?
           set -e
           if (( release_status == 0 )); then
             if [[ "$(jq -r '.isDraft' <<<"$release_json")" == "true" ]]; then
+              if ! jq -e --arg marker "$workflow_marker" '.body // "" | contains($marker)' <<<"$release_json" >/dev/null; then
+                echo "Draft release $TAG_NAME is not owned by this workflow; refusing to replace or publish it" >&2
+                exit 1
+              fi
               gh release upload "$TAG_NAME" "$ipa_path" "$checksum_path" --clobber
               gh release edit "$TAG_NAME" --draft=false
               echo "Updated and published draft release $TAG_NAME"
@@ -146,7 +151,7 @@ jobs:
             gh release create "$TAG_NAME" "$ipa_path" "$checksum_path" \
               --verify-tag \
               --title "CardPilot ${TAG_NAME#v}" \
-              --notes "Unsigned IPA build for CardPilot ${TAG_NAME#v}."
+              --notes "Unsigned IPA build for CardPilot ${TAG_NAME#v}."$'\n\n'"$workflow_marker"
           else
             cat "$release_error" >&2
             echo "Unable to inspect release $TAG_NAME; refusing to create or replace it" >&2
