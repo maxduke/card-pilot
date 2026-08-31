@@ -40,4 +40,42 @@ final class TransactionsTests: XCTestCase {
         XCTAssertEqual(filterTransactions(transactions, cardID: nil, searchText: "旅行").map(\.id), [travel.id])
         XCTAssertEqual(filterTransactions(transactions, cardID: firstCard.id, searchText: "日常").map(\.id), [groceries.id])
     }
+
+    func testPostingDatePromotionsRemainVisibleWithoutBeingCandidatesAndSearchFindsOthers() {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"))
+        let card = Card(
+            account: account,
+            productName: "测试卡",
+            network: CardNetwork.makeBuiltIns()[0],
+            lastFour: "1234"
+        )
+        let postingDatePromotion = Promotion(
+            title: "入账日活动",
+            startOn: 20260801,
+            endOn: 20260831,
+            eligibleCards: [card],
+            qualificationDateBasis: .postingDate,
+            targetAmount: 100,
+            progressCurrencyCode: "CNY"
+        )
+        let manualPromotion = Promotion(
+            title: "手动例外活动",
+            startOn: 20260701,
+            endOn: 20260731,
+            targetAmount: 100,
+            progressCurrencyCode: "CNY"
+        )
+
+        XCTAssertEqual(
+            promotionsAwaitingPostingDate([postingDatePromotion, manualPromotion], cardID: card.id, hasPostingDate: false).map(\.id),
+            [postingDatePromotion.id]
+        )
+        XCTAssertTrue(
+            promotionsAwaitingPostingDate([postingDatePromotion], cardID: card.id, hasPostingDate: true).isEmpty
+        )
+        XCTAssertEqual(
+            promotionsMatchingSearch([postingDatePromotion, manualPromotion], searchText: "例外").map(\.id),
+            [manualPromotion.id]
+        )
+    }
 }

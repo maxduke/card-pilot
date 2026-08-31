@@ -17,6 +17,7 @@ struct CardsView: View {
     @State private var showingArchivedBanks = false
     @State private var showingInactiveCards = false
     @State private var errorMessage: String?
+    @State private var accountPendingDeletion: CreditCardAccount?
 
     var body: some View {
         NavigationStack {
@@ -40,7 +41,7 @@ struct CardsView: View {
                                         AccountRow(
                                             account: account,
                                             onEdit: { editingAccount = account; showingAccountEditor = true },
-                                            onDelete: { deleteAccount(account) }
+                                            onDelete: { requestDeleteAccount(account) }
                                         )
                                         ForEach(account.cards.filter { showingInactiveCards || $0.status == .active }.sorted { ($0.nickname.isEmpty ? $0.productName : $0.nickname) < ($1.nickname.isEmpty ? $1.productName : $1.nickname) }, id: \.id) { card in
                                             CardRow(card: card) {
@@ -107,7 +108,7 @@ struct CardsView: View {
                         } label: {
                             Label("添加信用卡账户", systemImage: "plus.rectangle")
                         }
-                        .disabled(banks.isEmpty)
+                        .disabled(selectableAccountBanks(banks, currentBankID: nil).isEmpty)
                         Button {
                             editingCard = nil
                             showingCardEditor = true
@@ -130,6 +131,17 @@ struct CardsView: View {
             .sheet(isPresented: $showingCardEditor) {
                 CardEditorView(card: editingCard, accounts: accounts, networks: networks)
             }
+            .confirmationDialog("确认删除账户？", isPresented: accountDeletePresented) {
+                Button("永久删除", role: .destructive) {
+                    if let accountPendingDeletion {
+                        deleteAccount(accountPendingDeletion)
+                    }
+                    accountPendingDeletion = nil
+                }
+                Button("取消", role: .cancel) { accountPendingDeletion = nil }
+            } message: {
+                Text("将永久删除该账户的账务规则和账期记录，此操作无法撤销。")
+            }
             .alert("无法完成操作", isPresented: errorPresented) {
                 Button("好", role: .cancel) { errorMessage = nil }
             } message: {
@@ -140,6 +152,13 @@ struct CardsView: View {
 
     private var errorPresented: Binding<Bool> {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private var accountDeletePresented: Binding<Bool> {
+        Binding(
+            get: { accountPendingDeletion != nil },
+            set: { if !$0 { accountPendingDeletion = nil } }
+        )
     }
 
     private var visibleBanks: [Bank] {
@@ -162,6 +181,14 @@ struct CardsView: View {
         }
         modelContext.delete(bank)
         save()
+    }
+
+    private func requestDeleteAccount(_ account: CreditCardAccount) {
+        guard account.cards.isEmpty else {
+            errorMessage = "请先删除该账户下的卡片。"
+            return
+        }
+        accountPendingDeletion = account
     }
 
     private func deleteAccount(_ account: CreditCardAccount) {
@@ -414,7 +441,8 @@ private struct AccountEditorView: View {
         let rule = account?.billingRuleVersions.max {
             ($0.effectiveCycleKey ?? Int.min) < ($1.effectiveCycleKey ?? Int.min)
         }
-        _bankID = State(initialValue: account?.bank.id ?? banks.first?.id ?? UUID())
+        let availableBanks = selectableAccountBanks(banks, currentBankID: account?.bank.id)
+        _bankID = State(initialValue: account?.bank.id ?? availableBanks.first?.id ?? UUID())
         _limitText = State(initialValue: account.flatMap { $0.creditLimit.map { CardPilotUI.editableAmountText($0) } } ?? "")
         _currencyCode = State(initialValue: account?.limitCurrencyCode ?? "CNY")
         _status = State(initialValue: account?.status ?? .active)
@@ -443,7 +471,7 @@ private struct AccountEditorView: View {
             Form {
                 Section("账户") {
                     Picker("银行", selection: $bankID) {
-                        ForEach(banks.filter { $0.archivedAt == nil || $0.id == account?.bank.id }, id: \.id) { bank in
+                        ForEach(selectableAccountBanks(banks, currentBankID: account?.bank.id), id: \.id) { bank in
                             Text(bank.name).tag(bank.id)
                         }
                     }
@@ -520,7 +548,8 @@ private struct AccountEditorView: View {
     }
 
     private func save() {
-        guard let bank = banks.first(where: { $0.id == bankID }) else {
+        guard let bank = selectableAccountBanks(banks, currentBankID: account?.bank.id)
+            .first(where: { $0.id == bankID }) else {
             errorMessage = "请选择银行。"
             return
         }
@@ -680,6 +709,10 @@ private struct AccountEditorView: View {
             errorMessage = "还款状态未更改：\(error.localizedDescription)"
         }
     }
+}
+
+func selectableAccountBanks(_ banks: [Bank], currentBankID: UUID?) -> [Bank] {
+    banks.filter { $0.archivedAt == nil || $0.id == currentBankID }
 }
 
 private struct CardEditorView: View {

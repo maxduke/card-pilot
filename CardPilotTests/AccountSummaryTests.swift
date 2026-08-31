@@ -62,4 +62,15 @@ final class AccountSummaryTests: XCTestCase {
         XCTAssertEqual(summary.nextRepaymentDate, try LocalDate(rawValue: 20260720))
         XCTAssertEqual(summary.nextRepaymentStatus, .overdue)
     }
+
+    func testAccountEditorBanksExcludeArchivedUnlessAlreadySelected() {
+        let active = Bank(name: "使用中银行")
+        let archived = Bank(name: "已归档银行", archivedAt: Date())
+
+        XCTAssertEqual(selectableAccountBanks([archived, active], currentBankID: nil).map(\.id), [active.id])
+        XCTAssertEqual(
+            selectableAccountBanks([archived, active], currentBankID: archived.id).map(\.id),
+            [archived.id, active.id]
+        )
+    }
 }

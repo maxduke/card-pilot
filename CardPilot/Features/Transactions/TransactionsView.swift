@@ -198,6 +198,7 @@ private struct TransactionEditorView: View {
     @State private var allocationAmounts: [UUID: String]
     @State private var automaticallySelectedPromotionIDs: Set<UUID> = []
     @State private var manuallyDeselectedPromotionIDs: Set<UUID> = []
+    @State private var promotionSearchText = ""
     @State private var manuallyEditedAllocationIDs: Set<UUID> = []
     @State private var didInitializePromotions = false
     @State private var showingInactiveCards: Bool
@@ -270,11 +271,22 @@ private struct TransactionEditorView: View {
     }
 
     private var visiblePromotionIDs: Set<UUID> {
-        Set(candidatePromotions.map(\.id)).union(selectedPromotionIDs)
+        Set(candidatePromotions.map(\.id))
+            .union(selectedPromotionIDs)
+            .union(postingDatePendingPromotions.map(\.id))
+            .union(searchedPromotions.map(\.id))
     }
 
     private var visiblePromotions: [Promotion] {
         promotions.filter { visiblePromotionIDs.contains($0.id) }.sorted { $0.endOn < $1.endOn }
+    }
+
+    private var postingDatePendingPromotions: [Promotion] {
+        promotionsAwaitingPostingDate(promotions, cardID: selectedCard?.id, hasPostingDate: hasPostingDate)
+    }
+
+    private var searchedPromotions: [Promotion] {
+        promotionsMatchingSearch(promotions, searchText: promotionSearchText)
     }
 
     var body: some View {
@@ -318,8 +330,9 @@ private struct TransactionEditorView: View {
                 }
 
                 Section("促销分配") {
+                    TextField("搜索其他促销", text: $promotionSearchText)
                     if visiblePromotions.isEmpty {
-                        Text("没有匹配的候选促销；保存交易后仍可在促销详情中手动分配。")
+                        Text("没有匹配的候选促销，可搜索名称手动选择。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -332,6 +345,11 @@ private struct TransactionEditorView: View {
                                 )
                                 .keyboardType(.decimalPad)
                                 .padding(.leading, 24)
+                            }
+                            if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
+                                Text("需补入账日期，不会自动勾选。")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
                             }
                         }
                         Text("候选活动会默认勾选；可取消或调整计入金额。不同币种请填写银行认可的合格金额。")
@@ -658,4 +676,23 @@ private struct TransactionEditorView: View {
             errorMessage = "交易未保存：\(error.localizedDescription)"
         }
     }
+}
+
+func promotionsAwaitingPostingDate(
+    _ promotions: [Promotion],
+    cardID: UUID?,
+    hasPostingDate: Bool
+) -> [Promotion] {
+    guard let cardID, !hasPostingDate else { return [] }
+    return promotions.filter {
+        $0.archivedAt == nil
+            && $0.qualificationDateBasis == .postingDate
+            && $0.eligibleCards.contains(where: { $0.id == cardID })
+    }
+}
+
+func promotionsMatchingSearch(_ promotions: [Promotion], searchText: String) -> [Promotion] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return [] }
+    return promotions.filter { $0.title.localizedCaseInsensitiveContains(query) }
 }
