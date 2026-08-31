@@ -9,13 +9,21 @@ struct RootView: View {
     @AppStorage("cardPilot.reminderTime") private var reminderTime = "09:00"
     @AppStorage("cardPilot.homeTimeZone") private var homeTimeZone = TimeZone.current.identifier
     @AppStorage("cardPilot.appLockEnabled") private var appLockEnabled = false
+    @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
 
     @StateObject private var appLock = AppLockController()
     @State private var selectedTab = Tab.dashboard
     @State private var showingSettings = false
     @State private var isAuthenticating = false
+    @State private var authenticationAttempt = 0
 
     private let notificationScheduler = LocalNotificationScheduler()
+
+    init() {
+        _appLock = StateObject(wrappedValue: AppLockController(
+            enabled: UserDefaults.standard.bool(forKey: "cardPilot.appLockEnabled")
+        ))
+    }
 
     enum Tab: Hashable {
         case dashboard
@@ -65,6 +73,8 @@ struct RootView: View {
                 authenticate()
                 Task { await rebuildNotifications() }
             } else {
+                authenticationAttempt += 1
+                isAuthenticating = false
                 appLock.applicationDidEnterBackground()
             }
         }
@@ -88,9 +98,12 @@ struct RootView: View {
 
     private func authenticate() {
         guard appLock.isLocked, !isAuthenticating else { return }
+        authenticationAttempt += 1
+        let attempt = authenticationAttempt
         isAuthenticating = true
         Task {
             _ = await appLock.unlock()
+            guard attempt == authenticationAttempt else { return }
             isAuthenticating = false
         }
     }
@@ -103,8 +116,9 @@ struct RootView: View {
         let timeZone = TimeZone(identifier: homeTimeZone) ?? .current
         let today = LocalDate(date: .now, timeZone: timeZone)
         let reminderCycles = accounts.flatMap { account -> [BillingReminderCycle] in
-            (0...3).compactMap { offset in
-                let cycleKey = today.addingMonths(offset, timeZone: timeZone).monthKey
+            let upcomingCycleKeys = (0...3).map { today.addingMonths($0, timeZone: timeZone).monthKey }
+            let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
+            return Set(upcomingCycleKeys + savedUnpaidCycleKeys).compactMap { cycleKey in
                 let record = account.billingCycles.first { $0.cycleKey == cycleKey }
                 guard let cycle = try? BillingCalculator.calculate(
                     account: account,
@@ -120,14 +134,26 @@ struct RootView: View {
                 )
             }
         }
-        _ = try? await notificationScheduler.rebuild(
-            cycles: reminderCycles,
-            statementOffsets: parseOffsets(statementOffsets),
-            repaymentOffsets: parseOffsets(repaymentOffsets),
-            reminderHour: hour,
-            reminderMinute: minute,
-            timeZone: timeZone
-        )
+        do {
+            let result = try await notificationScheduler.rebuild(
+                cycles: reminderCycles,
+                statementOffsets: parseOffsets(statementOffsets),
+                repaymentOffsets: parseOffsets(repaymentOffsets),
+                reminderHour: hour,
+                reminderMinute: minute,
+                timeZone: timeZone
+            )
+            if result.omittedCount > 0 {
+                let lastDate = result.lastScheduledDate.map {
+                    LocalDate(date: $0, timeZone: timeZone).description
+                } ?? "未知日期"
+                notificationWarning = "通知仅安排至 \(lastDate)，另有 \(result.omittedCount) 条待刷新。"
+            } else {
+                notificationWarning = ""
+            }
+        } catch {
+            notificationWarning = "本地提醒更新失败，请检查设置后重试。"
+        }
     }
 
     private func parseOffsets(_ value: String) -> [Int] {

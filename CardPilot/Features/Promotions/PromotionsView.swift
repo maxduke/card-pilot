@@ -93,7 +93,12 @@ struct PromotionsView: View {
             return
         }
         modelContext.delete(promotion)
-        do { try modelContext.save() } catch { errorMessage = "促销未删除：\(error.localizedDescription)" }
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            errorMessage = "促销未删除：\(error.localizedDescription)"
+        }
     }
 }
 
@@ -368,6 +373,7 @@ private struct PromotionEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = "促销未保存：\(error.localizedDescription)"
         }
     }
@@ -423,7 +429,12 @@ struct PromotionDetailView: View {
                         offsets.map { promotion.allocations.sorted { $0.transaction.transactionOn > $1.transaction.transactionOn }[$0] }.forEach { allocation in
                             modelContext.delete(allocation)
                         }
-                        do { try modelContext.save() } catch { errorMessage = "分配未删除：\(error.localizedDescription)" }
+                        do {
+                            try modelContext.save()
+                        } catch {
+                            modelContext.rollback()
+                            errorMessage = "分配未删除：\(error.localizedDescription)"
+                        }
                     }
                 }
             }
@@ -583,6 +594,7 @@ private struct AllocationEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = "分配未保存：\(error.localizedDescription)"
         }
     }

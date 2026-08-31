@@ -21,7 +21,7 @@ struct CardsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if banks.isEmpty {
+                if visibleBanks.isEmpty {
                     EmptyStateView(
                         title: "还没有银行",
                         systemImage: "building.columns",
@@ -29,7 +29,7 @@ struct CardsView: View {
                     )
                 } else {
                     List {
-                        ForEach(banks.filter { showingArchivedBanks || $0.archivedAt == nil || !$0.accounts.isEmpty }, id: \.id) { bank in
+                        ForEach(visibleBanks, id: \.id) { bank in
                             Section {
                                 let bankAccounts = accounts.filter { $0.bank.id == bank.id }
                                 if bankAccounts.isEmpty {
@@ -142,10 +142,15 @@ struct CardsView: View {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
 
+    private var visibleBanks: [Bank] {
+        banks.filter { showingArchivedBanks || $0.archivedAt == nil || !$0.accounts.isEmpty }
+    }
+
     private func save() {
         do {
             try modelContext.save()
         } catch {
+            modelContext.rollback()
             errorMessage = "数据未保存：\(error.localizedDescription)"
         }
     }
@@ -313,6 +318,7 @@ private struct BankEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = "银行未保存：\(error.localizedDescription)"
         }
     }
@@ -333,6 +339,11 @@ private struct AccountEditorView: View {
     @State private var repaymentKind: RepaymentRuleKind
     @State private var repaymentValue: Int
     @State private var effectiveCycleKeyText: String
+    @State private var overrideCycleKeyText: String
+    @State private var hasStatementOverride: Bool
+    @State private var statementOverrideDate: Date
+    @State private var hasRepaymentOverride: Bool
+    @State private var repaymentOverrideDate: Date
     @State private var notes: String
     @State private var errorMessage: String?
 
@@ -350,7 +361,18 @@ private struct AccountEditorView: View {
         _statementDay = State(initialValue: rule?.statementDay ?? 1)
         _repaymentKind = State(initialValue: rule?.repaymentKind ?? .fixedDay)
         _repaymentValue = State(initialValue: rule?.repaymentValue ?? 1)
-        _effectiveCycleKeyText = State(initialValue: String(CardPilotUI.localDate(from: Date()).monthKey))
+        let currentDate = CardPilotUI.localDate(from: Date())
+        let currentRecord = account?.billingCycles.first { $0.cycleKey == currentDate.monthKey }
+        _effectiveCycleKeyText = State(initialValue: String(currentDate.monthKey))
+        _overrideCycleKeyText = State(initialValue: String(currentDate.monthKey))
+        _hasStatementOverride = State(initialValue: currentRecord?.statementDateOverride != nil)
+        _statementOverrideDate = State(initialValue: currentRecord?.statementDateOverride.flatMap {
+            try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
+        } ?? currentDate.date(in: CardPilotUI.homeTimeZone))
+        _hasRepaymentOverride = State(initialValue: currentRecord?.repaymentDateOverride != nil)
+        _repaymentOverrideDate = State(initialValue: currentRecord?.repaymentDateOverride.flatMap {
+            try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
+        } ?? currentDate.date(in: CardPilotUI.homeTimeZone))
         _notes = State(initialValue: account?.notes ?? "")
     }
 
@@ -400,6 +422,25 @@ private struct AccountEditorView: View {
                     }
                 }
 
+                if account != nil {
+                    Section("单期日期覆盖") {
+                        TextField("账期（YYYYMM）", text: $overrideCycleKeyText)
+                            .keyboardType(.numberPad)
+                        Toggle("覆盖账单日", isOn: $hasStatementOverride)
+                        if hasStatementOverride {
+                            DatePicker("实际账单日", selection: $statementOverrideDate, displayedComponents: .date)
+                        }
+                        Toggle("覆盖还款日", isOn: $hasRepaymentOverride)
+                        if hasRepaymentOverride {
+                            DatePicker("实际还款日", selection: $repaymentOverrideDate, displayedComponents: .date)
+                        }
+                        Text("单期覆盖只影响所选账期；还款日必须晚于账单日。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .onChange(of: overrideCycleKeyText) { _, _ in loadCycleOverrides() }
+                }
+
                 if let errorMessage {
                     InlineErrorView(message: errorMessage)
                 }
@@ -427,6 +468,38 @@ private struct AccountEditorView: View {
             errorMessage = "信用额度格式不正确。"
             return
         }
+        guard limit.map({ $0 > .zero }) != false else {
+            errorMessage = "信用额度必须大于 0。"
+            return
+        }
+        var newEffectiveCycleKey: Int?
+        var overrideCycleKey: Int?
+        if let account {
+            let latestRule = account.billingRuleVersions.max {
+                ($0.effectiveCycleKey ?? Int.min) < ($1.effectiveCycleKey ?? Int.min)
+            }
+            let ruleChanged = latestRule?.statementDay != statementDay
+                || latestRule?.repaymentKind != repaymentKind
+                || latestRule?.repaymentValue != repaymentValue
+            if ruleChanged {
+                guard let effectiveCycleKey = Int(effectiveCycleKeyText),
+                      LocalDate.isValidMonthKey(effectiveCycleKey) else {
+                    errorMessage = "生效账期应为有效的 YYYYMM。"
+                    return
+                }
+                guard !account.billingRuleVersions.contains(where: { $0.effectiveCycleKey == effectiveCycleKey }) else {
+                    errorMessage = "该生效账期已有规则版本。"
+                    return
+                }
+                newEffectiveCycleKey = effectiveCycleKey
+            }
+            guard let parsedCycleKey = Int(overrideCycleKeyText),
+                  LocalDate.isValidMonthKey(parsedCycleKey) else {
+                errorMessage = "覆盖账期应为有效的 YYYYMM。"
+                return
+            }
+            overrideCycleKey = parsedCycleKey
+        }
         let target = account ?? CreditCardAccount(bank: bank, creditLimit: limit, limitCurrencyCode: normalizedCurrency, status: status, closedOn: status == .closed ? CardPilotUI.rawDate(closedDate) : nil, notes: notes)
         target.bank = bank
         target.creditLimit = limit
@@ -440,41 +513,65 @@ private struct AccountEditorView: View {
             let newRule = BillingRuleVersion(account: target, statementDay: statementDay, repaymentKind: repaymentKind, repaymentValue: repaymentValue)
             target.billingRuleVersions.append(newRule)
             modelContext.insert(newRule)
-        } else {
-            let latestRule = target.billingRuleVersions.max {
-                ($0.effectiveCycleKey ?? Int.min) < ($1.effectiveCycleKey ?? Int.min)
-            }
-            if latestRule?.statementDay != statementDay
-                || latestRule?.repaymentKind != repaymentKind
-                || latestRule?.repaymentValue != repaymentValue {
-                guard let effectiveCycleKey = Int(effectiveCycleKeyText),
-                      LocalDate.isValidMonthKey(effectiveCycleKey) else {
-                    errorMessage = "生效账期应为有效的 YYYYMM。"
-                    return
-                }
-                guard !target.billingRuleVersions.contains(where: { $0.effectiveCycleKey == effectiveCycleKey }) else {
-                    errorMessage = "该生效账期已有规则版本。"
-                    return
-                }
+        } else if let newEffectiveCycleKey {
                 let newRule = BillingRuleVersion(
                     account: target,
-                    effectiveCycleKey: effectiveCycleKey,
+                    effectiveCycleKey: newEffectiveCycleKey,
                     statementDay: statementDay,
                     repaymentKind: repaymentKind,
                     repaymentValue: repaymentValue
                 )
                 target.billingRuleVersions.append(newRule)
                 modelContext.insert(newRule)
+        }
+        var updatedCycleRecord: BillingCycleRecord?
+        if let overrideCycleKey,
+           hasStatementOverride || hasRepaymentOverride
+                || target.billingCycles.contains(where: { $0.cycleKey == overrideCycleKey }) {
+            let record = target.billingCycles.first { $0.cycleKey == overrideCycleKey }
+                ?? BillingCycleRecord(account: target, cycleKey: overrideCycleKey)
+            if !target.billingCycles.contains(where: { $0.id == record.id }) {
+                target.billingCycles.append(record)
+                modelContext.insert(record)
             }
+            record.statementDateOverride = hasStatementOverride ? CardPilotUI.rawDate(statementOverrideDate) : nil
+            record.repaymentDateOverride = hasRepaymentOverride ? CardPilotUI.rawDate(repaymentOverrideDate) : nil
+            updatedCycleRecord = record
         }
         do {
             try target.validate()
             try target.validateBillingConfiguration()
+            if let overrideCycleKey, let updatedCycleRecord {
+                _ = try BillingCalculator.calculate(
+                    account: target,
+                    cycleKey: overrideCycleKey,
+                    record: updatedCycleRecord,
+                    today: CardPilotUI.localDate(from: Date()),
+                    timeZone: CardPilotUI.homeTimeZone
+                )
+            }
             try modelContext.save()
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = "账户未保存：\(error.localizedDescription)"
         }
+    }
+
+    private func loadCycleOverrides() {
+        guard let account,
+              let cycleKey = Int(overrideCycleKeyText),
+              LocalDate.isValidMonthKey(cycleKey) else { return }
+        let record = account.billingCycles.first { $0.cycleKey == cycleKey }
+        hasStatementOverride = record?.statementDateOverride != nil
+        hasRepaymentOverride = record?.repaymentDateOverride != nil
+        let fallback = (try? LocalDate.firstDay(ofMonthKey: cycleKey).date(in: CardPilotUI.homeTimeZone)) ?? Date()
+        statementOverrideDate = record?.statementDateOverride.flatMap {
+            try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
+        } ?? fallback
+        repaymentOverrideDate = record?.repaymentDateOverride.flatMap {
+            try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
+        } ?? fallback
     }
 }
 
@@ -553,6 +650,14 @@ private struct CardEditorView: View {
             errorMessage = "请选择账户和卡组织。"
             return
         }
+        guard !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "卡产品名称不能为空。"
+            return
+        }
+        guard lastFour.count == 4, lastFour.allSatisfy(\.isNumber) else {
+            errorMessage = "末四位必须是 4 位数字。"
+            return
+        }
         let target = card ?? Card(account: account, productName: productName, network: network, lastFour: lastFour, status: status, notes: notes)
         target.account = account
         target.network = network
@@ -567,6 +672,7 @@ private struct CardEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = "卡片未保存：\(error.localizedDescription)"
         }
     }

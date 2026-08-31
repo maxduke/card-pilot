@@ -73,7 +73,7 @@ final class LocalNotificationScheduler {
         return NotificationScheduleResult(
             scheduledCount: scheduled,
             omittedCount: max(0, plans.count - scheduled),
-            lastScheduledDate: plans.prefix(scheduled).last?.fireDate
+            lastScheduledDate: plans.prefix(scheduled).map(\.fireDate).max()
         )
     }
 
@@ -113,6 +113,8 @@ final class LocalNotificationScheduler {
                     components.calendar = LocalDate.calendar(timeZone: timeZone)
                     guard let fireDate = components.date, fireDate > now else { continue }
                     plans.append(ReminderPlan(
+                        accountID: item.accountID,
+                        cycleKey: item.cycle.cycleKey,
                         identifier: "\(identifierPrefix)\(item.accountID.uuidString).\(item.cycle.cycleKey).\(event.rawValue).\(offset)",
                         title: event == .statement ? "CardPilot 账单日提醒" : "CardPilot 还款日提醒",
                         body: offset == 0
@@ -123,12 +125,28 @@ final class LocalNotificationScheduler {
                 }
             }
         }
-        return plans.sorted {
-            $0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate
+        var groups = Dictionary(grouping: plans, by: \.accountID).mapValues { plans in
+            plans.sorted {
+                $0.cycleKey == $1.cycleKey
+                    ? ($0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate)
+                    : $0.cycleKey < $1.cycleKey
+            }
         }
+        let accountIDs = groups.keys.sorted { $0.uuidString < $1.uuidString }
+        var fairPlans: [ReminderPlan] = []
+        while groups.values.contains(where: { !$0.isEmpty }) {
+            for accountID in accountIDs {
+                guard var group = groups[accountID], !group.isEmpty else { continue }
+                fairPlans.append(group.removeFirst())
+                groups[accountID] = group
+            }
+        }
+        return fairPlans
     }
 
     struct ReminderPlan: Equatable {
+        let accountID: UUID
+        let cycleKey: Int
         let identifier: String
         let title: String
         let body: String

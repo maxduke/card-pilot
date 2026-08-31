@@ -28,5 +28,6 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(plans.count, 4)
         XCTAssertEqual(Set(plans.map(\.identifier)).count, 4)
         XCTAssertTrue(plans.allSatisfy { $0.identifier.hasPrefix(LocalNotificationScheduler.identifierPrefix) })
+        XCTAssertNotEqual(plans[0].accountID, plans[1].accountID)
     }
 }

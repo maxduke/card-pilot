@@ -5,14 +5,26 @@ import UserNotifications
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appLock: AppLockController
-    @AppStorage("cardPilot.statementReminderOffsets") private var statementReminderOffsets = "7,3,1,0"
-    @AppStorage("cardPilot.repaymentReminderOffsets") private var repaymentReminderOffsets = "7,3,1,0"
-    @AppStorage("cardPilot.reminderTime") private var reminderTime = "09:00"
-    @AppStorage("cardPilot.homeTimeZone") private var homeTimeZone = TimeZone.current.identifier
+    @AppStorage("cardPilot.statementReminderOffsets") private var storedStatementOffsets = "7,3,1,0"
+    @AppStorage("cardPilot.repaymentReminderOffsets") private var storedRepaymentOffsets = "7,3,1,0"
+    @AppStorage("cardPilot.reminderTime") private var storedReminderTime = "09:00"
+    @AppStorage("cardPilot.homeTimeZone") private var storedHomeTimeZone = TimeZone.current.identifier
     @AppStorage("cardPilot.appLockEnabled") private var appLockEnabled = false
 
+    @State private var statementReminderOffsets: String
+    @State private var repaymentReminderOffsets: String
+    @State private var reminderTime: String
+    @State private var homeTimeZone: String
     @State private var notificationStatus = "正在检查…"
     @State private var errorMessage: String?
+
+    init() {
+        let defaults = UserDefaults.standard
+        _statementReminderOffsets = State(initialValue: defaults.string(forKey: "cardPilot.statementReminderOffsets") ?? "7,3,1,0")
+        _repaymentReminderOffsets = State(initialValue: defaults.string(forKey: "cardPilot.repaymentReminderOffsets") ?? "7,3,1,0")
+        _reminderTime = State(initialValue: defaults.string(forKey: "cardPilot.reminderTime") ?? "09:00")
+        _homeTimeZone = State(initialValue: defaults.string(forKey: "cardPilot.homeTimeZone") ?? TimeZone.current.identifier)
+    }
 
     var body: some View {
         NavigationStack {
@@ -112,6 +124,10 @@ struct SettingsView: View {
             errorMessage = "请输入有效的 IANA 时区，例如 Asia/Shanghai。"
             return
         }
+        storedStatementOffsets = statementReminderOffsets
+        storedRepaymentOffsets = repaymentReminderOffsets
+        storedReminderTime = reminderTime
+        storedHomeTimeZone = homeTimeZone
         dismiss()
     }
 

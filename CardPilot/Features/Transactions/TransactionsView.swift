@@ -84,7 +84,12 @@ struct TransactionsView: View {
     }
 
     private func save() {
-        do { try modelContext.save() } catch { errorMessage = "数据未保存：\(error.localizedDescription)" }
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            errorMessage = "数据未保存：\(error.localizedDescription)"
+        }
     }
 
     private func delete(_ transaction: Transaction) {
@@ -155,6 +160,7 @@ private struct TransactionEditorView: View {
     @State private var selectedPromotionIDs: Set<UUID>
     @State private var allocationAmounts: [UUID: String]
     @State private var didInitializePromotions = false
+    @State private var showingInactiveCards: Bool
     @State private var errorMessage: String?
 
     private static let noOriginalTransactionID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
@@ -164,13 +170,14 @@ private struct TransactionEditorView: View {
         self.cards = cards
         self.promotions = promotions
         self.transactions = transactions
-        _cardID = State(initialValue: transaction?.card.id ?? cards.first?.id ?? UUID())
+        let initialCard = transaction?.card ?? cards.first(where: { $0.status == .active }) ?? cards.first
+        _cardID = State(initialValue: initialCard?.id ?? UUID())
         _kind = State(initialValue: transaction?.kind ?? .purchase)
         _transactionDate = State(initialValue: transaction.flatMap { try? LocalDate(rawValue: $0.transactionOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _postingDate = State(initialValue: transaction.flatMap { $0.postingOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
         _hasPostingDate = State(initialValue: transaction?.postingOn != nil)
         _amountText = State(initialValue: transaction.map { CardPilotUI.amountText($0.amount) } ?? "")
-        _currencyCode = State(initialValue: transaction?.currencyCode ?? cards.first?.account.limitCurrencyCode ?? "CNY")
+        _currencyCode = State(initialValue: transaction?.currencyCode ?? initialCard?.account.limitCurrencyCode ?? "CNY")
         _merchant = State(initialValue: transaction?.merchant ?? "")
         _category = State(initialValue: transaction?.category ?? "")
         _notes = State(initialValue: transaction?.notes ?? "")
@@ -178,9 +185,11 @@ private struct TransactionEditorView: View {
         _originalTransactionID = State(initialValue: transaction?.originalTransaction?.id ?? Self.noOriginalTransactionID)
         _selectedPromotionIDs = State(initialValue: Set(transaction?.allocations.map { $0.promotion.id } ?? []))
         _allocationAmounts = State(initialValue: Dictionary(uniqueKeysWithValues: (transaction?.allocations ?? []).map { ($0.promotion.id, CardPilotUI.amountText($0.qualifyingAmount)) }))
+        _showingInactiveCards = State(initialValue: transaction?.card.status == .inactive)
     }
 
     private var selectedCard: Card? { cards.first { $0.id == cardID } }
+    private var selectableCards: [Card] { cards.filter { showingInactiveCards || $0.status == .active } }
 
     private var originalTransactions: [Transaction] {
         transactions.filter {
@@ -222,10 +231,11 @@ private struct TransactionEditorView: View {
             Form {
                 Section("交易") {
                     Picker("卡片", selection: $cardID) {
-                        ForEach(cards, id: \.id) { card in
+                        ForEach(selectableCards, id: \.id) { card in
                             Text(cardLabel(card)).tag(card.id)
                         }
                     }
+                    Toggle("显示停用卡", isOn: $showingInactiveCards)
                     Picker("类型", selection: $kind) {
                         Text("消费").tag(TransactionKind.purchase)
                         Text("退款").tag(TransactionKind.refund)
@@ -379,10 +389,25 @@ private struct TransactionEditorView: View {
             errorMessage = "币种应为 3 位大写字母。"
             return
         }
+        if let transaction,
+           !transaction.refunds.isEmpty,
+           (kind != .purchase || card.id != transaction.card.id) {
+            errorMessage = "已有退款的原消费不能更换卡片或改为退款。"
+            return
+        }
         let original = kind == .refund ? originalTransactions.first(where: { $0.id == originalTransactionID }) : nil
         if kind == .refund && original == nil {
             errorMessage = "退款必须关联同一卡片的一笔原消费。"
             return
+        }
+        let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
+        var parsedAmounts: [UUID: Decimal] = [:]
+        for promotion in selectedPromotions {
+            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? ""), amount >= .zero else {
+                errorMessage = "活动“\(promotion.title)”的计入金额格式不正确。"
+                return
+            }
+            parsedAmounts[promotion.id] = amount
         }
         let target = transaction ?? Transaction(
             card: card,
@@ -409,19 +434,11 @@ private struct TransactionEditorView: View {
         target.originalTransaction = original
         target.status = status
 
-        let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
-        var parsedAmounts: [UUID: Decimal] = [:]
-        for promotion in selectedPromotions {
-            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? ""), amount >= .zero else {
-                errorMessage = "活动“\(promotion.title)”的计入金额格式不正确。"
-                return
-            }
-            parsedAmounts[promotion.id] = amount
-        }
-
         do {
             try target.validate()
-            let existingAllocations = Dictionary(uniqueKeysWithValues: target.allocations.map { ($0.promotion.id, $0) })
+            let existingAllocations = target.allocations.reduce(into: [UUID: PromotionAllocation]()) {
+                if $0[$1.promotion.id] == nil { $0[$1.promotion.id] = $1 }
+            }
             if transaction == nil { modelContext.insert(target) }
             for allocation in target.allocations where !selectedPromotionIDs.contains(allocation.promotion.id) {
                 modelContext.delete(allocation)
@@ -445,6 +462,7 @@ private struct TransactionEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            modelContext.rollback()
             errorMessage = "交易未保存：\(error.localizedDescription)"
         }
     }

@@ -129,6 +129,7 @@ enum BillingCalculator {
         }
 
         let repaymentDate = override?.repaymentDate ?? calculatedRepaymentDate
+        guard repaymentDate > statementDate else { throw BillingCalculationError.invalidOverride }
         let repaidAt = override?.repaidAt
         let status: BillingCycle.Status
         if repaidAt != nil {
@@ -154,6 +155,8 @@ enum BillingCalculator {
         today: LocalDate,
         timeZone: TimeZone = .current
     ) throws -> BillingCycle {
+        try account.validate()
+        try account.validateBillingConfiguration()
         let rules = account.billingRuleVersions.map {
             BillingRuleInput(
                 effectiveCycleKey: $0.effectiveCycleKey,
@@ -162,15 +165,17 @@ enum BillingCalculator {
                 repaymentValue: $0.repaymentValue
             )
         }
-        let override = record.map {
-            BillingCycleOverride(
-                statementDate: $0.statementDateOverride.flatMap { try? LocalDate(rawValue: $0) },
-                repaymentDate: $0.repaymentDateOverride.flatMap { try? LocalDate(rawValue: $0) },
-                repaidAt: $0.repaidAt
+        let override: BillingCycleOverride?
+        if let record {
+            guard record.cycleKey == cycleKey else { throw BillingCalculationError.invalidOverride }
+            try record.validate()
+            override = BillingCycleOverride(
+                statementDate: try record.statementDateOverride.map { try LocalDate(rawValue: $0) },
+                repaymentDate: try record.repaymentDateOverride.map { try LocalDate(rawValue: $0) },
+                repaidAt: record.repaidAt
             )
-        }
-        if let record, record.cycleKey != cycleKey {
-            throw BillingCalculationError.invalidOverride
+        } else {
+            override = nil
         }
         return try calculate(
             accountStatus: account.status,

@@ -12,6 +12,7 @@ struct CardPilotApp: App {
         }
         do {
             let container = try CardPilotPersistence.makeContainer()
+            container.mainContext.autosaveEnabled = false
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<CardNetwork>()
             if try context.fetchCount(descriptor) == 0 {

@@ -7,6 +7,7 @@ struct DashboardView: View {
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Binding var showingSettings: Bool
     @State private var errorMessage: String?
+    @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
 
     private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
 
@@ -14,6 +15,12 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
+                    if !notificationWarning.isEmpty {
+                        Label(notificationWarning, systemImage: "bell.badge")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("通知提示：\(notificationWarning)")
+                    }
                     if billingItems.isEmpty && activePromotions.isEmpty {
                         EmptyStateView(
                             title: "开始使用 CardPilot",
@@ -36,7 +43,12 @@ struct DashboardView: View {
                     if !activePromotions.isEmpty {
                         DashboardSection(title: "促销进度") {
                             ForEach(activePromotions) { promotion in
-                                PromotionProgressRow(promotion: promotion)
+                                NavigationLink {
+                                    PromotionDetailView(promotion: promotion)
+                                } label: {
+                                    PromotionProgressRow(promotion: promotion)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
 
@@ -92,9 +104,9 @@ struct DashboardView: View {
     private var billingItems: [DashboardBillingItem] {
         var result: [DashboardBillingItem] = []
         for account in accounts {
-            for offset in -2...2 {
-                let cycleDate = today.addingMonths(offset)
-                let cycleKey = cycleDate.monthKey
+            let nearbyCycleKeys = (-2...2).map { today.addingMonths($0).monthKey }
+            let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
+            for cycleKey in Set(nearbyCycleKeys + savedUnpaidCycleKeys) {
                 let record = account.billingCycles.first { $0.cycleKey == cycleKey }
                 guard let cycle = try? BillingCalculator.calculate(
                     account: account,
@@ -149,8 +161,10 @@ struct DashboardView: View {
         record.repaidAt = .now
         do {
             try record.validate()
+            try item.account.validateBillingConfiguration()
             try modelContext.save()
         } catch {
+            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }

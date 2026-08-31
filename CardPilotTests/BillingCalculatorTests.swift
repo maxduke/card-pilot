@@ -104,4 +104,27 @@ final class BillingCalculatorTests: XCTestCase {
         XCTAssertEqual(leapCycle.repaymentDate.rawValue, 20240301)
         XCTAssertEqual(yearCycle.repaymentDate.rawValue, 20250101)
     }
+
+    func testRepaymentOverrideMustFollowStatementDate() throws {
+        XCTAssertThrowsError(try BillingCalculator.calculate(
+            accountStatus: .active,
+            closedOn: nil,
+            cycleKey: 202608,
+            rules: [BillingRuleInput(
+                effectiveCycleKey: nil,
+                statementDay: 10,
+                repaymentKind: .daysAfterStatement,
+                repaymentValue: 20
+            )],
+            override: BillingCycleOverride(
+                statementDate: try LocalDate(rawValue: 20260815),
+                repaymentDate: try LocalDate(rawValue: 20260815),
+                repaidAt: nil
+            ),
+            today: try LocalDate(rawValue: 20260801),
+            timeZone: utc
+        )) { error in
+            XCTAssertEqual(error as? BillingCalculationError, .invalidOverride)
+        }
+    }
 }

@@ -6,10 +6,16 @@ import LocalAuthentication
 final class AppLockController: ObservableObject {
     @Published private(set) var isEnabled: Bool
     @Published private(set) var isLocked: Bool
+    private var authenticationGeneration = 0
+    private let authenticateDeviceOwner: () async -> Bool
 
-    init(enabled: Bool = false) {
+    init(
+        enabled: Bool = false,
+        authenticateDeviceOwner: @escaping () async -> Bool = AppLockController.authenticateDeviceOwner
+    ) {
         isEnabled = enabled
         isLocked = enabled
+        self.authenticateDeviceOwner = authenticateDeviceOwner
     }
 
     func canUseDeviceAuthentication() -> Bool {
@@ -19,6 +25,7 @@ final class AppLockController: ObservableObject {
     @discardableResult
     func setEnabled(_ enabled: Bool) -> Bool {
         guard !enabled || canUseDeviceAuthentication() else { return false }
+        authenticationGeneration += 1
         isEnabled = enabled
         isLocked = enabled
         return true
@@ -26,6 +33,7 @@ final class AppLockController: ObservableObject {
 
     func lockIfNeeded() {
         if isEnabled {
+            authenticationGeneration += 1
             isLocked = true
         }
     }
@@ -40,23 +48,19 @@ final class AppLockController: ObservableObject {
             return true
         }
 
-        let context = LAContext()
-        var canEvaluateError: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &canEvaluateError) else {
-            isLocked = true
-            return false
-        }
+        let generation = authenticationGeneration
+        let authenticated = await authenticateDeviceOwner()
+        guard generation == authenticationGeneration else { return false }
+        isLocked = !authenticated
+        return authenticated
+    }
 
-        do {
-            let authenticated = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "解锁 CardPilot"
-            )
-            isLocked = !authenticated
-            return authenticated
-        } catch {
-            isLocked = true
-            return false
-        }
+    private static func authenticateDeviceOwner() async -> Bool {
+        let context = LAContext()
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else { return false }
+        return (try? await context.evaluatePolicy(
+            .deviceOwnerAuthentication,
+            localizedReason: "解锁 CardPilot"
+        )) == true
     }
 }

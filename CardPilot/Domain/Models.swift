@@ -212,6 +212,7 @@ final class CreditCardAccount {
         guard Set(cycleKeys).count == cycleKeys.count else {
             throw ModelValidationError.duplicateBillingCycle
         }
+        try billingCycles.forEach { try $0.validate() }
     }
 }
 
@@ -559,6 +560,13 @@ final class Transaction {
                   originalTransaction.card.id == card.id else {
                 throw ModelValidationError.invalidTransactionRelationship
             }
+        }
+        guard refunds.allSatisfy({
+            $0.kind == .refund
+                && $0.originalTransaction?.id == id
+                && $0.card.id == card.id
+        }) else {
+            throw ModelValidationError.invalidTransactionRelationship
         }
     }
 }

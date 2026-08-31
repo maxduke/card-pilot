@@ -41,4 +41,26 @@ final class PersistenceTests: XCTestCase {
             XCTAssertEqual(error as? ModelValidationError, .duplicateBillingRule)
         }
     }
+
+    func testReferencedBankCannotBeDeleted() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let bank = Bank(name: "测试银行")
+        let account = CreditCardAccount(bank: bank)
+        let rule = BillingRuleVersion(
+            account: account,
+            statementDay: 5,
+            repaymentKind: .fixedDay,
+            repaymentValue: 25
+        )
+        context.insert(bank)
+        context.insert(account)
+        context.insert(rule)
+        try context.save()
+
+        context.delete(bank)
+        XCTAssertThrowsError(try context.save())
+        context.rollback()
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Bank>()), 1)
+    }
 }
