@@ -561,16 +561,20 @@ private struct AllocationEditorView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
             }
-            .alert("退款分配超出可退范围", isPresented: Binding(
-                get: { overRefundWarningMessage != nil },
-                set: { if !$0 { overRefundWarningMessage = nil } }
-            )) {
+            .alert("退款分配超出可退范围", isPresented: overRefundWarningPresented) {
                 Button("取消", role: .cancel) {}
                 Button("仍然保存", role: .destructive) { save(allowingOverRefund: true) }
             } message: {
                 Text(overRefundWarningMessage ?? "")
             }
         }
+    }
+
+    private var overRefundWarningPresented: Binding<Bool> {
+        Binding(
+            get: { overRefundWarningMessage != nil },
+            set: { if !$0 { overRefundWarningMessage = nil } }
+        )
     }
 
     private func transactionLabel(_ transaction: Transaction) -> String {
