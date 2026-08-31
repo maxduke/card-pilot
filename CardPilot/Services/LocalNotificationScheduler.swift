@@ -127,9 +127,7 @@ final class LocalNotificationScheduler {
         }
         var groups = Dictionary(grouping: plans, by: \.accountID).mapValues { plans in
             plans.sorted {
-                $0.cycleKey == $1.cycleKey
-                    ? ($0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate)
-                    : $0.cycleKey < $1.cycleKey
+                $0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate
             }
         }
         let accountIDs = groups.keys.sorted { $0.uuidString < $1.uuidString }

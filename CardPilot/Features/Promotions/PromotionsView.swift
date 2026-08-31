@@ -163,6 +163,7 @@ private struct PromotionEditorView: View {
     @State private var selectedNetworkIDs: Set<UUID>
     @State private var selectedCardIDs: Set<UUID>
     @State private var enrollmentStatus: EnrollmentStatus
+    @State private var hasEnrolledOn: Bool
     @State private var enrolledOn: Date
     @State private var hasEnrollmentDeadline: Bool
     @State private var enrollmentDeadline: Date
@@ -189,6 +190,7 @@ private struct PromotionEditorView: View {
         _selectedNetworkIDs = State(initialValue: Set(promotion?.organizingNetworks.map(\.id) ?? []))
         _selectedCardIDs = State(initialValue: Set(promotion?.eligibleCards.map(\.id) ?? []))
         _enrollmentStatus = State(initialValue: promotion?.enrollmentStatus ?? .notRequired)
+        _hasEnrolledOn = State(initialValue: promotion?.enrolledOn != nil)
         _enrolledOn = State(initialValue: promotion.flatMap { $0.enrolledOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
         _hasEnrollmentDeadline = State(initialValue: promotion?.enrollmentDeadline != nil)
         _enrollmentDeadline = State(initialValue: promotion.flatMap { $0.enrollmentDeadline.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
@@ -250,7 +252,10 @@ private struct PromotionEditorView: View {
                         Text("已报名").tag(EnrollmentStatus.enrolled)
                     }
                     if enrollmentStatus == .enrolled {
-                        DatePicker("报名日期", selection: $enrolledOn, displayedComponents: .date)
+                        Toggle("记录报名日期", isOn: $hasEnrolledOn)
+                        if hasEnrolledOn {
+                            DatePicker("报名日期", selection: $enrolledOn, displayedComponents: .date)
+                        }
                     }
                     if enrollmentStatus != .notRequired {
                         Toggle("设置报名截止日", isOn: $hasEnrollmentDeadline)
@@ -325,7 +330,7 @@ private struct PromotionEditorView: View {
         let startOn = CardPilotUI.rawDate(startDate)
         let endOn = CardPilotUI.rawDate(endDate)
         let status = enrollmentStatus
-        let enrolledValue = status == .enrolled ? CardPilotUI.rawDate(enrolledOn) : nil
+        let enrolledValue = status == .enrolled && hasEnrolledOn ? CardPilotUI.rawDate(enrolledOn) : nil
         let deadlineValue = status == .notRequired || !hasEnrollmentDeadline ? nil : CardPilotUI.rawDate(enrollmentDeadline)
         if let deadlineValue, deadlineValue > endOn {
             errorMessage = "报名截止日不能晚于活动结束日。"

@@ -555,10 +555,11 @@ final class Transaction {
         case .purchase:
             guard originalTransaction == nil else { throw ModelValidationError.invalidTransactionRelationship }
         case .refund:
-            guard let originalTransaction,
-                  originalTransaction.kind == .purchase,
-                  originalTransaction.card.id == card.id else {
-                throw ModelValidationError.invalidTransactionRelationship
+            if let originalTransaction {
+                guard originalTransaction.kind == .purchase,
+                      originalTransaction.card.id == card.id else {
+                    throw ModelValidationError.invalidTransactionRelationship
+                }
             }
         }
         guard refunds.allSatisfy({

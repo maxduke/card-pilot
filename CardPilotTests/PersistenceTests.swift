@@ -54,6 +54,18 @@ final class PersistenceTests: XCTestCase {
         )
         XCTAssertNoThrow(try enrolledPromotion.validate())
 
+        let enrolledWithoutDeadline = Promotion(
+            title: "已报名但无截止日",
+            startOn: 20260801,
+            endOn: 20260831,
+            enrollmentStatus: .enrolled,
+            enrolledOn: nil,
+            enrollmentDeadline: nil,
+            targetAmount: 100,
+            progressCurrencyCode: "CNY"
+        )
+        XCTAssertNoThrow(try enrolledWithoutDeadline.validate())
+
         let invalidPromotion = Promotion(
             title: "不需要报名",
             startOn: 20260801,
@@ -87,6 +99,21 @@ final class PersistenceTests: XCTestCase {
         XCTAssertTrue(try context.fetch(FetchDescriptor<CreditCardAccount>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<BillingCycleRecord>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<BillingRuleVersion>()).isEmpty)
+    }
+
+    func testRefundMayOmitOriginalPurchase() throws {
+        let bank = Bank(name: "退款测试银行")
+        let account = CreditCardAccount(bank: bank)
+        let card = Card(account: account, productName: "测试卡", network: CardNetwork.makeBuiltIns()[0], lastFour: "1234")
+        let refund = Transaction(
+            card: card,
+            kind: .refund,
+            transactionOn: 20260810,
+            amount: 100,
+            currencyCode: "CNY",
+            merchant: "测试商户"
+        )
+        XCTAssertNoThrow(try refund.validate())
     }
 
 }

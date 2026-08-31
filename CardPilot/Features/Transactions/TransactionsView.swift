@@ -159,6 +159,7 @@ private struct TransactionEditorView: View {
     @State private var originalTransactionID: UUID
     @State private var selectedPromotionIDs: Set<UUID>
     @State private var allocationAmounts: [UUID: String]
+    @State private var manuallyEditedAllocationIDs: Set<UUID> = []
     @State private var didInitializePromotions = false
     @State private var showingInactiveCards: Bool
     @State private var errorMessage: String?
@@ -242,7 +243,7 @@ private struct TransactionEditorView: View {
                     }
                     if kind == .refund {
                         Picker("原消费", selection: $originalTransactionID) {
-                            Text("请选择原消费").tag(Self.noOriginalTransactionID)
+                            Text("不关联原消费（可选）").tag(Self.noOriginalTransactionID)
                             ForEach(originalTransactions, id: \.id) { original in
                                 Text(transactionLabel(original)).tag(original.id)
                             }
@@ -311,6 +312,8 @@ private struct TransactionEditorView: View {
             .onChange(of: transactionDate) { _, _ in refreshCandidates() }
             .onChange(of: postingDate) { _, _ in refreshCandidates() }
             .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
+            .onChange(of: amountText) { _, _ in refreshDefaultAllocationAmounts() }
+            .onChange(of: currencyCode) { _, _ in refreshDefaultAllocationAmounts() }
             .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
@@ -336,7 +339,13 @@ private struct TransactionEditorView: View {
     }
 
     private func amountBinding(_ id: UUID) -> Binding<String> {
-        Binding(get: { allocationAmounts[id] ?? "" }, set: { allocationAmounts[id] = $0 })
+        Binding(
+            get: { allocationAmounts[id] ?? "" },
+            set: {
+                allocationAmounts[id] = $0
+                manuallyEditedAllocationIDs.insert(id)
+            }
+        )
     }
 
     private func initializePromotions() {
@@ -356,6 +365,14 @@ private struct TransactionEditorView: View {
         selectedPromotionIDs.formUnion(ids)
         for promotion in candidatePromotions where allocationAmounts[promotion.id] == nil {
             allocationAmounts[promotion.id] = defaultAmount(for: promotion)
+        }
+    }
+
+    private func refreshDefaultAllocationAmounts() {
+        guard transaction == nil else { return }
+        for id in selectedPromotionIDs where !manuallyEditedAllocationIDs.contains(id) {
+            guard let promotion = promotions.first(where: { $0.id == id }) else { continue }
+            allocationAmounts[id] = defaultAmount(for: promotion)
         }
     }
 
@@ -396,10 +413,6 @@ private struct TransactionEditorView: View {
             return
         }
         let original = kind == .refund ? originalTransactions.first(where: { $0.id == originalTransactionID }) : nil
-        if kind == .refund && original == nil {
-            errorMessage = "退款必须关联同一卡片的一笔原消费。"
-            return
-        }
         let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
         var parsedAmounts: [UUID: Decimal] = [:]
         for promotion in selectedPromotions {
