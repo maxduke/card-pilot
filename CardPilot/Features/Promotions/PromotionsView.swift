@@ -12,6 +12,8 @@ struct PromotionsView: View {
     @State private var editingPromotion: Promotion?
     @State private var showingArchived = false
     @State private var errorMessage: String?
+    @State private var promotionPendingDeletion: Promotion?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -38,14 +40,16 @@ struct PromotionsView: View {
                                     Label("编辑促销", systemImage: "pencil")
                                 }
                                 Button(role: .destructive) {
-                                    delete(promotion)
+                                    requestDelete(promotion)
                                 } label: {
                                     Label("删除促销", systemImage: "trash")
                                 }
                             }
                         }
                         .onDelete { offsets in
-                            offsets.map { visiblePromotions[$0] }.forEach(delete)
+                            if let promotion = offsets.map({ visiblePromotions[$0] }).first {
+                                requestDelete(promotion)
+                            }
                         }
                     }
                     .listStyle(.insetGrouped)
@@ -71,6 +75,19 @@ struct PromotionsView: View {
             .sheet(isPresented: $showingEditor) {
                 PromotionEditorView(promotion: editingPromotion, banks: banks, networks: networks, cards: cards)
             }
+            .confirmationDialog("确认删除促销？", isPresented: $showingDeleteConfirmation) {
+                Button("永久删除", role: .destructive) {
+                    if let promotionPendingDeletion {
+                        delete(promotionPendingDeletion)
+                    }
+                    promotionPendingDeletion = nil
+                }
+                Button("取消", role: .cancel) {
+                    promotionPendingDeletion = nil
+                }
+            } message: {
+                Text("将永久删除“" + (promotionPendingDeletion?.title ?? "该促销") + "”。")
+            }
             .alert("无法完成操作", isPresented: errorPresented) {
                 Button("好", role: .cancel) { errorMessage = nil }
             } message: {
@@ -85,6 +102,15 @@ struct PromotionsView: View {
 
     private var errorPresented: Binding<Bool> {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func requestDelete(_ promotion: Promotion) {
+        guard promotion.allocations.isEmpty else {
+            delete(promotion)
+            return
+        }
+        promotionPendingDeletion = promotion
+        showingDeleteConfirmation = true
     }
 
     private func delete(_ promotion: Promotion) {

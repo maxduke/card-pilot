@@ -10,6 +10,8 @@ struct TransactionsView: View {
     @State private var editingTransaction: Transaction?
     @State private var showingEditor = false
     @State private var errorMessage: String?
+    @State private var filterCardID: UUID?
+    @State private var searchText = ""
 
     var body: some View {
         NavigationStack {
@@ -20,9 +22,15 @@ struct TransactionsView: View {
                         systemImage: "list.bullet.rectangle",
                         message: "记录一笔消费后，可以从候选促销中选择要计入的活动。"
                     )
+                } else if filteredTransactions.isEmpty {
+                    EmptyStateView(
+                        title: "没有匹配交易",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        message: "可以更换卡片筛选或搜索商户、分类。"
+                    )
                 } else {
                     List {
-                        ForEach(transactions, id: \.id) { transaction in
+                        ForEach(filteredTransactions, id: \.id) { transaction in
                             TransactionRow(transaction: transaction)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
@@ -57,6 +65,16 @@ struct TransactionsView: View {
             }
             .navigationTitle("交易")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Picker("筛选卡片", selection: $filterCardID) {
+                        Text("全部卡片").tag(nil as UUID?)
+                        ForEach(cards.sorted { cardLabel($0) < cardLabel($1) }, id: \.id) { card in
+                            Text(cardLabel(card)).tag(Optional(card.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityLabel("按卡片筛选交易")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         editingTransaction = nil
@@ -76,7 +94,12 @@ struct TransactionsView: View {
             } message: {
                 Text(errorMessage ?? "未知错误")
             }
+            .searchable(text: $searchText, prompt: "搜索商户或分类")
         }
+    }
+
+    private var filteredTransactions: [Transaction] {
+        filterTransactions(transactions, cardID: filterCardID, searchText: searchText)
     }
 
     private var errorPresented: Binding<Bool> {
@@ -99,6 +122,16 @@ struct TransactionsView: View {
         }
         modelContext.delete(transaction)
         save()
+    }
+}
+
+func filterTransactions(_ transactions: [Transaction], cardID: UUID?, searchText: String) -> [Transaction] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return transactions.filter { transaction in
+        guard cardID == nil || transaction.card.id == cardID else { return false }
+        guard !query.isEmpty else { return true }
+        return transaction.merchant.localizedCaseInsensitiveContains(query)
+            || transaction.category.localizedCaseInsensitiveContains(query)
     }
 }
 
@@ -132,9 +165,13 @@ private struct TransactionRow: View {
     }
 
     private func cardName(_ card: Card) -> String {
-        let name = card.nickname.isEmpty ? card.productName : card.nickname
-        return "\(name) · •••• \(card.lastFour)"
+        return cardLabel(card)
     }
+}
+
+private func cardLabel(_ card: Card) -> String {
+    let name = card.nickname.isEmpty ? card.productName : card.nickname
+    return "\(name) · •••• \(card.lastFour)"
 }
 
 private struct TransactionEditorView: View {

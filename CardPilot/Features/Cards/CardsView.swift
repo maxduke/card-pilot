@@ -195,6 +195,11 @@ private struct AccountRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(account.bank.name)
                     .font(.subheadline.weight(.semibold))
+                if let creditLimit = account.creditLimit {
+                    Text("额度 \(CardPilotUI.amountText(creditLimit, currencyCode: account.limitCurrencyCode))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 let rule = displayedRule
                 if let rule {
                     Text("账单日每月 \(rule.statementDay) 日 · \(repaymentText(rule))")
@@ -204,6 +209,17 @@ private struct AccountRow: View {
                     Text("尚未设置账务规则")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                }
+                let summary = billingSummary
+                if let nextStatementDate = summary.nextStatementDate {
+                    Text("下次账单 \(CardPilotUI.dateText(nextStatementDate))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let nextRepaymentDate = summary.nextRepaymentDate {
+                    Text("\(summary.nextRepaymentStatus == .overdue ? "逾期还款" : "下次还款") \(CardPilotUI.dateText(nextRepaymentDate))")
+                        .font(.caption)
+                        .foregroundStyle(summary.nextRepaymentStatus == .overdue ? .orange : .secondary)
                 }
             }
             Spacer()
@@ -216,7 +232,6 @@ private struct AccountRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onEdit)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("信用卡账户，\(account.bank.name)")
         .contextMenu {
             Button(action: onEdit) { Label("编辑账户", systemImage: "pencil") }
             Button(role: .destructive, action: onDelete) { Label("删除账户", systemImage: "trash") }
@@ -244,6 +259,36 @@ private struct AccountRow: View {
             return nil
         }
         return account.billingRuleVersions.first { $0.effectiveCycleKey == selected.effectiveCycleKey }
+    }
+
+    private var billingSummary: CardAccountBillingSummary {
+        CardAccountBillingSummaryCalculator.calculate(
+            status: account.status,
+            closedOn: account.closedOn.flatMap { try? LocalDate(rawValue: $0) },
+            trackingStartCycleKey: account.trackingStartCycleKey,
+            rules: account.billingRuleVersions.map {
+                BillingRuleInput(
+                    effectiveCycleKey: $0.effectiveCycleKey,
+                    statementDay: $0.statementDay,
+                    repaymentKind: $0.repaymentKind,
+                    repaymentValue: $0.repaymentValue
+                )
+            },
+            overrides: cycleOverrides,
+            today: CardPilotUI.localDate(from: Date()),
+            timeZone: CardPilotUI.homeTimeZone
+        )
+    }
+
+    private var cycleOverrides: [Int: BillingCycleOverride] {
+        account.billingCycles.reduce(into: [Int: BillingCycleOverride]()) { result, record in
+            guard result[record.cycleKey] == nil else { return }
+            result[record.cycleKey] = BillingCycleOverride(
+                statementDate: record.statementDateOverride.flatMap { try? LocalDate(rawValue: $0) },
+                repaymentDate: record.repaymentDateOverride.flatMap { try? LocalDate(rawValue: $0) },
+                repaidAt: record.repaidAt
+            )
+        }
     }
 }
 
