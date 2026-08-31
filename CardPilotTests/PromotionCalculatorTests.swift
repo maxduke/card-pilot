@@ -98,8 +98,7 @@ final class PromotionCalculatorTests: XCTestCase {
         let editingRefundID = UUID()
         let overRefunded = PromotionCalculator.refundExceedsOriginalAmount(
             originalAmount: 100,
-            currentRefundAmount: 60,
-            currentRefundStatus: .active,
+            proposedRefundAmount: 60,
             otherRefunds: [
                 (editingRefundID, 90, .active),
                 (UUID(), 50, .active),
@@ -111,9 +110,14 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertTrue(overRefunded)
         XCTAssertFalse(PromotionCalculator.refundExceedsOriginalAmount(
             originalAmount: 100,
-            currentRefundAmount: 60,
-            currentRefundStatus: .reversed,
+            proposedRefundAmount: .zero,
             otherRefunds: [],
+            excludingTransactionID: nil
+        ))
+        XCTAssertTrue(PromotionCalculator.refundExceedsOriginalAmount(
+            originalAmount: 50,
+            proposedRefundAmount: .zero,
+            otherRefunds: [(UUID(), 80, .active)],
             excludingTransactionID: nil
         ))
     }

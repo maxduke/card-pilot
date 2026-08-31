@@ -496,6 +496,7 @@ private struct AllocationEditorView: View {
     @State private var transactionID: UUID
     @State private var amountText: String
     @State private var errorMessage: String?
+    @State private var overRefundWarningMessage: String?
 
     init(promotion: Promotion, allocation: PromotionAllocation?) {
         self.promotion = promotion
@@ -560,6 +561,15 @@ private struct AllocationEditorView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
             }
+            .alert("退款分配超出可退范围", isPresented: Binding(
+                get: { overRefundWarningMessage != nil },
+                set: { if !$0 { overRefundWarningMessage = nil } }
+            )) {
+                Button("取消", role: .cancel) {}
+                Button("仍然保存", role: .destructive) { save(allowingOverRefund: true) }
+            } message: {
+                Text(overRefundWarningMessage ?? "")
+            }
         }
     }
 
@@ -583,7 +593,7 @@ private struct AllocationEditorView: View {
         setInitialAmount()
     }
 
-    private func save() {
+    private func save(allowingOverRefund: Bool = false) {
         guard let transaction = selectedTransaction else { errorMessage = "请选择交易。"; return }
         guard let amount = CardPilotUI.decimal(amountText), amount >= .zero else {
             errorMessage = "合格金额应为不小于 0 的数字。"
@@ -591,6 +601,31 @@ private struct AllocationEditorView: View {
         }
         if allocation == nil && promotion.allocations.contains(where: { $0.transaction.id == transaction.id }) {
             errorMessage = "这笔交易已经分配给该促销。"
+            return
+        }
+        if !allowingOverRefund,
+           transaction.kind == .refund,
+           transaction.status == .active,
+           let original = transaction.originalTransaction,
+           transaction.currencyCode == original.currencyCode,
+           PromotionCalculator.overRefundedPromotionIDs(
+               originalAllocations: original.allocations.map {
+                   (promotionID: $0.promotion.id, qualifyingAmount: $0.qualifyingAmount)
+               },
+               refundAllocations: [(promotionID: promotion.id, qualifyingAmount: amount)],
+               otherRefundAllocations: original.refunds.flatMap { refund in
+                   refund.allocations.filter { $0.id != allocation?.id }.map {
+                       (
+                           transactionID: refund.id,
+                           promotionID: $0.promotion.id,
+                           qualifyingAmount: $0.qualifyingAmount,
+                           status: refund.status
+                       )
+                   }
+               },
+               excludingTransactionID: transaction.id
+           ).contains(promotion.id) {
+            overRefundWarningMessage = "该促销的退款分配将超过原消费的可退余额。"
             return
         }
         let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion, qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)

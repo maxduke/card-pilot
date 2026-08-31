@@ -154,7 +154,7 @@ final class PersistenceTests: XCTestCase {
             repaymentKind: .fixedDay,
             repaymentValue: 12
         )
-        XCTAssertThrowsError(try account.validateNewBillingRule(current, currentMonthKey: 202608)) { error in
+        XCTAssertThrowsError(try account.validateNewBillingRuleEffectiveCycle(current.effectiveCycleKey, currentMonthKey: 202608)) { error in
             XCTAssertEqual(error as? ModelValidationError, .effectiveCycleMustBeFuture)
         }
 
@@ -165,7 +165,7 @@ final class PersistenceTests: XCTestCase {
             repaymentKind: .fixedDay,
             repaymentValue: 13
         )
-        XCTAssertNoThrow(try account.validateNewBillingRule(future, currentMonthKey: 202608))
+        XCTAssertNoThrow(try account.validateNewBillingRuleEffectiveCycle(future.effectiveCycleKey, currentMonthKey: 202608))
     }
 
 }

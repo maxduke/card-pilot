@@ -481,13 +481,26 @@ private struct TransactionEditorView: View {
             parsedAmounts[promotion.id] = amount
         }
         if !allowingOverRefund,
+           kind == .purchase,
+           let transaction,
+           PromotionCalculator.refundExceedsOriginalAmount(
+               originalAmount: amount,
+               proposedRefundAmount: .zero,
+               otherRefunds: transaction.refunds
+                   .filter { $0.currencyCode == normalizedCurrency }
+                   .map { (transactionID: $0.id, amount: $0.amount, status: $0.status) },
+               excludingTransactionID: nil
+           ) {
+            overRefundWarningMessage = "关联有效退款合计高于修改后的原消费金额。"
+            return
+        }
+        if !allowingOverRefund,
            let original,
            original.currencyCode == normalizedCurrency {
             var warnings: [String] = []
             if PromotionCalculator.refundExceedsOriginalAmount(
                 originalAmount: original.amount,
-                currentRefundAmount: amount,
-                currentRefundStatus: status,
+                proposedRefundAmount: status == .active ? amount : .zero,
                 otherRefunds: original.refunds.map {
                     (transactionID: $0.id, amount: $0.amount, status: $0.status)
                 },

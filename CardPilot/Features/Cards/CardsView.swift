@@ -512,6 +512,15 @@ private struct AccountEditorView: View {
                     errorMessage = "该生效账期已有规则版本。"
                     return
                 }
+                do {
+                    try account.validateNewBillingRuleEffectiveCycle(
+                        effectiveCycleKey,
+                        currentMonthKey: CardPilotUI.localDate(from: Date()).monthKey
+                    )
+                } catch {
+                    errorMessage = "规则变更生效账期必须晚于当前账期。"
+                    return
+                }
                 newEffectiveCycleKey = effectiveCycleKey
             }
             guard let parsedCycleKey = Int(overrideCycleKeyText),
@@ -550,15 +559,6 @@ private struct AccountEditorView: View {
                     repaymentKind: repaymentKind,
                     repaymentValue: repaymentValue
                 )
-                do {
-                    try target.validateNewBillingRule(
-                        newRule,
-                        currentMonthKey: CardPilotUI.localDate(from: Date()).monthKey
-                    )
-                } catch {
-                    errorMessage = "规则变更生效账期必须晚于当前账期。"
-                    return
-                }
                 target.billingRuleVersions.append(newRule)
                 modelContext.insert(newRule)
         }

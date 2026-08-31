@@ -200,7 +200,16 @@ struct DashboardView: View {
 }
 
 func selectDashboardBillingItems(_ items: [DashboardBillingItem]) -> [DashboardBillingItem] {
-    let statements = items.filter { $0.kind == .statement }
+    let statements = Dictionary(
+        grouping: items.filter { $0.kind == .statement },
+        by: { $0.account.id }
+    )
+    .values
+    .compactMap { items in
+        items.min {
+            $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date
+        }
+    }
     let repayments = items.filter { $0.kind == .repayment }
     let overdue = repayments.filter { $0.status == .overdue }
     let nearestPending = Dictionary(grouping: repayments.filter { $0.status == .pending }, by: { $0.account.id })

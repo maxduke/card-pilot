@@ -224,15 +224,13 @@ final class CreditCardAccount {
         try billingCycles.forEach { try $0.validate() }
     }
 
-    func validateNewBillingRule(_ rule: BillingRuleVersion, currentMonthKey: Int) throws {
+    func validateNewBillingRuleEffectiveCycle(_ effectiveCycleKey: Int?, currentMonthKey: Int) throws {
         guard LocalDate.isValidMonthKey(currentMonthKey),
-              let owner = rule.account,
-              owner.id == id else {
+              let effectiveCycleKey,
+              LocalDate.isValidMonthKey(effectiveCycleKey) else {
             throw ModelValidationError.invalidCycleKey
         }
-        try rule.validate()
-        guard let effectiveCycleKey = rule.effectiveCycleKey,
-              effectiveCycleKey > currentMonthKey else {
+        guard effectiveCycleKey > currentMonthKey else {
             throw ModelValidationError.effectiveCycleMustBeFuture
         }
     }

@@ -99,6 +99,7 @@ final class DashboardTests: XCTestCase {
 
         let items = try [
             item(account: accountOne, cycleKey: 202608, kind: .statement, date: 20260805, status: .pending),
+            item(account: accountOne, cycleKey: 202609, kind: .statement, date: 20260905, status: .pending),
             item(account: accountOne, cycleKey: 202606, kind: .repayment, date: 20260625, status: .overdue),
             item(account: accountOne, cycleKey: 202607, kind: .repayment, date: 20260725, status: .overdue),
             item(account: accountOne, cycleKey: 202609, kind: .repayment, date: 20260925, status: .pending),
@@ -110,6 +111,7 @@ final class DashboardTests: XCTestCase {
 
         let selected = selectDashboardBillingItems(items)
         XCTAssertEqual(selected.filter { $0.kind == .statement }.count, 1)
+        XCTAssertEqual(selected.filter { $0.kind == .statement }.map(\.cycleKey), [202608])
         XCTAssertEqual(selected.filter { $0.status == .overdue }.count, 3)
         XCTAssertEqual(selected.filter { $0.account.id == accountOne.id }.map(\.cycleKey).sorted(), [202606, 202607, 202608, 202609])
         XCTAssertEqual(selected.filter { $0.account.id == accountTwo.id }.map(\.cycleKey).sorted(), [202606, 202609])
