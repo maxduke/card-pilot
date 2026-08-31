@@ -134,4 +134,38 @@ final class PersistenceTests: XCTestCase {
         }
     }
 
+    func testNewBillingRuleMustStartAfterCurrentMonthWithoutRejectingHistory() throws {
+        let account = CreditCardAccount(bank: Bank(name: "规则版本测试银行"))
+        let baseline = BillingRuleVersion(account: account, statementDay: 5, repaymentKind: .fixedDay, repaymentValue: 10)
+        let historical = BillingRuleVersion(
+            account: account,
+            effectiveCycleKey: 202607,
+            statementDay: 6,
+            repaymentKind: .fixedDay,
+            repaymentValue: 11
+        )
+        account.billingRuleVersions = [baseline, historical]
+        XCTAssertNoThrow(try account.validateBillingConfiguration())
+
+        let current = BillingRuleVersion(
+            account: account,
+            effectiveCycleKey: 202608,
+            statementDay: 7,
+            repaymentKind: .fixedDay,
+            repaymentValue: 12
+        )
+        XCTAssertThrowsError(try account.validateNewBillingRule(current, currentMonthKey: 202608)) { error in
+            XCTAssertEqual(error as? ModelValidationError, .effectiveCycleMustBeFuture)
+        }
+
+        let future = BillingRuleVersion(
+            account: account,
+            effectiveCycleKey: 202609,
+            statementDay: 8,
+            repaymentKind: .fixedDay,
+            repaymentValue: 13
+        )
+        XCTAssertNoThrow(try account.validateNewBillingRule(future, currentMonthKey: 202608))
+    }
+
 }

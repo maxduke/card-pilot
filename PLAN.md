@@ -78,7 +78,7 @@ CardPilotUITests/
 | `BillingRuleVersion` | `id`, `account`, 可选 `effectiveCycleKey`, `statementDay`, `repaymentKind`, `repaymentValue` | 每个账户恰有一个无生效下界的基线版本；后续版本按生效账期排序；账单日和固定还款日为 1...31；“N 天后”要求 N ≥ 1 |
 | `BillingCycleRecord` | `id`, `account`, `cycleKey`, `statementDateOverride`, `repaymentDateOverride`, `repaidAt` | 稀疏保存：只有发生覆盖或还款完成时才建记录；每账户每账期最多一条 |
 
-`cycleKey` 是名义账单月份 `YYYYMM`，即使本期覆盖日期跨月也不改变。账户从追踪起始账期到当前日期后两个月生成 Dashboard 账期，并合并明确保存的未还账期，避免无限历史和旧未还账期消失；追踪起始账期之前的普通未持久化账期首版不生成。基线规则用于首个有日期版本之前的账期，保证月中首次录入时仍能计算当前待还事项；未持久化的账期由规则即时计算。已保存的规则版本不得原地改写或删除已生效历史，银行变更必须新增版本，个别纠错使用账期覆盖。
+`cycleKey` 是名义账单月份 `YYYYMM`，即使本期覆盖日期跨月也不改变。账户从追踪起始账期到当前日期后两个月生成 Dashboard 账期，并合并明确保存的未还账期，避免无限历史和旧未还账期消失；追踪起始账期之前的普通未持久化账期首版不生成。基线规则用于首个有日期版本之前的账期，保证月中首次录入时仍能计算当前待还事项；未持久化的账期由规则即时计算。已保存的规则版本不得原地改写或删除已生效历史，银行变更必须新增仅从未来账期生效的版本，当前或历史个别纠错使用账期覆盖。
 
 每个账户恰有一个 `effectiveCycleKey == nil` 的基线版本；新增或删除规则版本时先查询验证。`BillingCycleRecord` 和 `PromotionAllocation` 的复合唯一性同样由保存前查询与单元测试保证；SwiftData/iOS 17 不为此引入额外兼容层。
 

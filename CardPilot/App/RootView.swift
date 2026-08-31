@@ -61,6 +61,7 @@ struct RootView: View {
                 }
             }
         }
+        .environment(\.timeZone, TimeZone(identifier: homeTimeZone) ?? .current)
         .onAppear {
             if !appLock.setEnabled(appLockEnabled) { appLockEnabled = false }
             authenticate()

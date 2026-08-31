@@ -343,6 +343,7 @@ private struct AccountEditorView: View {
     @State private var statementOverrideDate: Date
     @State private var hasRepaymentOverride: Bool
     @State private var repaymentOverrideDate: Date
+    @State private var selectedCycleIsRepaid: Bool
     @State private var notes: String
     @State private var errorMessage: String?
 
@@ -362,7 +363,7 @@ private struct AccountEditorView: View {
         _repaymentValue = State(initialValue: rule?.repaymentValue ?? 1)
         let currentDate = CardPilotUI.localDate(from: Date())
         let currentRecord = account?.billingCycles.first { $0.cycleKey == currentDate.monthKey }
-        _effectiveCycleKeyText = State(initialValue: String(currentDate.monthKey))
+        _effectiveCycleKeyText = State(initialValue: String(currentDate.addingMonths(1, timeZone: CardPilotUI.homeTimeZone).monthKey))
         _overrideCycleKeyText = State(initialValue: String(currentDate.monthKey))
         _hasStatementOverride = State(initialValue: currentRecord?.statementDateOverride != nil)
         _statementOverrideDate = State(initialValue: currentRecord?.statementDateOverride.flatMap {
@@ -372,6 +373,7 @@ private struct AccountEditorView: View {
         _repaymentOverrideDate = State(initialValue: currentRecord?.repaymentDateOverride.flatMap {
             try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
         } ?? currentDate.date(in: CardPilotUI.homeTimeZone))
+        _selectedCycleIsRepaid = State(initialValue: currentRecord?.repaidAt != nil)
         _notes = State(initialValue: account?.notes ?? "")
     }
 
@@ -436,6 +438,10 @@ private struct AccountEditorView: View {
                         Text("单期覆盖只影响所选账期；还款日必须晚于账单日。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if selectedCycleIsRepaid {
+                            Button("撤销已还款", role: .destructive, action: clearSelectedCycleRepaid)
+                                .accessibilityLabel("撤销账期 \(overrideCycleKeyText) 的已还款状态")
+                        }
                     }
                     .onChange(of: overrideCycleKeyText) { _, _ in loadCycleOverrides() }
                 }
@@ -528,6 +534,15 @@ private struct AccountEditorView: View {
                     repaymentKind: repaymentKind,
                     repaymentValue: repaymentValue
                 )
+                do {
+                    try target.validateNewBillingRule(
+                        newRule,
+                        currentMonthKey: CardPilotUI.localDate(from: Date()).monthKey
+                    )
+                } catch {
+                    errorMessage = "规则变更生效账期必须晚于当前账期。"
+                    return
+                }
                 target.billingRuleVersions.append(newRule)
                 modelContext.insert(newRule)
         }
@@ -568,10 +583,14 @@ private struct AccountEditorView: View {
     private func loadCycleOverrides() {
         guard let account,
               let cycleKey = Int(overrideCycleKeyText),
-              LocalDate.isValidMonthKey(cycleKey) else { return }
+              LocalDate.isValidMonthKey(cycleKey) else {
+            selectedCycleIsRepaid = false
+            return
+        }
         let record = account.billingCycles.first { $0.cycleKey == cycleKey }
         hasStatementOverride = record?.statementDateOverride != nil
         hasRepaymentOverride = record?.repaymentDateOverride != nil
+        selectedCycleIsRepaid = record?.repaidAt != nil
         let fallback = (try? LocalDate.firstDay(ofMonthKey: cycleKey).date(in: CardPilotUI.homeTimeZone)) ?? Date()
         statementOverrideDate = record?.statementDateOverride.flatMap {
             try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
@@ -579,6 +598,26 @@ private struct AccountEditorView: View {
         repaymentOverrideDate = record?.repaymentDateOverride.flatMap {
             try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
         } ?? fallback
+    }
+
+    private func clearSelectedCycleRepaid() {
+        guard let account,
+              let cycleKey = Int(overrideCycleKeyText),
+              let record = account.billingCycles.first(where: { $0.cycleKey == cycleKey }) else {
+            errorMessage = "找不到要撤销的已还账期。"
+            return
+        }
+        record.repaidAt = nil
+        do {
+            try record.validate()
+            try account.validateBillingConfiguration()
+            try modelContext.save()
+            selectedCycleIsRepaid = false
+        } catch {
+            modelContext.rollback()
+            selectedCycleIsRepaid = true
+            errorMessage = "还款状态未更改：\(error.localizedDescription)"
+        }
     }
 }
 
