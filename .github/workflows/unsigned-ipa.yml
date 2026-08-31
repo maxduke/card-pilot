@@ -1,0 +1,177 @@
+name: Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare artifact directory
+        run: mkdir -p release
+
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tags must use vMAJOR.MINOR.PATCH without leading zeroes: $TAG_NAME" >&2
+            exit 1
+          fi
+
+      - name: Build unsigned Release app
+        run: |
+          xcodebuild build \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilot \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package and validate IPA
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+
+          app_path="build/Build/Products/Release-iphoneos/CardPilot.app"
+          ipa_path="release/CardPilot-unsigned.ipa"
+          checksum_path="release/CardPilot-unsigned.ipa.sha256"
+          expected_version=""
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            expected_version="${TAG_NAME#v}"
+          fi
+
+          [[ -d "$app_path" ]] || { echo "Missing app bundle: $app_path" >&2; exit 1; }
+          info_plist="$app_path/Info.plist"
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")
+          short_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")
+          [[ "$bundle_id" == "com.maxduke.CardPilot" ]] || { echo "Unexpected bundle identifier: $bundle_id" >&2; exit 1; }
+          if [[ -n "$expected_version" && "$short_version" != "$expected_version" ]]; then
+            echo "Tag $TAG_NAME does not match CFBundleShortVersionString $short_version" >&2
+            exit 1
+          fi
+
+          rm -rf release/Payload
+          mkdir -p release/Payload
+          ditto "$app_path" release/Payload/CardPilot.app
+          (cd release && zip -qry CardPilot-unsigned.ipa Payload)
+          rm -rf release/Payload
+
+          validation_dir=$(mktemp -d)
+          trap 'rm -rf "$validation_dir"' EXIT
+          unzip -q "$ipa_path" -d "$validation_dir"
+          python3 - "$validation_dir" <<'PY'
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          payload = root / "Payload"
+          app = payload / "CardPilot.app"
+          if not payload.is_dir() or not app.is_dir():
+              raise SystemExit("IPA must contain Payload/CardPilot.app")
+          for path in root.rglob("*"):
+              relative = path.relative_to(root).as_posix()
+              if relative not in {"Payload", "Payload/CardPilot.app"} and not relative.startswith("Payload/CardPilot.app/"):
+                  raise SystemExit(f"Unexpected IPA entry: {relative}")
+          if not (app / "Info.plist").is_file():
+              raise SystemExit("IPA is missing Payload/CardPilot.app/Info.plist")
+          if any(path.name == "embedded.mobileprovision" for path in app.rglob("*")):
+              raise SystemExit("Unsigned IPA must not contain embedded.mobileprovision")
+          PY
+
+          (cd release && shasum -a 256 CardPilot-unsigned.ipa > CardPilot-unsigned.ipa.sha256)
+          checksum=$(awk '{print $1}' "$checksum_path")
+          actual_checksum=$(shasum -a 256 "$ipa_path" | awk '{print $1}')
+          [[ "$checksum" == "$actual_checksum" ]] || { echo "Checksum generation failed" >&2; exit 1; }
+          echo "Validated CardPilot $short_version ($bundle_id), SHA-256 $checksum"
+
+      - name: Upload 7-day workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CardPilot-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Create or safely update published GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ipa_path="release/CardPilot-unsigned.ipa"
+          checksum_path="release/CardPilot-unsigned.ipa.sha256"
+          checksum=$(awk '{print $1}' "$checksum_path")
+          existing_dir=$(mktemp -d)
+          release_error=$(mktemp)
+          trap 'rm -rf "$existing_dir" "$release_error"' EXIT
+
+          set +e
+          release_json=$(gh release view "$TAG_NAME" --json isDraft,isPrerelease,assets 2>"$release_error")
+          release_status=$?
+          set -e
+          if (( release_status == 0 )); then
+            if [[ "$(jq -r '.isDraft' <<<"$release_json")" == "true" ]]; then
+              echo "Release $TAG_NAME is a draft; refusing to publish or replace it" >&2
+              exit 1
+            fi
+
+            for asset_name in CardPilot-unsigned.ipa CardPilot-unsigned.ipa.sha256; do
+              if jq -e --arg name "$asset_name" '.assets[] | select(.name == $name)' <<<"$release_json" >/dev/null; then
+                gh release download "$TAG_NAME" --pattern "$asset_name" --dir "$existing_dir"
+              fi
+            done
+
+            if [[ -f "$existing_dir/CardPilot-unsigned.ipa" ]]; then
+              existing_ipa_checksum=$(shasum -a 256 "$existing_dir/CardPilot-unsigned.ipa" | awk '{print $1}')
+              [[ "$existing_ipa_checksum" == "$checksum" ]] || {
+                echo "Existing release IPA checksum differs; refusing to replace it" >&2
+                exit 1
+              }
+            fi
+            if [[ -f "$existing_dir/CardPilot-unsigned.ipa.sha256" ]]; then
+              existing_checksum=$(awk '{print $1}' "$existing_dir/CardPilot-unsigned.ipa.sha256")
+              [[ "$existing_checksum" == "$checksum" ]] || {
+                echo "Existing release checksum differs; refusing to replace it" >&2
+                exit 1
+              }
+            fi
+
+            missing_assets=()
+            [[ -f "$existing_dir/CardPilot-unsigned.ipa" ]] || missing_assets+=("$ipa_path")
+            [[ -f "$existing_dir/CardPilot-unsigned.ipa.sha256" ]] || missing_assets+=("$checksum_path")
+            if (( ${#missing_assets[@]} > 0 )); then
+              gh release upload "$TAG_NAME" "${missing_assets[@]}"
+            else
+              echo "Release $TAG_NAME already has matching assets; nothing to replace"
+            fi
+          elif grep -Eiq 'not found|HTTP 404' "$release_error"; then
+            gh release create "$TAG_NAME" "$ipa_path" "$checksum_path" \
+              --verify-tag \
+              --title "CardPilot ${TAG_NAME#v}" \
+              --notes "Unsigned IPA build for CardPilot ${TAG_NAME#v}."
+          else
+            cat "$release_error" >&2
+            echo "Unable to inspect release $TAG_NAME; refusing to create or replace it" >&2
+            exit "$release_status"
+          fi
