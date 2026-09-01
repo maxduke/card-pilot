@@ -215,6 +215,7 @@ private struct TransactionEditorView: View {
     @State private var didInitializePromotions = false
     @State private var showingInactiveCards: Bool
     @State private var showingOtherFields: Bool
+    @State private var showingCardPicker = false
     @State private var errorMessage: String?
     @State private var overRefundWarningMessage: String?
 
@@ -457,54 +458,52 @@ private struct TransactionEditorView: View {
         if selectableCards.isEmpty {
             Label("请先在“卡片”页添加信用卡", systemImage: "creditcard")
                 .foregroundStyle(.secondary)
-        } else {
-            ScrollView(.horizontal, showsIndicators: false) {
+        } else if let selectedCard {
+            Button {
+                showingCardPicker = true
+            } label: {
                 HStack(spacing: 12) {
-                    ForEach(selectableCards, id: \.id) { card in
-                        Button {
-                            cardID = card.id
-                        } label: {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack(alignment: .top, spacing: 8) {
-                                    BankBadge(bank: card.account.bank)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(card.account.bank.name)
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                        Text(card.nickname.isEmpty ? card.productName : card.nickname)
-                                            .font(.subheadline.weight(.semibold))
-                                            .lineLimit(1)
-                                    }
-                                    Spacer(minLength: 0)
-                                    if card.id == cardID {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.tint)
-                                    }
-                                }
-                                HStack {
-                                    Text("•••• \(card.lastFour)")
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    CardNetworksBadges(networks: card.networks)
-                                }
-                            }
-                            .padding(12)
-                            .frame(width: 224, alignment: .leading)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(card.id == cardID ? Color.accentColor : Color.clear, lineWidth: 2)
-                            }
+                    BankBadge(bank: selectedCard.account.bank)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(selectedCard.nickname.isEmpty ? selectedCard.productName : selectedCard.nickname)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text("•••• \(selectedCard.lastFour)")
+                                .font(.caption.monospaced())
+                            CardNetworksBadges(networks: selectedCard.networks)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(cardLabel(card))\(card.id == cardID ? "，已选择" : "")")
+                        .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(.vertical, 4)
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+                }
             }
-            .scrollClipDisabled()
+            .buttonStyle(.plain)
+            .accessibilityLabel("当前卡片，\(cardLabel(selectedCard))")
+            .accessibilityHint("双击打开卡片选择")
+            .sheet(isPresented: $showingCardPicker) {
+                CardSelectionSheet(
+                    cards: selectableCards,
+                    selectedCardID: cardID,
+                    lastUsedCardID: lastUsedCardID,
+                    onSelect: { selectedID in
+                        cardID = selectedID
+                        showingCardPicker = false
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -878,6 +877,115 @@ private struct TransactionEditorView: View {
             modelContext.rollback()
             errorMessage = "交易未保存：\(error.localizedDescription)"
         }
+    }
+}
+
+private struct CardSelectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let cards: [Card]
+    let selectedCardID: UUID
+    let lastUsedCardID: String
+    let onSelect: (UUID) -> Void
+
+    @State private var searchText = ""
+
+    private var filteredCards: [Card] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return cards }
+        return cards.filter { card in
+            card.account.bank.name.localizedCaseInsensitiveContains(query)
+                || card.nickname.localizedCaseInsensitiveContains(query)
+                || card.productName.localizedCaseInsensitiveContains(query)
+                || card.lastFour.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var currentCard: Card? {
+        filteredCards.first { $0.id == selectedCardID }
+    }
+
+    private var recentCard: Card? {
+        guard let recentID = UUID(uuidString: lastUsedCardID), recentID != selectedCardID else { return nil }
+        return filteredCards.first { $0.id == recentID }
+    }
+
+    private var featuredCardIDs: Set<UUID> {
+        Set([currentCard?.id, recentCard?.id].compactMap { $0 })
+    }
+
+    private var bankNames: [String] {
+        Set(filteredCards
+            .filter { !featuredCardIDs.contains($0.id) }
+            .map { $0.account.bank.name })
+            .sorted()
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let currentCard {
+                    Section("当前卡片") {
+                        cardRow(currentCard)
+                    }
+                }
+                if let recentCard {
+                    Section("最近使用") {
+                        cardRow(recentCard)
+                    }
+                }
+                ForEach(bankNames, id: \.self) { bankName in
+                    Section(bankName) {
+                        ForEach(filteredCards.filter {
+                            $0.account.bank.name == bankName && !featuredCardIDs.contains($0.id)
+                        }, id: \.id) { card in
+                            cardRow(card)
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("选择卡片")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+            .searchable(text: $searchText, prompt: "搜索银行、卡片或末四位")
+        }
+    }
+
+    private func cardRow(_ card: Card) -> some View {
+        Button {
+            onSelect(card.id)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                BankBadge(bank: card.account.bank)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card.nickname.isEmpty ? card.productName : card.nickname)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("\(card.account.bank.name) · •••• \(card.lastFour)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    CardNetworksBadges(networks: card.networks)
+                }
+                Spacer(minLength: 8)
+                if card.id == selectedCardID {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(cardLabel(card))\(card.id == selectedCardID ? "，已选择" : "")")
     }
 }
 

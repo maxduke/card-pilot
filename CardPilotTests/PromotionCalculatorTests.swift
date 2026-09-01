@@ -205,4 +205,79 @@ final class PromotionCalculatorTests: XCTestCase {
             excludingTransactionID: nil
         ))
     }
+
+    func testEligibleCardRecommendationsUnionEachOrganizerKindAndIntersectKinds() {
+        let bankA = Bank(name: "银行 A")
+        let bankB = Bank(name: "银行 B")
+        let accountA = CreditCardAccount(bank: bankA)
+        let accountB = CreditCardAccount(bank: bankB)
+        let networks = Dictionary(uniqueKeysWithValues: CardNetwork.makeBuiltIns().map { ($0.code, $0) })
+        let visa = networks["visa"]!
+        let mastercard = networks["mastercard"]!
+        let visaA = Card(account: accountA, productName: "Visa A", networks: [visa], lastFour: "1001")
+        let mastercardA = Card(account: accountA, productName: "Mastercard A", networks: [mastercard], lastFour: "1002")
+        let visaB = Card(account: accountB, productName: "Visa B", networks: [visa], lastFour: "1003")
+        let inactive = Card(account: accountA, productName: "停用卡", networks: [visa], lastFour: "1004", status: .inactive)
+
+        let recommendations = PromotionEligibility.recommendations(
+            organizingBanks: [bankA, bankB],
+            organizingNetworks: [visa],
+            cards: [mastercardA, inactive, visaB, visaA]
+        )
+
+        XCTAssertEqual(recommendations.map(\.card.id), [visaA.id, visaB.id])
+        XCTAssertEqual(recommendations.first?.reasons, ["银行：银行 A", "卡组织：Visa"])
+        XCTAssertTrue(PromotionEligibility.recommendations(
+            organizingBanks: [],
+            organizingNetworks: [],
+            cards: [visaA]
+        ).isEmpty)
+    }
+
+    func testMonthlyPeriodsUseOriginalAnchorsAndRequireCompleteLastPeriod() {
+        XCTAssertEqual(
+            PromotionSeriesCalculator.monthlyPeriods(
+                startOn: 20260131,
+                endOn: 20260228,
+                through: 20260428
+            ),
+            [
+                PromotionPeriod(startOn: 20260131, endOn: 20260228),
+                PromotionPeriod(startOn: 20260228, endOn: 20260328),
+                PromotionPeriod(startOn: 20260331, endOn: 20260428)
+            ]
+        )
+        XCTAssertEqual(
+            PromotionSeriesCalculator.monthlyPeriods(
+                startOn: 20260131,
+                endOn: 20260228,
+                through: 20260427
+            ).count,
+            2
+        )
+    }
+
+    func testMonthlySeriesCreatesIndependentPromotionsAndCopyStartsActive() throws {
+        let template = Promotion(
+            title: "月度活动",
+            startOn: 20260131,
+            endOn: 20260228,
+            qualificationThreshold: 100,
+            progressCurrencyCode: "CNY",
+            archivedAt: Date()
+        )
+        let periods = Promotion.makeMonthlySeries(from: template, through: 20260428)
+        XCTAssertEqual(periods.count, 3)
+        XCTAssertEqual(Set(periods.compactMap(\.seriesID)).count, 1)
+        XCTAssertEqual(periods.compactMap(\.seriesIndex), [0, 1, 2])
+        XCTAssertEqual(periods.map(\.startOn), [20260131, 20260228, 20260331])
+        XCTAssertTrue(periods.allSatisfy { $0.allocations.isEmpty })
+
+        let copied = try XCTUnwrap(template.copiedToNextMonth())
+        XCTAssertNil(copied.seriesID)
+        XCTAssertNil(copied.archivedAt)
+        XCTAssertEqual(copied.startOn, 20260228)
+        XCTAssertEqual(copied.endOn, 20260328)
+        XCTAssertNotEqual(copied.id, template.id)
+    }
 }
