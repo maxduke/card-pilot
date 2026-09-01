@@ -38,6 +38,86 @@ enum TransactionStatus: String, Codable, CaseIterable, Sendable {
     case reversed
 }
 
+enum BankPresetRegion: String, Codable, CaseIterable, Hashable, Sendable {
+    case mainland
+    case hongKong
+}
+
+struct BankPreset: Identifiable, Equatable, Sendable {
+    let code: String
+    let displayName: String
+    let englishName: String
+    let region: BankPresetRegion
+    let defaultCurrencyCode: String
+    let searchableNames: [String]
+    let monogram: String
+    let sortOrder: Int
+
+    var id: String { code }
+
+    func matches(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return searchableNames.contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    static let catalog: [BankPreset] = [
+        preset("cn.icbc", "工商银行", "Industrial and Commercial Bank of China", .mainland, "工", 0, "ICBC"),
+        preset("cn.abc", "农业银行", "Agricultural Bank of China", .mainland, "农", 1, "ABC"),
+        preset("cn.boc", "中国银行", "Bank of China", .mainland, "中", 2, "BOC"),
+        preset("cn.ccb", "建设银行", "China Construction Bank", .mainland, "建", 3, "CCB"),
+        preset("cn.bocom", "交通银行", "Bank of Communications", .mainland, "交", 4, "BOCOM"),
+        preset("cn.psbc", "邮储银行", "Postal Savings Bank of China", .mainland, "邮", 5, "PSBC"),
+        preset("cn.cmb", "招商银行", "China Merchants Bank", .mainland, "招", 6, "CMB"),
+        preset("cn.citic", "中信银行", "China CITIC Bank", .mainland, "信", 7, "CITIC"),
+        preset("cn.ceb", "光大银行", "China Everbright Bank", .mainland, "光", 8, "CEB"),
+        preset("cn.cmbc", "民生银行", "China Minsheng Bank", .mainland, "民", 9, "CMBC"),
+        preset("cn.spdb", "浦发银行", "Shanghai Pudong Development Bank", .mainland, "浦", 10, "SPDB"),
+        preset("cn.cib", "兴业银行", "Industrial Bank", .mainland, "兴", 11, "CIB"),
+        preset("cn.pingan", "平安银行", "Ping An Bank", .mainland, "平", 12, "PINGAN"),
+        preset("cn.cgb", "广发银行", "China Guangfa Bank", .mainland, "广", 13, "CGB"),
+        preset("cn.hxb", "华夏银行", "Hua Xia Bank", .mainland, "华", 14, "HXB"),
+        preset("cn.czbank", "浙商银行", "China Zheshang Bank", .mainland, "浙", 15, "CZB"),
+        preset("cn.hfbank", "恒丰银行", "Hengfeng Bank", .mainland, "恒", 16, "HFB"),
+        preset("cn.cbhb", "渤海银行", "China Bohai Bank", .mainland, "渤", 17, "CBHB"),
+        preset("hk.hsbc", "汇丰", "HSBC", .hongKong, "汇", 18),
+        preset("hk.hangseng", "恒生", "Hang Seng Bank", .hongKong, "恒", 19),
+        preset("hk.bochk", "中银香港", "Bank of China (Hong Kong)", .hongKong, "中", 20, "BOCHK"),
+        preset("hk.scb", "渣打香港", "Standard Chartered Hong Kong", .hongKong, "渣", 21, "SCB"),
+        preset("hk.bea", "东亚银行", "Bank of East Asia", .hongKong, "东", 22, "BEA"),
+        preset("hk.citibank", "花旗香港", "Citibank Hong Kong", .hongKong, "花", 23, "CITIBANK"),
+        preset("hk.dbs", "星展香港", "DBS Hong Kong", .hongKong, "星", 24, "DBS"),
+        preset("hk.dahsing", "大新银行", "Dah Sing Bank", .hongKong, "大", 25, "DAHSING"),
+        preset("hk.citicintl", "中信银行（国际）", "CITIC Bank International", .hongKong, "信", 26, "CITIC"),
+        preset("hk.ccba", "建行亚洲", "China Construction Bank (Asia)", .hongKong, "建", 27, "CCBA"),
+        preset("hk.icbcasia", "工银亚洲", "ICBC (Asia)", .hongKong, "工", 28, "ICBC")
+    ]
+
+    static var mainlandPresets: [BankPreset] { catalog.filter { $0.region == .mainland } }
+    static var hongKongPresets: [BankPreset] { catalog.filter { $0.region == .hongKong } }
+
+    private static func preset(
+        _ code: String,
+        _ displayName: String,
+        _ englishName: String,
+        _ region: BankPresetRegion,
+        _ monogram: String,
+        _ sortOrder: Int,
+        _ abbreviation: String? = nil
+    ) -> BankPreset {
+        BankPreset(
+            code: code,
+            displayName: displayName,
+            englishName: englishName,
+            region: region,
+            defaultCurrencyCode: region == .mainland ? "CNY" : "HKD",
+            searchableNames: [displayName, englishName, code] + (abbreviation.map { [$0] } ?? []),
+            monogram: monogram,
+            sortOrder: sortOrder
+        )
+    }
+}
+
 enum ModelValidationError: Error, Equatable {
     case blankName
     case blankTitle
@@ -52,6 +132,7 @@ enum ModelValidationError: Error, Equatable {
     case invalidDateRange
     case invalidEnrollment
     case invalidTargetAmount
+    case invalidNetworkCombination
     case invalidQualifyingAmount
     case invalidTransactionAmount
     case invalidTransactionRelationship
@@ -74,6 +155,7 @@ private func hasText(_ value: String) -> Bool {
 @Model
 final class Bank {
     var id: UUID
+    var presetCode: String?
     var name: String
     var notes: String
     var archivedAt: Date?
@@ -84,8 +166,15 @@ final class Bank {
     @Relationship(deleteRule: .deny, inverse: \Promotion.organizingBanks)
     var organizedPromotions: [Promotion] = []
 
-    init(id: UUID = UUID(), name: String, notes: String = "", archivedAt: Date? = nil) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        notes: String = "",
+        archivedAt: Date? = nil,
+        presetCode: String? = nil
+    ) {
         self.id = id
+        self.presetCode = presetCode
         self.name = name
         self.notes = notes
         self.archivedAt = archivedAt
@@ -103,8 +192,7 @@ final class CardNetwork {
         ("visa", "Visa", UUID(uuidString: "00000000-0000-0000-0000-000000000002")!),
         ("mastercard", "Mastercard", UUID(uuidString: "00000000-0000-0000-0000-000000000003")!),
         ("amex", "American Express", UUID(uuidString: "00000000-0000-0000-0000-000000000004")!),
-        ("jcb", "JCB", UUID(uuidString: "00000000-0000-0000-0000-000000000005")!),
-        ("other", "其他", UUID(uuidString: "00000000-0000-0000-0000-000000000006")!)
+        ("jcb", "JCB", UUID(uuidString: "00000000-0000-0000-0000-000000000005")!)
     ]
 
     var id: UUID
@@ -112,7 +200,7 @@ final class CardNetwork {
     var displayName: String
     var isBuiltIn: Bool
 
-    @Relationship(deleteRule: .deny, inverse: \Card.network)
+    @Relationship(deleteRule: .deny, inverse: \Card.networks)
     var cards: [Card] = []
 
     @Relationship(deleteRule: .deny, inverse: \Promotion.organizingNetworks)
@@ -131,6 +219,11 @@ final class CardNetwork {
 
     func validate() throws {
         guard hasText(code), hasText(displayName) else { throw ModelValidationError.blankName }
+        if isBuiltIn {
+            guard Self.builtInDefinitions.contains(where: { $0.id == id && $0.code == code }) else {
+                throw ModelValidationError.invalidNetworkCombination
+            }
+        }
     }
 }
 
@@ -246,7 +339,7 @@ final class Card {
 
     var account: CreditCardAccount
 
-    var network: CardNetwork
+    var networks: [CardNetwork]
 
     @Relationship(deleteRule: .deny, inverse: \Transaction.card)
     var transactions: [Transaction] = []
@@ -264,7 +357,7 @@ final class Card {
         account: CreditCardAccount,
         productName: String,
         nickname: String = "",
-        network: CardNetwork,
+        networks: [CardNetwork],
         lastFour: String,
         status: CardStatus = .active,
         notes: String = ""
@@ -273,7 +366,7 @@ final class Card {
         self.account = account
         self.productName = productName
         self.nickname = nickname
-        self.network = network
+        self.networks = networks
         self.lastFour = lastFour
         self.statusRaw = status.rawValue
         self.notes = notes
@@ -286,6 +379,20 @@ final class Card {
             throw ModelValidationError.invalidLastFour
         }
         guard CardStatus(rawValue: statusRaw) != nil else { throw ModelValidationError.invalidAccountStatus }
+        guard (1...2).contains(networks.count),
+              Set(networks.map(\.id)).count == networks.count else {
+            throw ModelValidationError.invalidNetworkCombination
+        }
+        try networks.forEach { try $0.validate() }
+        let codes = Set(networks.map(\.code))
+        guard networks.count == 1 || (
+            networks.allSatisfy { $0.isBuiltIn }
+                && codes.count == 2
+                && codes.contains("unionpay")
+                && codes.intersection(Set(["visa", "mastercard", "jcb"])).count == 1
+        ) else {
+            throw ModelValidationError.invalidNetworkCombination
+        }
     }
 }
 
@@ -388,7 +495,9 @@ final class Promotion {
     var enrollmentDeadline: Int?
     var qualificationDateBasisRaw: String
     var stackingAllowed: Bool
-    var targetAmount: Decimal
+    var qualificationThreshold: Decimal?
+    var qualifyingCap: Decimal?
+    var perTransactionThreshold: Decimal?
     var progressCurrencyCode: String
     var rules: String
     var exclusions: String
@@ -428,7 +537,9 @@ final class Promotion {
         enrollmentDeadline: Int? = nil,
         qualificationDateBasis: QualificationDateBasis = .transactionDate,
         stackingAllowed: Bool = true,
-        targetAmount: Decimal,
+        qualificationThreshold: Decimal? = nil,
+        qualifyingCap: Decimal? = nil,
+        perTransactionThreshold: Decimal? = nil,
         progressCurrencyCode: String,
         rules: String = "",
         exclusions: String = "",
@@ -448,7 +559,9 @@ final class Promotion {
         self.enrollmentDeadline = enrollmentDeadline
         self.qualificationDateBasisRaw = qualificationDateBasis.rawValue
         self.stackingAllowed = stackingAllowed
-        self.targetAmount = targetAmount
+        self.qualificationThreshold = qualificationThreshold
+        self.qualifyingCap = qualifyingCap
+        self.perTransactionThreshold = perTransactionThreshold
         self.progressCurrencyCode = progressCurrencyCode
         self.rules = rules
         self.exclusions = exclusions
@@ -465,7 +578,9 @@ final class Promotion {
         guard isValidCurrencyCode(progressCurrencyCode) else {
             throw ModelValidationError.invalidCurrencyCode(progressCurrencyCode)
         }
-        guard targetAmount > .zero else { throw ModelValidationError.invalidTargetAmount }
+        for amount in [qualificationThreshold, qualifyingCap, perTransactionThreshold].compactMap(\.self) {
+            guard amount > .zero else { throw ModelValidationError.invalidTargetAmount }
+        }
         guard EnrollmentStatus(rawValue: enrollmentStatusRaw) != nil,
               QualificationDateBasis(rawValue: qualificationDateBasisRaw) != nil else {
             throw ModelValidationError.invalidEnrollment
@@ -633,8 +748,8 @@ final class PromotionAllocation {
     }
 }
 
-enum CardPilotSchemaV1: VersionedSchema {
-    static var versionIdentifier = Schema.Version(1, 0, 0)
+enum CardPilotSchemaV2: VersionedSchema {
+    static var versionIdentifier = Schema.Version(2, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [
@@ -653,8 +768,9 @@ enum CardPilotSchemaV1: VersionedSchema {
 
 enum CardPilotPersistence {
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: CardPilotSchemaV1.self)
+        let schema = Schema(versionedSchema: CardPilotSchemaV2.self)
         let configuration = ModelConfiguration(
+            "CardPilotPrereleaseV2",
             schema: schema,
             isStoredInMemoryOnly: inMemory,
             cloudKitDatabase: .none

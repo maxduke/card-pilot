@@ -4,7 +4,8 @@ import XCTest
 final class PromotionCalculatorTests: XCTestCase {
     func testRefundsSubtractAndReversedTransactionsDoNotCount() throws {
         let progress = try PromotionCalculator.progress(
-            targetAmount: 10_000,
+            qualificationThreshold: 10_000,
+            qualifyingCap: 12_000,
             currencyCode: "CNY",
             allocations: [
                 (8_000, "CNY", .purchase, .active),
@@ -14,24 +15,25 @@ final class PromotionCalculatorTests: XCTestCase {
         )
 
         XCTAssertEqual(progress.qualifiedAmount, 7_500)
-        XCTAssertEqual(progress.remainingAmount, 2_500)
+        XCTAssertEqual(progress.remainingToThreshold, 2_500)
+        XCTAssertEqual(progress.remainingCap, 4_500)
         XCTAssertFalse(progress.isComplete)
     }
 
     func testProgressCanFallBelowZeroAfterRefunds() throws {
         let progress = try PromotionCalculator.progress(
-            targetAmount: 100,
+            qualificationThreshold: 100,
             currencyCode: "CNY",
             allocations: [(200, "CNY", .refund, .active)]
         )
         XCTAssertEqual(progress.qualifiedAmount, -200)
-        XCTAssertEqual(progress.remainingAmount, 300)
+        XCTAssertEqual(progress.remainingToThreshold, 300)
     }
 
     func testCurrencyMismatchIsRejected() {
         XCTAssertThrowsError(
             try PromotionCalculator.progress(
-                targetAmount: 100,
+                qualificationThreshold: 100,
                 currencyCode: "CNY",
                 allocations: [(100, "USD", .purchase, .active)]
             )
@@ -40,18 +42,86 @@ final class PromotionCalculatorTests: XCTestCase {
         }
     }
 
+    func testProgressWithoutThresholdNeverCompletesAndExposesOptionalRules() throws {
+        let progress = try PromotionCalculator.progress(
+            qualifyingCap: 500,
+            currencyCode: "CNY",
+            allocations: [(600, "CNY", .purchase, .active)]
+        )
+
+        XCTAssertEqual(progress.qualifiedAmount, 600)
+        XCTAssertNil(progress.remainingToThreshold)
+        XCTAssertEqual(progress.remainingCap, 0)
+        XCTAssertFalse(progress.isComplete)
+    }
+
+    func testProgressWithoutAmountRulesKeepsNetAmountWithoutCompletion() throws {
+        let progress = try PromotionCalculator.progress(
+            currencyCode: "CNY",
+            allocations: [(120, "CNY", .purchase, .active)]
+        )
+
+        XCTAssertEqual(progress.qualifiedAmount, 120)
+        XCTAssertNil(progress.remainingToThreshold)
+        XCTAssertNil(progress.remainingCap)
+        XCTAssertFalse(progress.isComplete)
+    }
+
+    func testSuggestionHonorsCurrencyThresholdAndRemainingCap() {
+        XCTAssertNil(PromotionCalculator.suggestedQualifyingAmount(
+            transactionAmount: 100,
+            transactionCurrencyCode: "USD",
+            promotionCurrencyCode: "CNY",
+            perTransactionThreshold: nil,
+            currentQualifiedAmount: 0,
+            qualifyingCap: nil
+        ))
+        XCTAssertEqual(PromotionCalculator.suggestedQualifyingAmount(
+            transactionAmount: 99,
+            transactionCurrencyCode: "CNY",
+            promotionCurrencyCode: "CNY",
+            perTransactionThreshold: 100,
+            currentQualifiedAmount: 0,
+            qualifyingCap: nil
+        ), 0)
+        XCTAssertEqual(PromotionCalculator.suggestedQualifyingAmount(
+            transactionAmount: 100,
+            transactionCurrencyCode: "CNY",
+            promotionCurrencyCode: "CNY",
+            perTransactionThreshold: 100,
+            currentQualifiedAmount: 0,
+            qualifyingCap: nil
+        ), 100)
+        XCTAssertEqual(PromotionCalculator.suggestedQualifyingAmount(
+            transactionAmount: 200,
+            transactionCurrencyCode: "CNY",
+            promotionCurrencyCode: "CNY",
+            perTransactionThreshold: 100,
+            currentQualifiedAmount: 450,
+            qualifyingCap: 500
+        ), 50)
+        XCTAssertEqual(PromotionCalculator.suggestedQualifyingAmount(
+            transactionAmount: 200,
+            transactionCurrencyCode: "CNY",
+            promotionCurrencyCode: "CNY",
+            perTransactionThreshold: nil,
+            currentQualifiedAmount: 700,
+            qualifyingCap: 500
+        ), 0)
+    }
+
     func testUnknownDateBasisAcceptsEitherTransactionOrPostingDate() {
         let bank = Bank(name: "测试银行")
         let account = CreditCardAccount(bank: bank)
         let network = CardNetwork.makeBuiltIns()[0]
-        let card = Card(account: account, productName: "测试卡", network: network, lastFour: "1234")
+        let card = Card(account: account, productName: "测试卡", networks: [network], lastFour: "1234")
         let promotion = Promotion(
             title: "测试活动",
             startOn: 20260801,
             endOn: 20260831,
             eligibleCards: [card],
             qualificationDateBasis: .unknown,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         let transaction = Transaction(

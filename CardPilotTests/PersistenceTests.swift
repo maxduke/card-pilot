@@ -7,10 +7,10 @@ final class PersistenceTests: XCTestCase {
     func testModelsRoundTripInMemory() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         let context = container.mainContext
-        let bank = Bank(name: "测试银行")
+        let bank = Bank(name: "测试银行", presetCode: "cn.icbc")
         let network = CardNetwork.makeBuiltIns()[0]
         let account = CreditCardAccount(bank: bank, trackingStartCycleKey: 202608, creditLimit: 20_000)
-        let card = Card(account: account, productName: "测试卡", network: network, lastFour: "1234")
+        let card = Card(account: account, productName: "测试卡", networks: [network], lastFour: "1234")
         let rule = BillingRuleVersion(
             account: account,
             statementDay: 5,
@@ -26,8 +26,81 @@ final class PersistenceTests: XCTestCase {
         try context.save()
 
         XCTAssertEqual(try context.fetch(FetchDescriptor<Card>()).first?.lastFour, "1234")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Card>()).first?.networks.map(\.code), ["unionpay"])
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Bank>()).first?.presetCode, "cn.icbc")
         XCTAssertEqual(try context.fetch(FetchDescriptor<CreditCardAccount>()).first?.trackingStartCycleKey, 202608)
         XCTAssertEqual(try context.fetch(FetchDescriptor<BillingRuleVersion>()).count, 1)
+    }
+
+    func testBankPresetCatalogCoversMainlandAndHongKong() {
+        XCTAssertEqual(BankPreset.catalog.count, 29)
+        XCTAssertEqual(BankPreset.mainlandPresets.count, 18)
+        XCTAssertEqual(BankPreset.hongKongPresets.count, 11)
+        XCTAssertEqual(Set(BankPreset.catalog.map(\.code)).count, 29)
+        XCTAssertTrue(BankPreset.mainlandPresets.allSatisfy { $0.defaultCurrencyCode == "CNY" })
+        XCTAssertTrue(BankPreset.hongKongPresets.allSatisfy { $0.defaultCurrencyCode == "HKD" })
+        XCTAssertTrue(BankPreset.catalog.first { $0.matches("ICBC") }?.displayName == "工商银行")
+        XCTAssertTrue(BankPreset.catalog.first { $0.matches("汇丰") }?.region == .hongKong)
+    }
+
+    func testCardAcceptsOnlyTheThreeBuiltInDualNetworkSets() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"))
+        let networks = Dictionary(uniqueKeysWithValues: CardNetwork.makeBuiltIns().map { ($0.code, $0) })
+
+        for secondary in ["visa", "mastercard", "jcb"] {
+            let card = Card(
+                account: account,
+                productName: "双标卡",
+                networks: [networks["unionpay"]!, networks[secondary]!],
+                lastFour: "1234"
+            )
+            XCTAssertNoThrow(try card.validate())
+        }
+
+        let custom = CardNetwork(code: "custom", displayName: "自定义")
+        XCTAssertNoThrow(try Card(
+            account: account,
+            productName: "自定义卡",
+            networks: [custom],
+            lastFour: "1234"
+        ).validate())
+        XCTAssertThrowsError(try Card(
+            account: account,
+            productName: "无卡组织",
+            networks: [],
+            lastFour: "1234"
+        ).validate())
+        XCTAssertThrowsError(try Card(
+            account: account,
+            productName: "非法双标卡",
+            networks: [networks["visa"]!, networks["mastercard"]!],
+            lastFour: "1234"
+        ).validate())
+        XCTAssertThrowsError(try Card(
+            account: account,
+            productName: "非法双标卡",
+            networks: [networks["unionpay"]!, custom],
+            lastFour: "1234"
+        ).validate()) { error in
+            XCTAssertEqual(error as? ModelValidationError, .invalidNetworkCombination)
+        }
+    }
+
+    func testPromotionAmountRulesAreOptionalButMustBePositive() {
+        let promotion = Promotion(
+            title: "无金额规则活动",
+            startOn: 20260801,
+            endOn: 20260831,
+            progressCurrencyCode: "CNY"
+        )
+        XCTAssertNoThrow(try promotion.validate())
+
+        let invalidPromotions = [
+            Promotion(title: "无效达标门槛", startOn: 20260801, endOn: 20260831, qualificationThreshold: .zero, progressCurrencyCode: "CNY"),
+            Promotion(title: "无效计入上限", startOn: 20260801, endOn: 20260831, qualifyingCap: .zero, progressCurrencyCode: "CNY"),
+            Promotion(title: "无效单笔门槛", startOn: 20260801, endOn: 20260831, perTransactionThreshold: .zero, progressCurrencyCode: "CNY")
+        ]
+        invalidPromotions.forEach { XCTAssertThrowsError(try $0.validate()) }
     }
 
     func testAccountRejectsDuplicateBaselineRules() throws {
@@ -50,7 +123,7 @@ final class PersistenceTests: XCTestCase {
             endOn: 20260831,
             enrollmentStatus: .notEnrolled,
             enrollmentDeadline: nil,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         XCTAssertNoThrow(try enrolledPromotion.validate())
@@ -62,7 +135,7 @@ final class PersistenceTests: XCTestCase {
             enrollmentStatus: .enrolled,
             enrolledOn: nil,
             enrollmentDeadline: nil,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         XCTAssertNoThrow(try enrolledWithoutDeadline.validate())
@@ -73,7 +146,7 @@ final class PersistenceTests: XCTestCase {
             endOn: 20260831,
             enrollmentStatus: .notRequired,
             enrollmentDeadline: 20260810,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         XCTAssertThrowsError(try invalidPromotion.validate()) { error in
@@ -105,7 +178,7 @@ final class PersistenceTests: XCTestCase {
     func testRefundMayOmitOriginalPurchase() throws {
         let bank = Bank(name: "退款测试银行")
         let account = CreditCardAccount(bank: bank)
-        let card = Card(account: account, productName: "测试卡", network: CardNetwork.makeBuiltIns()[0], lastFour: "1234")
+        let card = Card(account: account, productName: "测试卡", networks: [CardNetwork.makeBuiltIns()[0]], lastFour: "1234")
         let refund = Transaction(
             card: card,
             kind: .refund,
