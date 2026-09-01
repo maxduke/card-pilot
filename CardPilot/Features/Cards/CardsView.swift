@@ -541,6 +541,18 @@ private struct CardOnboardingView: View {
 
     @ViewBuilder
     private var accountStep: some View {
+        selectedBankAccountSummary
+
+        if matchingAccounts.isEmpty {
+            Label("该银行还没有账户，将创建一个新的信用卡账户。", systemImage: "plus.rectangle.on.rectangle")
+                .foregroundStyle(.secondary)
+        } else {
+            existingAccountPicker
+        }
+    }
+
+    @ViewBuilder
+    private var selectedBankAccountSummary: some View {
         if let selectedPreset {
             HStack(spacing: 12) {
                 BankBadge(name: selectedPreset.displayName, monogram: selectedPreset.monogram)
@@ -555,47 +567,50 @@ private struct CardOnboardingView: View {
                 Text(selectedBankName).font(.headline)
             }
         }
+    }
 
-        if !matchingAccounts.isEmpty {
-            Picker("账户关系", selection: $accountMode) {
-                ForEach(AccountMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
+    @ViewBuilder
+    private var existingAccountPicker: some View {
+        Picker("账户关系", selection: $accountMode) {
+            ForEach(AccountMode.allCases) { mode in
+                Text(mode.title).tag(mode)
             }
-            .pickerStyle(.segmented)
-
-            if accountMode == .existing {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("选择要共用的账户")
-                        .font(.subheadline.weight(.semibold))
-                    ForEach(matchingAccounts, id: \.id) { account in
-                        Button {
-                            existingAccountID = account.id
-                        } label: {
-                            HStack {
-                                Image(systemName: existingAccountID == account.id ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(existingAccountID == account.id ? .tint : .secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(account.creditLimit.map { "额度 \(CardPilotUI.amountText($0, currencyCode: account.limitCurrencyCode))" } ?? "未设置额度")
-                                    Text("账单与还款规则沿用此账户")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 5)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding()
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-        } else {
-            Label("该银行还没有账户，将创建一个新的信用卡账户。", systemImage: "plus.rectangle.on.rectangle")
-                .foregroundStyle(.secondary)
         }
+        .pickerStyle(.segmented)
+
+        if accountMode == .existing {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("选择要共用的账户")
+                    .font(.subheadline.weight(.semibold))
+                ForEach(matchingAccounts, id: \.id) { account in
+                    Button {
+                        existingAccountID = account.id
+                    } label: {
+                        HStack {
+                            Image(systemName: existingAccountID == account.id ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(existingAccountID == account.id ? .tint : .secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(creditLimitText(for: account))
+                                Text("账单与还款规则沿用此账户")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding()
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func creditLimitText(for account: CreditCardAccount) -> String {
+        guard let creditLimit = account.creditLimit else { return "未设置额度" }
+        return "额度 \(CardPilotUI.amountText(creditLimit, currencyCode: account.limitCurrencyCode))"
     }
 
     @ViewBuilder
@@ -604,7 +619,7 @@ private struct CardOnboardingView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("共用已有账户", systemImage: "rectangle.stack.fill")
                     .font(.headline)
-                Text(selectedExistingAccount.creditLimit.map { "额度：\(CardPilotUI.amountText($0, currencyCode: selectedExistingAccount.limitCurrencyCode))" } ?? "此账户未设置额度")
+                Text(creditLimitText(for: selectedExistingAccount))
                     .foregroundStyle(.secondary)
                 Text("本张卡会沿用该账户的额度、账单日和还款日。")
                     .font(.caption)
