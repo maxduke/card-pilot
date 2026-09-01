@@ -302,7 +302,7 @@ private struct PromotionEditorView: View {
                         Text("可稍后补充银行或卡组织主办方")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(banks.filter { $0.archivedAt == nil }, id: \.id) { bank in
+                    ForEach(banks.filter { $0.archivedAt == nil || selectedBankIDs.contains($0.id) }, id: \.id) { bank in
                         Toggle(bank.name, isOn: binding(for: bank.id, in: $selectedBankIDs))
                     }
                     ForEach(organizerNetworks, id: \.id) { network in
