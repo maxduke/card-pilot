@@ -100,7 +100,9 @@ final class PersistenceTests: XCTestCase {
             Promotion(title: "无效计入上限", startOn: 20260801, endOn: 20260831, qualifyingCap: .zero, progressCurrencyCode: "CNY"),
             Promotion(title: "无效单笔门槛", startOn: 20260801, endOn: 20260831, perTransactionThreshold: .zero, progressCurrencyCode: "CNY")
         ]
-        invalidPromotions.forEach { XCTAssertThrowsError(try $0.validate()) }
+        for promotion in invalidPromotions {
+            XCTAssertThrowsError(try promotion.validate())
+        }
     }
 
     func testAccountRejectsDuplicateBaselineRules() throws {
