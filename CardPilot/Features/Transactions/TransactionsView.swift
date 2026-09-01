@@ -421,7 +421,10 @@ private struct TransactionEditorView: View {
                 guard !showing, selectedCard?.status == .inactive else { return }
                 cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
             }
-            .onChange(of: kind) { _, _ in refreshCandidates() }
+            .onChange(of: kind) { _, _ in
+                refreshCandidates()
+                refreshDefaultAllocationAmounts()
+            }
             .onChange(of: originalTransactionID) { _, _ in refreshCandidates() }
             .onChange(of: transactionDate) { _, _ in refreshCandidates() }
             .onChange(of: postingDate) { _, _ in refreshCandidates() }
