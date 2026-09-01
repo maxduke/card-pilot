@@ -95,4 +95,15 @@ final class AccountSummaryTests: XCTestCase {
             [archived.id, active.id]
         )
     }
+
+    func testPresetOnboardingReusesUntaggedCatalogBankAndPrefersTaggedMatch() throws {
+        let preset = try XCTUnwrap(BankPreset.catalog.first { $0.code == "cn.icbc" })
+        let untagged = Bank(name: " 工商银行 ")
+        let otherPreset = Bank(name: "工商银行", presetCode: "hk.icbcasia")
+
+        XCTAssertEqual(matchingPresetBanks([untagged, otherPreset], preset: preset).map(\.id), [untagged.id])
+
+        let tagged = Bank(name: "工商银行", presetCode: preset.code)
+        XCTAssertEqual(matchingPresetBanks([untagged, tagged], preset: preset).map(\.id), [tagged.id])
+    }
 }

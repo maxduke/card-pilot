@@ -388,7 +388,7 @@ private struct CardOnboardingView: View {
 
     private var matchingBanks: [Bank] {
         if let selectedPreset {
-            return banks.filter { $0.presetCode == selectedPreset.code }
+            return matchingPresetBanks(banks, preset: selectedPreset)
         }
         let name = selectedBankName
         return name.isEmpty ? [] : banks.filter {
@@ -797,6 +797,7 @@ private struct CardOnboardingView: View {
 
         do {
             bank.archivedAt = nil
+            if let selectedPreset { bank.presetCode = selectedPreset.code }
             try bank.validate()
             if creatingAccount {
                 let rule = BillingRuleVersion(
@@ -1361,6 +1362,16 @@ private struct AccountEditorView: View {
 
 func selectableAccountBanks(_ banks: [Bank], currentBankID: UUID?) -> [Bank] {
     banks.filter { $0.archivedAt == nil || $0.id == currentBankID }
+}
+
+func matchingPresetBanks(_ banks: [Bank], preset: BankPreset) -> [Bank] {
+    let tagged = banks.filter { $0.presetCode == preset.code }
+    guard tagged.isEmpty else { return tagged }
+    return banks.filter {
+        $0.presetCode == nil
+            && $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .localizedCaseInsensitiveCompare(preset.displayName) == .orderedSame
+    }
 }
 
 private struct CardEditorView: View {
