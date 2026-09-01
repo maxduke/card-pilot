@@ -571,6 +571,14 @@ private struct CardOnboardingView: View {
 
     @ViewBuilder
     private var existingAccountPicker: some View {
+        accountModeControl
+
+        if accountMode == .existing {
+            existingAccountChoices
+        }
+    }
+
+    private var accountModeControl: some View {
         Picker("账户关系", selection: $accountMode) {
             ForEach(AccountMode.allCases) { mode in
                 Text(mode.title).tag(mode)
@@ -578,34 +586,40 @@ private struct CardOnboardingView: View {
         }
         .pickerStyle(.segmented)
 
-        if accountMode == .existing {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("选择要共用的账户")
-                    .font(.subheadline.weight(.semibold))
-                ForEach(matchingAccounts, id: \.id) { account in
-                    Button {
-                        existingAccountID = account.id
-                    } label: {
-                        HStack {
-                            Image(systemName: existingAccountID == account.id ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(existingAccountID == account.id ? .tint : .secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(creditLimitText(for: account))
-                                Text("账单与还款规则沿用此账户")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 5)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+    }
+
+    private var existingAccountChoices: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("选择要共用的账户")
+                .font(.subheadline.weight(.semibold))
+            ForEach(matchingAccounts, id: \.id) { account in
+                existingAccountChoice(account)
             }
-            .padding()
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func existingAccountChoice(_ account: CreditCardAccount) -> some View {
+        let isSelected = existingAccountID == account.id
+        return Button {
+            existingAccountID = account.id
+        } label: {
+            HStack {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(creditLimitText(for: account))
+                    Text("账单与还款规则沿用此账户")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func creditLimitText(for account: CreditCardAccount) -> String {
