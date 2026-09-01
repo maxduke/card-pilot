@@ -92,6 +92,11 @@ struct RootView: View {
         .onChange(of: appLock.isLocked) { _, locked in
             if locked {
                 showingSettings = false
+                if let previousTab = tabBeforeTransactionEditor {
+                    tabBeforeTransactionEditor = nil
+                    selectedTab = previousTab
+                    lastContentTab = previousTab
+                }
                 showingTransactionEditor = false
             }
         }
