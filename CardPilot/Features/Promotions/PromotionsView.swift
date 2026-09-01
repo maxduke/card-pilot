@@ -665,13 +665,12 @@ private struct PromotionEditorView: View {
     }
 
     private func seriesTargets(for target: Promotion) -> [Promotion] {
-        guard seriesEditScope == .thisAndFuture,
-              let seriesID = target.seriesID,
-              let seriesIndex = target.seriesIndex else { return [target] }
-        let targets = allPromotions
-            .filter { $0.seriesID == seriesID && ($0.seriesIndex ?? -1) >= seriesIndex }
-            .sorted { ($0.seriesIndex ?? Int.max) < ($1.seriesIndex ?? Int.max) }
-        return targets.isEmpty ? [target] : targets
+        guard seriesEditScope == .thisAndFuture else { return [target] }
+        return PromotionSeriesCalculator.editablePeriods(
+            in: allPromotions,
+            from: target,
+            today: CardPilotUI.rawDate(Date())
+        )
     }
 
     private func seriesDateValue(_ value: Int?, source: Promotion, target: Promotion) -> Int? {

@@ -280,4 +280,30 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertEqual(copied.endOn, 20260328)
         XCTAssertNotEqual(copied.id, template.id)
     }
+
+    func testSeriesBulkEditKeepsSelectedHistoricalPeriodButSkipsOtherEndedPeriods() {
+        let seriesID = UUID()
+        func promotion(_ index: Int, _ startOn: Int, _ endOn: Int) -> Promotion {
+            Promotion(
+                seriesID: seriesID,
+                seriesIndex: index,
+                title: String(index),
+                startOn: startOn,
+                endOn: endOn,
+                progressCurrencyCode: "CNY"
+            )
+        }
+        let selected = promotion(0, 20260101, 20260131)
+        let ended = promotion(1, 20260201, 20260228)
+        let current = promotion(2, 20260301, 20260331)
+        let upcoming = promotion(3, 20260401, 20260430)
+
+        let targets = PromotionSeriesCalculator.editablePeriods(
+            in: [selected, ended, current, upcoming],
+            from: selected,
+            today: 20260315
+        )
+
+        XCTAssertEqual(targets.map(\.id), [selected.id, current.id, upcoming.id])
+    }
 }

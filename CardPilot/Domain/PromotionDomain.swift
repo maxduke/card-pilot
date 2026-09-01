@@ -95,6 +95,24 @@ enum PromotionSeriesCalculator {
         guard let date = try? LocalDate(rawValue: rawValue) else { return nil }
         return date.addingMonthsIfPossible(months)?.rawValue
     }
+
+    static func editablePeriods(
+        in promotions: [Promotion],
+        from target: Promotion,
+        today: Int
+    ) -> [Promotion] {
+        guard let seriesID = target.seriesID,
+              let seriesIndex = target.seriesIndex else { return [target] }
+        let targets = promotions
+            .filter {
+                $0.id != target.id
+                    && $0.seriesID == seriesID
+                    && ($0.seriesIndex ?? -1) >= seriesIndex
+                    && $0.endOn >= today
+            }
+        return ([target] + targets)
+            .sorted { ($0.seriesIndex ?? Int.max) < ($1.seriesIndex ?? Int.max) }
+    }
 }
 
 extension Promotion {
