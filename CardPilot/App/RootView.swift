@@ -16,6 +16,7 @@ struct RootView: View {
     @State private var lastContentTab = Tab.dashboard
     @State private var showingSettings = false
     @State private var showingTransactionEditor = false
+    @State private var tabBeforeTransactionEditor: Tab?
     @State private var isAuthenticating = false
     @State private var authenticationAttempt = 0
 
@@ -64,11 +65,18 @@ struct RootView: View {
                 .privacySensitive()
                 .onChange(of: selectedTab) { _, tab in
                     if tab == .addTransaction {
-                        selectedTab = lastContentTab
+                        tabBeforeTransactionEditor = lastContentTab
                         showingTransactionEditor = true
-                    } else {
+                        selectedTab = .transactions
+                    } else if tabBeforeTransactionEditor == nil {
                         lastContentTab = tab
                     }
+                }
+                .onChange(of: showingTransactionEditor) { _, isPresented in
+                    guard !isPresented, let previousTab = tabBeforeTransactionEditor else { return }
+                    tabBeforeTransactionEditor = nil
+                    selectedTab = previousTab
+                    lastContentTab = previousTab
                 }
                 .sheet(isPresented: $showingSettings) {
                     SettingsView()
