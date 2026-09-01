@@ -492,9 +492,10 @@ private struct CardOnboardingView: View {
                     Button {
                         selectedPresetCode = preset.code
                         customBank = false
+                        withAnimation { step = .account }
                     } label: {
                         HStack(spacing: 12) {
-                            BankBadge(name: preset.displayName, monogram: preset.monogram)
+                            BankBadge(preset: preset)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(preset.displayName)
                                     .foregroundStyle(.primary)
@@ -513,6 +514,7 @@ private struct CardOnboardingView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint("双击选择并继续")
                     if preset.id != filteredPresets.last?.id { Divider() }
                 }
             }
@@ -555,7 +557,7 @@ private struct CardOnboardingView: View {
     private var selectedBankAccountSummary: some View {
         if let selectedPreset {
             HStack(spacing: 12) {
-                BankBadge(name: selectedPreset.displayName, monogram: selectedPreset.monogram)
+                BankBadge(preset: selectedPreset)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(selectedPreset.displayName).font(.headline)
                     Text("新卡将归入此发卡银行").font(.caption).foregroundStyle(.secondary)

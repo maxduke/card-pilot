@@ -140,6 +140,7 @@ enum ModelValidationError: Error, Equatable {
     case duplicateBillingCycle
     case duplicatePromotionAllocation
     case promotionCurrencyLocked
+    case invalidPromotionSeries
     case missingAccountOwner
     case effectiveCycleMustBeFuture
 }
@@ -487,6 +488,10 @@ final class BillingCycleRecord {
 @Model
 final class Promotion {
     var id: UUID
+    /// Promotions in one monthly series share an ID and keep their zero-based period index.
+    /// A nil ID means this is a standalone promotion.
+    var seriesID: UUID?
+    var seriesIndex: Int?
     var title: String
     var startOn: Int
     var endOn: Int
@@ -526,6 +531,8 @@ final class Promotion {
 
     init(
         id: UUID = UUID(),
+        seriesID: UUID? = nil,
+        seriesIndex: Int? = nil,
         title: String,
         startOn: Int,
         endOn: Int,
@@ -548,6 +555,8 @@ final class Promotion {
         archivedAt: Date? = nil
     ) {
         self.id = id
+        self.seriesID = seriesID
+        self.seriesIndex = seriesIndex
         self.title = title
         self.startOn = startOn
         self.endOn = endOn
@@ -571,6 +580,10 @@ final class Promotion {
     }
 
     func validate() throws {
+        guard (seriesID == nil && seriesIndex == nil)
+                || (seriesID != nil && seriesIndex.map { $0 >= 0 } == true) else {
+            throw ModelValidationError.invalidPromotionSeries
+        }
         guard hasText(title) else { throw ModelValidationError.blankTitle }
         guard (try? LocalDate(rawValue: startOn)) != nil,
               (try? LocalDate(rawValue: endOn)) != nil else { throw ModelValidationError.invalidDate }
@@ -748,8 +761,8 @@ final class PromotionAllocation {
     }
 }
 
-enum CardPilotSchemaV2: VersionedSchema {
-    static var versionIdentifier = Schema.Version(2, 0, 0)
+enum CardPilotSchemaV3: VersionedSchema {
+    static var versionIdentifier = Schema.Version(3, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [
@@ -768,9 +781,9 @@ enum CardPilotSchemaV2: VersionedSchema {
 
 enum CardPilotPersistence {
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: CardPilotSchemaV2.self)
+        let schema = Schema(versionedSchema: CardPilotSchemaV3.self)
         let configuration = ModelConfiguration(
-            "CardPilotPrereleaseV2",
+            "CardPilotPrereleaseV3",
             schema: schema,
             isStoredInMemoryOnly: inMemory,
             cloudKitDatabase: .none

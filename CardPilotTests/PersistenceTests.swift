@@ -156,6 +156,27 @@ final class PersistenceTests: XCTestCase {
         }
     }
 
+    func testPromotionSeriesFieldsRoundTripInPrereleaseSchema() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let seriesID = UUID()
+        let promotion = Promotion(
+            seriesID: seriesID,
+            seriesIndex: 2,
+            title: "系列周期",
+            startOn: 20261001,
+            endOn: 20261031,
+            progressCurrencyCode: "CNY"
+        )
+        XCTAssertNoThrow(try promotion.validate())
+        context.insert(promotion)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<Promotion>())
+        XCTAssertEqual(fetched.first?.seriesID, seriesID)
+        XCTAssertEqual(fetched.first?.seriesIndex, 2)
+    }
+
     func testDeletingAccountDependenciesAllowsAccountDeletion() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         let context = container.mainContext

@@ -18,6 +18,14 @@ struct CurrencyOption: Identifiable, Hashable {
     var id: String { code }
 
     static let commonCodes = ["CNY", "HKD", "USD", "EUR", "JPY", "GBP"]
+    static let commonSymbols = [
+        "CNY": "¥",
+        "HKD": "HK$",
+        "USD": "$",
+        "EUR": "€",
+        "JPY": "¥",
+        "GBP": "£"
+    ]
 
     static let all: [CurrencyOption] = {
         let locale = Locale.current
@@ -25,7 +33,9 @@ struct CurrencyOption: Identifiable, Hashable {
             .filter { Locale.Currency($0).isISOCurrency }
             .map { code in
                 let name = locale.localizedString(forCurrencyCode: code) ?? code
-                let symbol = Locale(identifier: "\(locale.identifier)@currency=\(code)").currencySymbol ?? code
+                let symbol = commonSymbols[code]
+                    ?? Locale(identifier: "\(locale.identifier)@currency=\(code)").currencySymbol
+                    ?? code
                 return CurrencyOption(code: code, name: name, symbol: symbol)
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -140,14 +150,17 @@ private struct CurrencyPickerSheet: View {
             dismiss()
         } label: {
             HStack(spacing: 12) {
-                Text(option.symbol)
-                    .font(.headline.monospacedDigit())
-                    .frame(width: 30)
-                    .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(option.code)
+                            .font(.headline.monospaced())
+                            .foregroundStyle(.tint)
+                        Text(option.symbol)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                     Text(option.name)
-                    Text(option.code)
-                        .font(.caption.monospaced())
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -175,10 +188,11 @@ private struct CurrencyCodeLabel: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Text(CurrencyOption.find(code).symbol)
-                .font(.subheadline.monospacedDigit())
             Text(code)
                 .font(.subheadline.monospaced())
+            Text(CurrencyOption.find(code).symbol)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -186,32 +200,80 @@ private struct CurrencyCodeLabel: View {
 struct BankBadge: View {
     let name: String
     let monogram: String
+    let assetName: String?
+    let isPreset: Bool
 
-    init(name: String, monogram: String? = nil) {
+    init(name: String, monogram: String? = nil, assetName: String? = nil, isPreset: Bool = false) {
         self.name = name
         self.monogram = monogram ?? String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()
+        self.assetName = assetName
+        self.isPreset = isPreset
+    }
+
+    init(preset: BankPreset) {
+        self.init(name: preset.displayName, monogram: preset.monogram, assetName: Self.assetNames[preset.code], isPreset: true)
     }
 
     init(bank: Bank) {
         self.init(name: bank.name, monogram: bank.presetCode.flatMap { code in
             BankPreset.catalog.first { $0.code == code }?.monogram
-        })
+        }, assetName: bank.presetCode.flatMap { Self.assetNames[$0] }, isPreset: bank.presetCode != nil)
     }
 
     var body: some View {
-        Text(monogram)
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.white)
+        Group {
+            if let assetName {
+                ZStack {
+                    Color.white
+                    Image(assetName)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(3)
+                }
+            } else if isPreset {
+                ZStack {
+                    LinearGradient(
+                        colors: [.indigo, .blue],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image(systemName: "building.columns.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [.indigo, .blue],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Text(monogram)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
             .frame(width: 38, height: 38)
-            .background(
-                LinearGradient(
-                    colors: [.indigo, .blue],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ), in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(.quaternary, lineWidth: 0.5)
+            }
             .accessibilityLabel("\(name)图标")
     }
+
+    private static let assetNames = [
+        "cn.icbc": "bank_icbc", "cn.abc": "bank_abchina", "cn.boc": "bank_boc",
+        "cn.ccb": "bank_ccb", "cn.bocom": "bank_bankcomm", "cn.psbc": "bank_psbc",
+        "cn.cmb": "bank_cmbchina", "cn.citic": "bank_citicbank", "cn.ceb": "bank_cebbank",
+        "cn.cmbc": "bank_cmbc", "cn.spdb": "bank_spdb", "cn.cib": "bank_cib",
+        "cn.pingan": "bank_pingan", "cn.cgb": "bank_cgbchina", "cn.hxb": "bank_hxb",
+        "cn.czbank": "bank_czbank", "cn.hfbank": "bank_hfbank", "cn.cbhb": "bank_cbhb",
+        "hk.hsbc": "bank_hsbc", "hk.hangseng": "bank_hangseng", "hk.bochk": "bank_boc",
+        "hk.citibank": "bank_citibank", "hk.dbs": "bank_dbs", "hk.dahsing": "bank_dahsing",
+        "hk.citicintl": "bank_citicbank", "hk.ccba": "bank_ccb", "hk.icbcasia": "bank_icbc"
+    ]
 }
 
 struct CardNetworkBadge: View {
@@ -229,13 +291,63 @@ struct CardNetworkBadge: View {
     }
 
     var body: some View {
-        Text(shortName)
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(.quaternary, in: Capsule())
+        Group {
+            switch code {
+            case "unionpay":
+                HStack(spacing: -3) {
+                    networkBlock(.red, text: "U")
+                    networkBlock(.blue, text: "P")
+                    networkBlock(.green, text: "")
+                }
+            case "visa":
+                Text("VISA")
+                    .font(.caption2.weight(.black).italic())
+                    .foregroundStyle(Color(red: 0.08, green: 0.19, blue: 0.55))
+            case "mastercard":
+                HStack(spacing: -7) {
+                    Circle()
+                        .fill(Color(red: 0.92, green: 0.12, blue: 0.16))
+                        .frame(width: 18, height: 18)
+                    Circle()
+                        .fill(Color(red: 1, green: 0.62, blue: 0.05).opacity(0.92))
+                        .frame(width: 18, height: 18)
+                }
+                .padding(.horizontal, 8)
+            case "amex":
+                Text("AMEX")
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 0.05, green: 0.55, blue: 0.78), in: RoundedRectangle(cornerRadius: 3))
+            case "jcb":
+                HStack(spacing: 1) {
+                    networkBlock(.blue, text: "J")
+                    networkBlock(.red, text: "C")
+                    networkBlock(.green, text: "B")
+                }
+            default:
+                Text(shortName)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.primary)
+            }
+        }
+            .frame(minWidth: 38, minHeight: 22)
+            .padding(.horizontal, 3)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(.quaternary, lineWidth: 0.5)
+            }
             .accessibilityLabel(displayName)
+    }
+
+    private func networkBlock(_ color: Color, text: String) -> some View {
+        Text(text)
+            .font(.system(size: 7, weight: .black, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: 12, height: 16)
+            .background(color, in: RoundedRectangle(cornerRadius: 3))
     }
 
     private var shortName: String {
@@ -294,6 +406,11 @@ enum CardPilotUI {
     static func dateText(_ rawValue: Int?) -> String {
         guard let rawValue, let date = try? LocalDate(rawValue: rawValue) else { return "—" }
         return dateText(date)
+    }
+
+    static func monthKeyText(_ monthKey: Int?) -> String {
+        guard let monthKey, LocalDate.isValidMonthKey(monthKey) else { return "—" }
+        return "\(monthKey / 100)年\(monthKey % 100)月"
     }
 
     static func amountText(_ amount: Decimal, currencyCode: String? = nil) -> String {

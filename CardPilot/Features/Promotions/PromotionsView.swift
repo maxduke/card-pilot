@@ -220,6 +220,8 @@ private struct PromotionEditorView: View {
     @State private var title: String
     @State private var startDate: Date
     @State private var endDate: Date
+    @State private var repeatsMonthly: Bool
+    @State private var repeatUntilDate: Date
     @State private var qualificationThresholdText: String
     @State private var qualifyingCapText: String
     @State private var perTransactionThresholdText: String
@@ -239,7 +241,9 @@ private struct PromotionEditorView: View {
     @State private var rewardDescription: String
     @State private var notes: String
     @State private var archived: Bool
+    @State private var seriesEditScope: PromotionSeriesEditScope
     @State private var errorMessage: String?
+    @Query private var allPromotions: [Promotion]
 
     init(promotion: Promotion?, banks: [Bank], networks: [CardNetwork], cards: [Card]) {
         self.promotion = promotion
@@ -249,6 +253,8 @@ private struct PromotionEditorView: View {
         _title = State(initialValue: promotion?.title ?? "")
         _startDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.startOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _endDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.endOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
+        _repeatsMonthly = State(initialValue: false)
+        _repeatUntilDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.endOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _qualificationThresholdText = State(initialValue: promotion.flatMap { $0.qualificationThreshold.map(CardPilotUI.editableAmountText) } ?? "")
         _qualifyingCapText = State(initialValue: promotion.flatMap { $0.qualifyingCap.map(CardPilotUI.editableAmountText) } ?? "")
         _perTransactionThresholdText = State(initialValue: promotion.flatMap { $0.perTransactionThreshold.map(CardPilotUI.editableAmountText) } ?? "")
@@ -268,6 +274,7 @@ private struct PromotionEditorView: View {
         _rewardDescription = State(initialValue: promotion?.rewardDescription ?? "")
         _notes = State(initialValue: promotion?.notes ?? "")
         _archived = State(initialValue: promotion?.archivedAt != nil)
+        _seriesEditScope = State(initialValue: .thisOnly)
     }
 
     var body: some View {
@@ -276,7 +283,26 @@ private struct PromotionEditorView: View {
                 Section("基本信息") {
                     TextField("活动标题", text: $title)
                     DatePicker("开始日期", selection: $startDate, displayedComponents: .date)
+                        .disabled(promotion?.seriesID != nil)
                     DatePicker("结束日期", selection: $endDate, displayedComponents: .date)
+                        .disabled(promotion?.seriesID != nil)
+                    if promotion == nil {
+                        Toggle("每月重复", isOn: $repeatsMonthly)
+                        if repeatsMonthly {
+                            DatePicker("系列结束日期", selection: $repeatUntilDate, displayedComponents: .date)
+                            Text("将创建 \(monthlyPeriodPreview.count) 个完整周期")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if promotion?.seriesID != nil {
+                        Picker("编辑范围", selection: $seriesEditScope) {
+                            Text("仅本期").tag(PromotionSeriesEditScope.thisOnly)
+                            Text("本期及以后").tag(PromotionSeriesEditScope.thisAndFuture)
+                        }
+                        Text("系列日期由首期锚点按月生成，不能单独修改。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     TextField("累计达标门槛（可选）", text: $qualificationThresholdText)
                         .keyboardType(.decimalPad)
                     TextField("累计计入上限（前 N 元/最高计算金额，可选）", text: $qualifyingCapText)
@@ -303,7 +329,12 @@ private struct PromotionEditorView: View {
                             .foregroundStyle(.secondary)
                     }
                     ForEach(banks.filter { $0.archivedAt == nil || selectedBankIDs.contains($0.id) }, id: \.id) { bank in
-                        Toggle(bank.name, isOn: binding(for: bank.id, in: $selectedBankIDs))
+                        Toggle(isOn: binding(for: bank.id, in: $selectedBankIDs)) {
+                            HStack(spacing: 10) {
+                                BankBadge(bank: bank)
+                                Text(bank.name)
+                            }
+                        }
                     }
                     ForEach(organizerNetworks, id: \.id) { network in
                         Toggle(isOn: binding(for: network.id, in: $selectedNetworkIDs)) {
@@ -318,41 +349,49 @@ private struct PromotionEditorView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("适用卡") {
-                    if cards.isEmpty {
-                        Text("请先添加卡片")
+                Section("推荐适用卡") {
+                    if recommendedCards.isEmpty {
+                        Text(selectedBankIDs.isEmpty && selectedNetworkIDs.isEmpty
+                             ? "选择银行或卡组织后显示启用卡推荐"
+                             : "没有找到同时匹配这些主办方的启用卡")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(sortedCards, id: \.id) { card in
-                            Toggle(isOn: binding(for: card.id, in: $selectedCardIDs)) {
-                                HStack(spacing: 10) {
-                                    BankBadge(bank: card.account.bank)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 6) {
-                                            Text(cardName(card))
-                                                .font(.subheadline.weight(.medium))
-                                                .lineLimit(1)
-                                            if card.networks.count == 2 {
-                                                Text("双标")
-                                                    .font(.caption2.weight(.semibold))
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-                                        HStack(spacing: 6) {
-                                            CardNetworksBadges(networks: card.networks)
-                                            Text("•••• \(card.lastFour)")
-                                                .font(.caption.monospaced())
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Text(card.account.bank.name)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                        HStack {
+                            Text("根据已选主办方匹配")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("全选推荐") {
+                                selectedCardIDs.formUnion(recommendedCards.map(\.card.id))
+                            }
+                            .font(.subheadline.weight(.medium))
+                        }
+                        ForEach(recommendedCards) { recommendation in
+                            Toggle(isOn: binding(for: recommendation.card.id, in: $selectedCardIDs)) {
+                                cardRow(recommendation.card, reasons: recommendation.reasons)
                             }
                         }
                     }
-                    Text("适用卡需明确勾选；主办方不会自动推导适用卡。")
+                    Text("推荐仅供确认，不会自动成为适用卡。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("其他卡片") {
+                    if cards.isEmpty {
+                        Text("请先添加卡片")
+                            .foregroundStyle(.secondary)
+                    } else if otherCards.isEmpty {
+                        Text("所有可选卡片均已显示在推荐列表中")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(otherCards, id: \.id) { card in
+                            Toggle(isOn: binding(for: card.id, in: $selectedCardIDs)) {
+                                cardRow(card)
+                            }
+                        }
+                    }
+                    Text("未在推荐中的卡片也可以逐张确认；主办方变化不会移除已确认的适用卡。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -430,9 +469,59 @@ private struct PromotionEditorView: View {
         }
     }
 
+    private var recommendedCards: [PromotionCardRecommendation] {
+        PromotionEligibility.recommendations(
+            organizingBanks: banks.filter { selectedBankIDs.contains($0.id) },
+            organizingNetworks: networks.filter { selectedNetworkIDs.contains($0.id) },
+            cards: cards
+        )
+    }
+
+    private var monthlyPeriodPreview: [PromotionPeriod] {
+        guard repeatsMonthly else { return [] }
+        return PromotionSeriesCalculator.monthlyPeriods(
+            startOn: CardPilotUI.rawDate(startDate),
+            endOn: CardPilotUI.rawDate(endDate),
+            through: CardPilotUI.rawDate(repeatUntilDate)
+        )
+    }
+
+    private var otherCards: [Card] {
+        let recommendedIDs = Set(recommendedCards.map(\.card.id))
+        return sortedCards.filter { !recommendedIDs.contains($0.id) }
+    }
+
     private func cardName(_ card: Card) -> String {
         let name = card.nickname.isEmpty ? card.productName : card.nickname
         return name
+    }
+
+    @ViewBuilder
+    private func cardRow(_ card: Card, reasons: [String] = []) -> some View {
+        HStack(spacing: 10) {
+            BankBadge(bank: card.account.bank)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(cardName(card))
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                    if card.networks.count == 2 {
+                        Text("双标")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                HStack(spacing: 6) {
+                    CardNetworksBadges(networks: card.networks)
+                    Text("•••• \(card.lastFour)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Text(reasons.isEmpty ? card.account.bank.name : reasons.joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func save() {
@@ -467,6 +556,47 @@ private struct PromotionEditorView: View {
         let selectedBanks = banks.filter { selectedBankIDs.contains($0.id) }
         let selectedNetworks = networks.filter { selectedNetworkIDs.contains($0.id) }
         let selectedCards = cards.filter { selectedCardIDs.contains($0.id) }
+
+        if promotion == nil && repeatsMonthly {
+            guard monthlyPeriodPreview.count >= 2 else {
+                errorMessage = "系列结束日期必须容纳至少两个完整周期。"
+                return
+            }
+            let template = Promotion(
+                title: normalizedTitle,
+                startOn: startOn,
+                endOn: endOn,
+                organizingBanks: selectedBanks,
+                organizingNetworks: selectedNetworks,
+                eligibleCards: selectedCards,
+                enrollmentStatus: status,
+                enrolledOn: enrolledValue,
+                enrollmentDeadline: deadlineValue,
+                qualificationDateBasis: qualificationDateBasis,
+                stackingAllowed: stackingAllowed,
+                qualificationThreshold: threshold.value,
+                qualifyingCap: cap.value,
+                perTransactionThreshold: perTransactionThreshold.value,
+                progressCurrencyCode: normalizedCurrency,
+                rules: rules,
+                exclusions: exclusions,
+                rewardDescription: rewardDescription,
+                notes: notes,
+                archivedAt: archived ? Date() : nil
+            )
+            let targets = Promotion.makeMonthlySeries(from: template, through: CardPilotUI.rawDate(repeatUntilDate))
+            do {
+                try targets.forEach { try $0.validate() }
+                targets.forEach { modelContext.insert($0) }
+                try modelContext.save()
+                dismiss()
+            } catch {
+                modelContext.rollback()
+                errorMessage = "促销未保存：\(error.localizedDescription)"
+            }
+            return
+        }
+
         let target = promotion ?? Promotion(
             title: normalizedTitle,
             startOn: startOn,
@@ -489,28 +619,42 @@ private struct PromotionEditorView: View {
             notes: notes,
             archivedAt: archived ? Date() : nil
         )
-        target.title = normalizedTitle
-        target.startOn = startOn
-        target.endOn = endOn
-        target.organizingBanks = selectedBanks
-        target.organizingNetworks = selectedNetworks
-        target.eligibleCards = selectedCards
-        target.enrollmentStatus = status
-        target.enrolledOn = enrolledValue
-        target.enrollmentDeadline = deadlineValue
-        target.qualificationDateBasis = qualificationDateBasis
-        target.stackingAllowed = stackingAllowed
-        target.qualificationThreshold = threshold.value
-        target.qualifyingCap = cap.value
-        target.perTransactionThreshold = perTransactionThreshold.value
-        target.progressCurrencyCode = normalizedCurrency
-        target.rules = rules
-        target.exclusions = exclusions
-        target.rewardDescription = rewardDescription
-        target.notes = notes
-        target.archivedAt = archived ? (target.archivedAt ?? Date()) : nil
+        let targets = seriesTargets(for: target)
+        guard !targets.contains(where: { !$0.allocations.isEmpty && $0.progressCurrencyCode != normalizedCurrency }) else {
+            errorMessage = "系列中已有促销分配的周期不能修改进度币种。"
+            return
+        }
+        for candidate in targets {
+            candidate.title = normalizedTitle
+            if candidate.id == target.id || candidate.seriesID == nil {
+                candidate.startOn = startOn
+                candidate.endOn = endOn
+            }
+            candidate.organizingBanks = selectedBanks
+            candidate.organizingNetworks = selectedNetworks
+            candidate.eligibleCards = selectedCards
+            candidate.enrollmentStatus = status
+            candidate.enrolledOn = seriesDateValue(enrolledValue, source: target, target: candidate)
+            candidate.enrollmentDeadline = seriesDateValue(deadlineValue, source: target, target: candidate)
+            candidate.qualificationDateBasis = qualificationDateBasis
+            candidate.stackingAllowed = stackingAllowed
+            candidate.qualificationThreshold = threshold.value
+            candidate.qualifyingCap = cap.value
+            candidate.perTransactionThreshold = perTransactionThreshold.value
+            candidate.progressCurrencyCode = normalizedCurrency
+            candidate.rules = rules
+            candidate.exclusions = exclusions
+            candidate.rewardDescription = rewardDescription
+            candidate.notes = notes
+            candidate.archivedAt = archived ? (candidate.archivedAt ?? Date()) : nil
+        }
         do {
-            try target.validate()
+            try targets.forEach { candidate in
+                if let deadline = candidate.enrollmentDeadline, deadline > candidate.endOn {
+                    throw ModelValidationError.invalidEnrollment
+                }
+                try candidate.validate()
+            }
             if promotion == nil { modelContext.insert(target) }
             try modelContext.save()
             dismiss()
@@ -518,6 +662,23 @@ private struct PromotionEditorView: View {
             modelContext.rollback()
             errorMessage = "促销未保存：\(error.localizedDescription)"
         }
+    }
+
+    private func seriesTargets(for target: Promotion) -> [Promotion] {
+        guard seriesEditScope == .thisAndFuture else { return [target] }
+        return PromotionSeriesCalculator.editablePeriods(
+            in: allPromotions,
+            from: target,
+            today: CardPilotUI.rawDate(Date())
+        )
+    }
+
+    private func seriesDateValue(_ value: Int?, source: Promotion, target: Promotion) -> Int? {
+        guard let value else { return nil }
+        guard seriesEditScope == .thisAndFuture,
+              let sourceIndex = source.seriesIndex,
+              let targetIndex = target.seriesIndex else { return value }
+        return PromotionSeriesCalculator.shiftedDate(value, byMonths: targetIndex - sourceIndex) ?? value
     }
 
     private func parseOptionalAmount(_ text: String, label: String) -> (value: Decimal?, isValid: Bool) {
@@ -534,8 +695,12 @@ private struct PromotionEditorView: View {
 struct PromotionDetailView: View {
     @Environment(\.modelContext) private var modelContext
     let promotion: Promotion
+    @Query(sort: \Bank.name) private var banks: [Bank]
+    @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
+    @Query private var cards: [Card]
     @State private var showingAllocationEditor = false
     @State private var editingAllocation: PromotionAllocation?
+    @State private var showingPromotionEditor = false
     @State private var errorMessage: String?
 
     private var progress: PromotionProgress? { try? PromotionCalculator.progress(for: promotion) }
@@ -634,15 +799,37 @@ struct PromotionDetailView: View {
         }
         .navigationTitle(promotion.title)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    editingAllocation = nil
-                    showingAllocationEditor = true
+                    showingPromotionEditor = true
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "pencil")
                 }
-                .accessibilityLabel("添加促销分配")
+                .accessibilityLabel("编辑促销")
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if promotion.seriesID == nil {
+                        Button {
+                            copyToNextMonth()
+                        } label: {
+                            Label("复制到下个月", systemImage: "doc.on.doc")
+                        }
+                    }
+                    Button {
+                        editingAllocation = nil
+                        showingAllocationEditor = true
+                    } label: {
+                        Label("添加促销分配", systemImage: "plus")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("促销操作")
+            }
+        }
+        .sheet(isPresented: $showingPromotionEditor) {
+            PromotionEditorView(promotion: promotion, banks: banks, networks: networks, cards: cards)
         }
         .sheet(isPresented: $showingAllocationEditor) {
             AllocationEditorView(promotion: promotion, allocation: editingAllocation)
@@ -656,6 +843,21 @@ struct PromotionDetailView: View {
 
     private var errorPresented: Binding<Bool> {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
+    private func copyToNextMonth() {
+        guard let copy = promotion.copiedToNextMonth() else {
+            errorMessage = "无法生成下个月的完整日期。"
+            return
+        }
+        do {
+            try copy.validate()
+            modelContext.insert(copy)
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            errorMessage = "促销未复制：\(error.localizedDescription)"
+        }
     }
 
     private func cardName(_ card: Card) -> String {

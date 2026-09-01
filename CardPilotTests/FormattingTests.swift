@@ -33,4 +33,19 @@ final class FormattingTests: XCTestCase {
             XCTAssertNil(CardPilotUI.parseReminderOffsets(value), "应拒绝：\(value)")
         }
     }
+
+    func testCommonCurrencySymbolsAreUnambiguous() {
+        XCTAssertEqual(CurrencyOption.find("CNY").symbol, "¥")
+        XCTAssertEqual(CurrencyOption.find("HKD").symbol, "HK$")
+        XCTAssertEqual(CurrencyOption.find("USD").symbol, "$")
+        XCTAssertEqual(CurrencyOption.find("EUR").symbol, "€")
+        XCTAssertEqual(CurrencyOption.find("JPY").symbol, "¥")
+        XCTAssertEqual(CurrencyOption.find("GBP").symbol, "£")
+    }
+
+    func testMonthKeyTextFormatsValidMonthAndRejectsInvalidValues() {
+        XCTAssertEqual(CardPilotUI.monthKeyText(202609), "2026年9月")
+        XCTAssertEqual(CardPilotUI.monthKeyText(202613), "—")
+        XCTAssertEqual(CardPilotUI.monthKeyText(nil), "—")
+    }
 }

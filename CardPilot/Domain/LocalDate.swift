@@ -118,4 +118,21 @@ struct LocalDate: Codable, Comparable, Hashable, Identifiable, Sendable, CustomS
         let shiftedDay = min(day, Self.daysInMonth(year: shiftedYear, month: shiftedMonth, timeZone: timeZone))
         return try! LocalDate(year: shiftedYear, month: shiftedMonth, day: shiftedDay)
     }
+
+    /// Month arithmetic that returns nil when the requested result is outside the supported year range.
+    func addingMonthsIfPossible(_ value: Int, timeZone: TimeZone = .current) -> LocalDate? {
+        let calendar = Self.calendar(timeZone: timeZone)
+        guard let firstOfMonth = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+              let shifted = calendar.date(byAdding: .month, value: value, to: firstOfMonth) else {
+            return nil
+        }
+        let components = calendar.dateComponents([.year, .month], from: shifted)
+        guard let shiftedYear = components.year,
+              let shiftedMonth = components.month,
+              Self.isValid(year: shiftedYear, month: shiftedMonth, day: 1, timeZone: timeZone) else {
+            return nil
+        }
+        let shiftedDay = min(day, Self.daysInMonth(year: shiftedYear, month: shiftedMonth, timeZone: timeZone))
+        return try? LocalDate(year: shiftedYear, month: shiftedMonth, day: shiftedDay)
+    }
 }

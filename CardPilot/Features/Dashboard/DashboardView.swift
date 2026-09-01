@@ -7,6 +7,7 @@ struct DashboardView: View {
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Binding var showingSettings: Bool
     @State private var errorMessage: String?
+    @State private var recentlyRepaid: DashboardBillingItem?
     @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
 
     private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
@@ -30,18 +31,13 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, minHeight: 300)
                     }
 
-                    if !billingItems.isEmpty {
-                        DashboardSection(title: "近期账务日期") {
-                            ForEach(billingItems) { item in
-                                BillingItemRow(item: item) {
+                    if !actionBillingItems.isEmpty || !enrollmentClosingSoonPromotions.isEmpty || !endingSoonPromotions.isEmpty {
+                        DashboardSection(title: "待处理") {
+                            ForEach(actionBillingItems) { item in
+                                BillingItemRow(item: item, showsBank: true) {
                                     markRepaid(item)
                                 }
                             }
-                        }
-                    }
-
-                    if !enrollmentClosingSoonPromotions.isEmpty {
-                        DashboardSection(title: "报名即将截止") {
                             ForEach(enrollmentClosingSoonPromotions) { promotion in
                                 NavigationLink {
                                     PromotionDetailView(promotion: promotion)
@@ -51,10 +47,29 @@ struct DashboardView: View {
                                             .foregroundStyle(.orange)
                                         Text(promotion.title)
                                         Spacer()
-                                        Text("截止于 \(CardPilotUI.dateText(promotion.enrollmentDeadline))")
+                                        Text("报名截止 \(CardPilotUI.dateText(promotion.enrollmentDeadline))")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
+                                    .padding(.vertical, 10)
+                                    .accessibilityElement(children: .combine)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            ForEach(endingSoonPromotions) { promotion in
+                                NavigationLink {
+                                    PromotionDetailView(promotion: promotion)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "clock.badge.exclamationmark")
+                                            .foregroundStyle(.orange)
+                                        Text(promotion.title)
+                                        Spacer()
+                                        Text("结束于 \(CardPilotUI.dateText(promotion.endOn))")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.vertical, 10)
                                     .accessibilityElement(children: .combine)
                                 }
                                 .buttonStyle(.plain)
@@ -62,19 +77,14 @@ struct DashboardView: View {
                         }
                     }
 
-                    if !endingSoonPromotions.isEmpty {
-                        DashboardSection(title: "即将结束") {
-                            ForEach(endingSoonPromotions) { promotion in
-                                HStack {
-                                    Image(systemName: "clock.badge.exclamationmark")
-                                        .foregroundStyle(.orange)
-                                    Text(promotion.title)
-                                    Spacer()
-                                    Text("结束于 \(CardPilotUI.dateText(promotion.endOn))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                    if !accountsWithBillingItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("账户日程")
+                                .font(.headline)
+                            ForEach(accountsWithBillingItems, id: \.id) { account in
+                                AccountScheduleCard(account: account, items: billingItems(for: account)) { item in
+                                    markRepaid(item)
                                 }
-                                .accessibilityElement(children: .combine)
                             }
                         }
                     }
@@ -95,6 +105,24 @@ struct DashboardView: View {
                 .padding()
             }
             .navigationTitle("CardPilot")
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let recentlyRepaid {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("已标记 \(recentlyRepaid.account.bank.name) \(CardPilotUI.monthKeyText(recentlyRepaid.cycleKey)) 已还款")
+                            .font(.footnote)
+                            .lineLimit(2)
+                        Spacer()
+                        Button("撤销") { undoRepayment(recentlyRepaid) }
+                            .fontWeight(.semibold)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.bar)
+                    .overlay(alignment: .top) { Divider() }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -127,6 +155,24 @@ struct DashboardView: View {
 
     private var enrollmentClosingSoonPromotions: [Promotion] {
         promotionsWithEnrollmentDeadlineWithin(promotions, today: today)
+    }
+
+    private var actionBillingItems: [DashboardBillingItem] {
+        let limit = today.addingDays(7)
+        return billingItems.filter {
+            $0.kind == .repayment && ($0.status == .overdue || $0.date <= limit)
+        }
+    }
+
+    private var accountsWithBillingItems: [CreditCardAccount] {
+        var seen = Set<UUID>()
+        return billingItems.compactMap { item in
+            seen.insert(item.account.id).inserted ? item.account : nil
+        }
+    }
+
+    private func billingItems(for account: CreditCardAccount) -> [DashboardBillingItem] {
+        billingItems.filter { $0.account.id == account.id }
     }
 
     private var billingItems: [DashboardBillingItem] {
@@ -194,6 +240,25 @@ struct DashboardView: View {
             try record.validate()
             try item.account.validateBillingConfiguration()
             try modelContext.save()
+            recentlyRepaid = item
+        } catch {
+            modelContext.rollback()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func undoRepayment(_ item: DashboardBillingItem) {
+        guard let record = item.account.billingCycles.first(where: { $0.cycleKey == item.cycleKey }) else {
+            recentlyRepaid = nil
+            return
+        }
+        record.repaidAt = nil
+        if record.statementDateOverride == nil && record.repaymentDateOverride == nil {
+            modelContext.delete(record)
+        }
+        do {
+            try modelContext.save()
+            recentlyRepaid = nil
         } catch {
             modelContext.rollback()
             errorMessage = error.localizedDescription
@@ -282,44 +347,91 @@ private struct DashboardSection<Content: View>: View {
 
 private struct BillingItemRow: View {
     let item: DashboardBillingItem
+    let showsBank: Bool
     let markRepaid: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: item.kind.icon)
-                .foregroundStyle(item.kind == .repayment ? .orange : .blue)
-                .frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.kind.title)
-                    .font(.subheadline.weight(.medium))
-                Text("\(item.account.bank.name) · 账期 \(item.cycleKey)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .trailing, spacing: 3) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: item.kind.icon)
+                    .foregroundStyle(item.kind == .repayment ? .orange : .blue)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.kind.title)
+                        .font(.subheadline.weight(.medium))
+                    Text(showsBank
+                         ? "\(item.account.bank.name) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
+                         : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
                 Text(CardPilotUI.dateText(item.date))
                     .font(.subheadline)
                     .monospacedDigit()
-                if item.status == .overdue && item.kind == .repayment {
-                    Text("已逾期")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
             }
-            .frame(width: 82, alignment: .trailing)
+
             if item.kind == .repayment {
-                Button("已还", action: markRepaid)
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("标记 \(item.account.bank.name) 账期 \(item.cycleKey) 已还款")
-                    .frame(width: 54, alignment: .trailing)
-            } else {
-                Color.clear
-                    .frame(width: 54, height: 1)
+                HStack {
+                    if item.status == .overdue && item.kind == .repayment {
+                        Label("已逾期", systemImage: "exclamationmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
+                    Spacer()
+                    Button("标记已还", action: markRepaid)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .accessibilityLabel("标记 \(item.account.bank.name) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
+                }
             }
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
+    }
+}
+
+private struct AccountScheduleCard: View {
+    let account: CreditCardAccount
+    let items: [DashboardBillingItem]
+    let markRepaid: (DashboardBillingItem) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                BankBadge(bank: account.bank)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.bank.name)
+                        .font(.headline)
+                    Text(accountSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 12)
+
+            Divider()
+
+            ForEach(items) { item in
+                BillingItemRow(item: item, showsBank: false) { markRepaid(item) }
+                if item.id != items.last?.id { Divider() }
+            }
+        }
+        .padding(.horizontal, 14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.quaternary, lineWidth: 0.5)
+        }
+    }
+
+    private var accountSubtitle: String {
+        let names = account.cards.map { $0.nickname.isEmpty ? $0.productName : $0.nickname }.sorted()
+        let cards = names.isEmpty ? "未添加卡片" : names.count == 1 ? names[0] : "\(names[0]) 等 \(names.count) 张卡"
+        return account.status == .closed ? "已关闭 · \(cards)" : cards
     }
 }
 
