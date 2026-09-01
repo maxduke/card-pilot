@@ -796,6 +796,7 @@ private struct CardOnboardingView: View {
         )
 
         do {
+            bank.archivedAt = nil
             try bank.validate()
             if creatingAccount {
                 let rule = BillingRuleVersion(
