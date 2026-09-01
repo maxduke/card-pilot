@@ -17,7 +17,7 @@ final class DashboardTests: XCTestCase {
             endOn: 20260831,
             enrollmentStatus: .notEnrolled,
             enrollmentDeadline: 20260817,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         let atBoundary = Promotion(
@@ -26,7 +26,7 @@ final class DashboardTests: XCTestCase {
             endOn: 20260831,
             enrollmentStatus: .notEnrolled,
             enrollmentDeadline: 20260817,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         let afterWindow = Promotion(
@@ -35,7 +35,7 @@ final class DashboardTests: XCTestCase {
             endOn: 20260901,
             enrollmentStatus: .notEnrolled,
             enrollmentDeadline: 20260818,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         let enrolled = Promotion(
@@ -44,7 +44,7 @@ final class DashboardTests: XCTestCase {
             endOn: 20260831,
             enrollmentStatus: .enrolled,
             enrollmentDeadline: 20260817,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         let archived = Promotion(
@@ -53,7 +53,7 @@ final class DashboardTests: XCTestCase {
             endOn: 20260831,
             enrollmentStatus: .notEnrolled,
             enrollmentDeadline: 20260817,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY",
             archivedAt: Date()
         )

@@ -14,6 +14,7 @@ struct CardsView: View {
     @State private var showingBankEditor = false
     @State private var showingAccountEditor = false
     @State private var showingCardEditor = false
+    @State private var showingCardOnboarding = false
     @State private var showingArchivedBanks = false
     @State private var showingInactiveCards = false
     @State private var errorMessage: String?
@@ -23,11 +24,14 @@ struct CardsView: View {
         NavigationStack {
             Group {
                 if visibleBanks.isEmpty {
-                    EmptyStateView(
-                        title: "还没有银行",
-                        systemImage: "building.columns",
-                        message: "先添加发卡银行，再录入信用卡账户。"
-                    )
+                    ContentUnavailableView {
+                        Label("还没有信用卡", systemImage: "creditcard.fill")
+                    } description: {
+                        Text("添加一张卡，几步完成银行、账户和账务日设置。")
+                    } actions: {
+                        Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
+                            .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     List {
                         ForEach(visibleBanks, id: \.id) { bank in
@@ -56,6 +60,7 @@ struct CardsView: View {
                                 }
                             } header: {
                                 HStack {
+                                    BankBadge(bank: bank)
                                     Text(bank.name)
                                     Spacer()
                                     Button {
@@ -88,7 +93,14 @@ struct CardsView: View {
             }
             .navigationTitle("卡片")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showingCardOnboarding = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("添加信用卡")
+
                     Menu {
                         Button(showingArchivedBanks ? "隐藏已归档银行" : "显示已归档银行") {
                             showingArchivedBanks.toggle()
@@ -102,24 +114,10 @@ struct CardsView: View {
                         } label: {
                             Label("添加银行", systemImage: "building.columns")
                         }
-                        Button {
-                            editingAccount = nil
-                            showingAccountEditor = true
-                        } label: {
-                            Label("添加信用卡账户", systemImage: "plus.rectangle")
-                        }
-                        .disabled(selectableAccountBanks(banks, currentBankID: nil).isEmpty)
-                        Button {
-                            editingCard = nil
-                            showingCardEditor = true
-                        } label: {
-                            Label("添加卡片", systemImage: "creditcard")
-                        }
-                        .disabled(accounts.isEmpty || networks.isEmpty)
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("添加银行、账户或卡片")
+                    .accessibilityLabel("卡片与银行管理")
                 }
             }
             .sheet(isPresented: $showingBankEditor) {
@@ -130,6 +128,9 @@ struct CardsView: View {
             }
             .sheet(isPresented: $showingCardEditor) {
                 CardEditorView(card: editingCard, accounts: accounts, networks: networks)
+            }
+            .sheet(isPresented: $showingCardOnboarding) {
+                CardOnboardingView(banks: banks, accounts: accounts, networks: networks)
             }
             .confirmationDialog("确认删除账户？", isPresented: accountDeletePresented) {
                 Button("永久删除", role: .destructive) {
@@ -207,6 +208,649 @@ struct CardsView: View {
         }
         modelContext.delete(card)
         save()
+    }
+}
+
+private enum CardNetworkSelection: String, CaseIterable, Identifiable {
+    case unionpay
+    case visa
+    case mastercard
+    case amex
+    case jcb
+    case unionpayVisa
+    case unionpayMastercard
+    case unionpayJCB
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .unionpay: return "银联"
+        case .visa: return "Visa"
+        case .mastercard: return "Mastercard"
+        case .amex: return "American Express"
+        case .jcb: return "JCB"
+        case .unionpayVisa: return "银联 + Visa"
+        case .unionpayMastercard: return "银联 + Mastercard"
+        case .unionpayJCB: return "银联 + JCB"
+        case .other: return "其他"
+        }
+    }
+
+    var codes: [String] {
+        switch self {
+        case .unionpay: return ["unionpay"]
+        case .visa: return ["visa"]
+        case .mastercard: return ["mastercard"]
+        case .amex: return ["amex"]
+        case .jcb: return ["jcb"]
+        case .unionpayVisa: return ["unionpay", "visa"]
+        case .unionpayMastercard: return ["unionpay", "mastercard"]
+        case .unionpayJCB: return ["unionpay", "jcb"]
+        case .other: return []
+        }
+    }
+
+    static var singleChoices: [Self] { [.unionpay, .visa, .mastercard, .amex, .jcb] }
+    static var dualChoices: [Self] { [.unionpayVisa, .unionpayMastercard, .unionpayJCB] }
+
+    static func matching(_ networks: [CardNetwork]) -> Self {
+        let codes = Set(networks.map(\.code))
+        return allCases.first { !$0.codes.isEmpty && Set($0.codes) == codes } ?? .other
+    }
+}
+
+private struct NetworkChoiceTile: View {
+    let choice: CardNetworkSelection
+    @Binding var selection: CardNetworkSelection
+    let customName: String
+
+    var body: some View {
+        Button {
+            selection = choice
+        } label: {
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    if choice.codes.isEmpty {
+                        CardNetworkBadge(displayName: customName.isEmpty ? "其他" : customName)
+                    } else {
+                        ForEach(choice.codes, id: \.self) { code in
+                            CardNetworkBadge(displayName: networkName(for: code), code: code)
+                        }
+                    }
+                }
+                Text(choice.title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if selection == choice {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.tint)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selection == choice ? Color.accentColor.opacity(0.13) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(selection == choice ? Color.accentColor.opacity(0.45) : .clear, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(choice.title)\(selection == choice ? "，已选择" : "")")
+    }
+
+    private func networkName(for code: String) -> String {
+        switch code {
+        case "unionpay": return "银联"
+        case "visa": return "Visa"
+        case "mastercard": return "Mastercard"
+        case "jcb": return "JCB"
+        case "amex": return "American Express"
+        default: return code
+        }
+    }
+}
+
+private struct CardOnboardingView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    let banks: [Bank]
+    let accounts: [CreditCardAccount]
+    let networks: [CardNetwork]
+
+    private enum Step: Int, CaseIterable {
+        case bank
+        case account
+        case billing
+        case card
+
+        var title: String {
+            switch self {
+            case .bank: return "选择发卡银行"
+            case .account: return "设置信用卡账户"
+            case .billing: return "设置账务规则"
+            case .card: return "录入卡片"
+            }
+        }
+    }
+
+    private enum AccountMode: String, CaseIterable, Identifiable {
+        case new
+        case existing
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .new: return "创建独立账户"
+            case .existing: return "共用已有账户"
+            }
+        }
+    }
+
+    @State private var step: Step = .bank
+    @State private var region: BankPresetRegion = .mainland
+    @State private var bankQuery = ""
+    @State private var selectedPresetCode: String?
+    @State private var customBank = false
+    @State private var customBankName = ""
+    @State private var accountMode: AccountMode = .new
+    @State private var existingAccountID: UUID?
+    @State private var limitText = ""
+    @State private var currencyCode = "CNY"
+    @State private var statementDay = 1
+    @State private var repaymentKind: RepaymentRuleKind = .fixedDay
+    @State private var repaymentValue = 1
+    @State private var networkSelection: CardNetworkSelection = .unionpay
+    @State private var customNetworkName = ""
+    @State private var productName = ""
+    @State private var nickname = ""
+    @State private var lastFour = ""
+    @State private var errorMessage: String?
+
+    private var selectedPreset: BankPreset? {
+        selectedPresetCode.flatMap { code in BankPreset.catalog.first { $0.code == code } }
+    }
+
+    private var filteredPresets: [BankPreset] {
+        BankPreset.catalog.filter { $0.region == region && $0.matches(bankQuery) }
+    }
+
+    private var selectedBankName: String {
+        if customBank { return customBankName.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return selectedPreset?.displayName ?? ""
+    }
+
+    private var matchingBanks: [Bank] {
+        if let selectedPreset {
+            return matchingPresetBanks(banks, preset: selectedPreset)
+        }
+        let name = selectedBankName
+        return name.isEmpty ? [] : banks.filter {
+            $0.presetCode == nil && $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .localizedCaseInsensitiveCompare(name) == .orderedSame
+        }
+    }
+
+    private var matchingAccounts: [CreditCardAccount] {
+        guard let bank = matchingBanks.first else { return [] }
+        return accounts.filter { $0.bank.id == bank.id && $0.status == .active }
+    }
+
+    private var selectedExistingAccount: CreditCardAccount? {
+        existingAccountID.flatMap { id in matchingAccounts.first { $0.id == id } }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ProgressView(value: Double(step.rawValue + 1), total: Double(Step.allCases.count))
+                    .tint(.accentColor)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text(step.title)
+                            .font(.title2.weight(.bold))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        switch step {
+                        case .bank: bankStep
+                        case .account: accountStep
+                        case .billing: billingStep
+                        case .card: cardStep
+                        }
+
+                        if let errorMessage {
+                            InlineErrorView(message: errorMessage)
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("添加信用卡")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 12) {
+                    if step != .bank {
+                        Button("上一步") { previousStep() }
+                            .buttonStyle(.bordered)
+                    }
+                    Spacer()
+                    Button(step == .card ? "完成" : "继续") { advance() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(step == .bank && !bankIsReady)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(.bar)
+            }
+            .onChange(of: selectedPresetCode) { _, _ in
+                if let selectedPreset { currencyCode = selectedPreset.defaultCurrencyCode }
+                accountMode = matchingAccounts.isEmpty ? .new : accountMode
+                existingAccountID = matchingAccounts.first?.id
+            }
+            .onChange(of: region) { _, _ in
+                selectedPresetCode = nil
+                customBank = false
+                currencyCode = region == .mainland ? "CNY" : "HKD"
+            }
+        }
+    }
+
+    private var bankIsReady: Bool {
+        customBank ? !customBankName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : selectedPreset != nil
+    }
+
+    @ViewBuilder
+    private var bankStep: some View {
+        TextField("搜索银行、英文名或代码", text: $bankQuery)
+            .textFieldStyle(.roundedBorder)
+            .textContentType(.organizationName)
+            .accessibilityLabel("搜索银行")
+
+        Picker("地区", selection: $region) {
+            Text("中国大陆").tag(BankPresetRegion.mainland)
+            Text("香港").tag(BankPresetRegion.hongKong)
+        }
+        .pickerStyle(.segmented)
+
+        if !filteredPresets.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(filteredPresets) { preset in
+                    Button {
+                        selectedPresetCode = preset.code
+                        customBank = false
+                    } label: {
+                        HStack(spacing: 12) {
+                            BankBadge(name: preset.displayName, monogram: preset.monogram)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.displayName)
+                                    .foregroundStyle(.primary)
+                                Text("默认额度币种：\(preset.defaultCurrencyCode) · \(preset.englishName)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if !customBank && selectedPresetCode == preset.code {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if preset.id != filteredPresets.last?.id { Divider() }
+                }
+            }
+            .padding(.horizontal, 12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } else {
+            ContentUnavailableView("没有匹配银行", systemImage: "magnifyingglass", description: Text("可以使用下方的自定义银行。"))
+        }
+
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                customBank = true
+                selectedPresetCode = nil
+            } label: {
+                Label("使用自定义银行", systemImage: "square.and.pencil")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            if customBank {
+                TextField("银行名称", text: $customBankName)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.words)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var accountStep: some View {
+        selectedBankAccountSummary
+
+        if matchingAccounts.isEmpty {
+            Label("该银行还没有账户，将创建一个新的信用卡账户。", systemImage: "plus.rectangle.on.rectangle")
+                .foregroundStyle(.secondary)
+        } else {
+            existingAccountPicker
+        }
+    }
+
+    @ViewBuilder
+    private var selectedBankAccountSummary: some View {
+        if let selectedPreset {
+            HStack(spacing: 12) {
+                BankBadge(name: selectedPreset.displayName, monogram: selectedPreset.monogram)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedPreset.displayName).font(.headline)
+                    Text("新卡将归入此发卡银行").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            HStack(spacing: 12) {
+                BankBadge(name: selectedBankName)
+                Text(selectedBankName).font(.headline)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var existingAccountPicker: some View {
+        accountModeControl
+
+        if accountMode == .existing {
+            existingAccountChoices
+        }
+    }
+
+    private var accountModeControl: some View {
+        Picker("账户关系", selection: $accountMode) {
+            ForEach(AccountMode.allCases) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+
+    }
+
+    private var existingAccountChoices: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("选择要共用的账户")
+                .font(.subheadline.weight(.semibold))
+            ForEach(matchingAccounts, id: \.id) { account in
+                existingAccountChoice(account)
+            }
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func existingAccountChoice(_ account: CreditCardAccount) -> some View {
+        let isSelected = existingAccountID == account.id
+        return Button {
+            existingAccountID = account.id
+        } label: {
+            HStack {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(creditLimitText(for: account))
+                    Text("账单与还款规则沿用此账户")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func creditLimitText(for account: CreditCardAccount) -> String {
+        guard let creditLimit = account.creditLimit else { return "未设置额度" }
+        return "额度 \(CardPilotUI.amountText(creditLimit, currencyCode: account.limitCurrencyCode))"
+    }
+
+    @ViewBuilder
+    private var billingStep: some View {
+        if accountMode == .existing, let selectedExistingAccount {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("共用已有账户", systemImage: "rectangle.stack.fill")
+                    .font(.headline)
+                Text(creditLimitText(for: selectedExistingAccount))
+                    .foregroundStyle(.secondary)
+                Text("本张卡会沿用该账户的额度、账单日和还款日。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("新账户信息")
+                    .font(.headline)
+                TextField("信用额度（可选）", text: $limitText)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.decimalPad)
+                CurrencyPickerView(selection: $currencyCode)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Stepper("账单日：每月 \(statementDay) 日", value: $statementDay, in: 1...31)
+                Picker("还款规则", selection: $repaymentKind) {
+                    Text("固定日").tag(RepaymentRuleKind.fixedDay)
+                    Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
+                }
+                Stepper(
+                    repaymentKind == .fixedDay ? "还款日：每月 \(repaymentValue) 日" : "天数：\(repaymentValue)",
+                    value: $repaymentValue,
+                    in: repaymentKind == .fixedDay ? 1...31 : 1...90
+                )
+                Text("不存在的日期会按当月最后一天计算。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cardStep: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("卡片身份")
+                .font(.headline)
+            TextField("卡产品名称", text: $productName)
+                .textFieldStyle(.roundedBorder)
+            TextField("昵称（可选）", text: $nickname)
+                .textFieldStyle(.roundedBorder)
+            TextField("末四位", text: $lastFour)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(.numberPad)
+                .textContentType(.none)
+            Text("卡组织组合")
+                .font(.subheadline.weight(.semibold))
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(CardNetworkSelection.singleChoices) { choice in
+                    NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                }
+            }
+            Text("双标卡")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(CardNetworkSelection.dualChoices) { choice in
+                    NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                }
+            }
+            NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
+            if networkSelection == .other {
+                TextField("卡组织名称", text: $customNetworkName)
+                    .textFieldStyle(.roundedBorder)
+            }
+            Text("不要录入完整卡号或 CVV。双标卡只保存实际的两个卡组织，不会自动扩大促销适用范围。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func advance() {
+        errorMessage = nil
+        switch step {
+        case .bank:
+            guard bankIsReady else {
+                errorMessage = "请选择银行，或填写自定义银行名称。"
+                return
+            }
+            if matchingAccounts.isEmpty { accountMode = .new }
+            existingAccountID = matchingAccounts.first?.id
+            step = .account
+        case .account:
+            if accountMode == .existing && selectedExistingAccount == nil {
+                errorMessage = "请选择要共用的账户。"
+                return
+            }
+            step = .billing
+        case .billing:
+            guard validateBillingInput() else { return }
+            step = .card
+        case .card:
+            save()
+        }
+    }
+
+    private func previousStep() {
+        errorMessage = nil
+        guard let previous = Step(rawValue: step.rawValue - 1) else { return }
+        step = previous
+    }
+
+    private func validateBillingInput() -> Bool {
+        guard accountMode == .existing || isValidCurrencyCode(currencyCode.uppercased()) else {
+            errorMessage = "请选择有效的额度币种。"
+            return false
+        }
+        guard accountMode == .existing || limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || CardPilotUI.decimal(limitText).map({ $0 > .zero }) == true else {
+            errorMessage = "信用额度应为空，或填写大于 0 的数字。"
+            return false
+        }
+        return true
+    }
+
+    private func save() {
+        guard !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "卡产品名称不能为空。"
+            return
+        }
+        let normalizedLastFour = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedLastFour.utf8.count == 4,
+              normalizedLastFour.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
+            errorMessage = "末四位必须是 4 位数字。"
+            return
+        }
+        let existingBank = matchingBanks.first
+        guard let bank = existingBank ?? makeBank() else {
+            errorMessage = "银行信息无效，请重新选择。"
+            return
+        }
+        let creatingBank = existingBank == nil
+        let account: CreditCardAccount
+        let creatingAccount: Bool
+        if accountMode == .existing, let selectedExistingAccount {
+            account = selectedExistingAccount
+            creatingAccount = false
+        } else {
+            let normalizedCurrency = currencyCode.uppercased()
+            guard isValidCurrencyCode(normalizedCurrency) else {
+                errorMessage = "请选择有效的额度币种。"
+                return
+            }
+            account = CreditCardAccount(
+                bank: bank,
+                trackingStartCycleKey: CardPilotUI.localDate(from: Date()).monthKey,
+                creditLimit: limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : CardPilotUI.decimal(limitText),
+                limitCurrencyCode: normalizedCurrency
+            )
+            creatingAccount = true
+        }
+        guard let cardNetworks = resolveNetworks() else { return }
+        let card = Card(
+            account: account,
+            productName: productName.trimmingCharacters(in: .whitespacesAndNewlines),
+            nickname: nickname.trimmingCharacters(in: .whitespacesAndNewlines),
+            networks: cardNetworks,
+            lastFour: normalizedLastFour,
+            status: .active
+        )
+
+        do {
+            bank.archivedAt = nil
+            if let selectedPreset { bank.presetCode = selectedPreset.code }
+            try bank.validate()
+            if creatingAccount {
+                let rule = BillingRuleVersion(
+                    account: account,
+                    statementDay: statementDay,
+                    repaymentKind: repaymentKind,
+                    repaymentValue: repaymentValue
+                )
+                account.billingRuleVersions.append(rule)
+                try account.validate()
+                try account.validateBillingConfiguration()
+                modelContext.insert(account)
+                modelContext.insert(rule)
+            }
+            try cardNetworks.forEach { try $0.validate() }
+            try card.validate()
+            if creatingBank { modelContext.insert(bank) }
+            card.account.cards.append(card)
+            modelContext.insert(card)
+            try modelContext.save()
+            dismiss()
+        } catch {
+            modelContext.rollback()
+            errorMessage = "信用卡未保存：\(error.localizedDescription)"
+        }
+    }
+
+    private func makeBank() -> Bank? {
+        let name = selectedBankName
+        guard !name.isEmpty else { return nil }
+        return Bank(name: name, presetCode: selectedPreset?.code)
+    }
+
+    private func resolveNetworks() -> [CardNetwork]? {
+        if networkSelection == .other {
+            let name = customNetworkName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else {
+                errorMessage = "请填写卡组织名称。"
+                return nil
+            }
+            if let existing = networks.first(where: { !$0.isBuiltIn && $0.displayName.caseInsensitiveCompare(name) == .orderedSame }) {
+                return [existing]
+            }
+            let custom = CardNetwork(code: "custom.\(UUID().uuidString.lowercased())", displayName: name)
+            modelContext.insert(custom)
+            return [custom]
+        }
+        let selected = networkSelection.codes.compactMap { code in networks.first { $0.code == code } }
+        guard selected.count == networkSelection.codes.count else {
+            errorMessage = "内置卡组织尚未准备好，请重启应用后再试。"
+            return nil
+        }
+        return selected
     }
 }
 
@@ -331,9 +975,12 @@ private struct CardRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(card.nickname.isEmpty ? card.productName : card.nickname)
                     .font(.subheadline)
-                Text("\(card.productName) · \(card.network.displayName) · •••• \(card.lastFour)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    CardNetworksBadges(networks: card.networks)
+                    Text("•••• \(card.lastFour)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if card.status == .inactive {
@@ -444,7 +1091,10 @@ private struct AccountEditorView: View {
         let availableBanks = selectableAccountBanks(banks, currentBankID: account?.bank.id)
         _bankID = State(initialValue: account?.bank.id ?? availableBanks.first?.id ?? UUID())
         _limitText = State(initialValue: account.flatMap { $0.creditLimit.map { CardPilotUI.editableAmountText($0) } } ?? "")
-        _currencyCode = State(initialValue: account?.limitCurrencyCode ?? "CNY")
+        let defaultCurrency = availableBanks.first?.presetCode
+            .flatMap { code in BankPreset.catalog.first { $0.code == code }?.defaultCurrencyCode }
+            ?? "CNY"
+        _currencyCode = State(initialValue: account?.limitCurrencyCode ?? defaultCurrency)
         _status = State(initialValue: account?.status ?? .active)
         _closedDate = State(initialValue: account.flatMap { $0.closedOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
         _statementDay = State(initialValue: rule?.statementDay ?? 1)
@@ -477,8 +1127,7 @@ private struct AccountEditorView: View {
                     }
                     TextField("信用额度（可选）", text: $limitText)
                         .keyboardType(.decimalPad)
-                    TextField("额度币种", text: $currencyCode)
-                        .textInputAutocapitalization(.characters)
+                    CurrencyPickerView(selection: $currencyCode)
                     Picker("状态", selection: $status) {
                         Text("使用中").tag(CreditCardAccountStatus.active)
                         Text("已关闭").tag(CreditCardAccountStatus.closed)
@@ -715,6 +1364,16 @@ func selectableAccountBanks(_ banks: [Bank], currentBankID: UUID?) -> [Bank] {
     banks.filter { $0.archivedAt == nil || $0.id == currentBankID }
 }
 
+func matchingPresetBanks(_ banks: [Bank], preset: BankPreset) -> [Bank] {
+    let tagged = banks.filter { $0.presetCode == preset.code }
+    guard tagged.isEmpty else { return tagged }
+    return banks.filter {
+        $0.presetCode == nil
+            && $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .localizedCaseInsensitiveCompare(preset.displayName) == .orderedSame
+    }
+}
+
 private struct CardEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -723,7 +1382,8 @@ private struct CardEditorView: View {
     let networks: [CardNetwork]
 
     @State private var accountID: UUID
-    @State private var networkID: UUID
+    @State private var networkSelection: CardNetworkSelection
+    @State private var customNetworkName: String
     @State private var productName: String
     @State private var nickname: String
     @State private var lastFour: String
@@ -736,7 +1396,8 @@ private struct CardEditorView: View {
         self.accounts = accounts
         self.networks = networks
         _accountID = State(initialValue: card?.account.id ?? accounts.first?.id ?? UUID())
-        _networkID = State(initialValue: card?.network.id ?? networks.first?.id ?? UUID())
+        _networkSelection = State(initialValue: CardNetworkSelection.matching(card?.networks ?? []))
+        _customNetworkName = State(initialValue: card?.networks.first(where: { !$0.isBuiltIn })?.displayName ?? "")
         _productName = State(initialValue: card?.productName ?? "")
         _nickname = State(initialValue: card?.nickname ?? "")
         _lastFour = State(initialValue: card?.lastFour ?? "")
@@ -753,10 +1414,24 @@ private struct CardEditorView: View {
                             Text("\(account.bank.name) · 账户").tag(account.id)
                         }
                     }
-                    Picker("卡组织", selection: $networkID) {
-                        ForEach(networks, id: \.id) { network in
-                            Text(network.displayName).tag(network.id)
+                    Text("卡组织组合")
+                        .font(.subheadline.weight(.semibold))
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(CardNetworkSelection.singleChoices) { choice in
+                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
                         }
+                    }
+                    Text("双标卡")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(CardNetworkSelection.dualChoices) { choice in
+                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                        }
+                    }
+                    NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
+                    if networkSelection == .other {
+                        TextField("卡组织名称", text: $customNetworkName)
                     }
                     TextField("卡产品名称", text: $productName)
                     TextField("昵称（可选）", text: $nickname)
@@ -785,25 +1460,34 @@ private struct CardEditorView: View {
     }
 
     private func save() {
-        guard let account = accounts.first(where: { $0.id == accountID }),
-              let network = networks.first(where: { $0.id == networkID }) else {
-            errorMessage = "请选择账户和卡组织。"
+        guard let account = accounts.first(where: { $0.id == accountID }) else {
+            errorMessage = "请选择账户。"
             return
         }
         guard !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "卡产品名称不能为空。"
             return
         }
-        guard lastFour.count == 4, lastFour.allSatisfy(\.isNumber) else {
+        let normalizedLastFour = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedLastFour.utf8.count == 4,
+              normalizedLastFour.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
             errorMessage = "末四位必须是 4 位数字。"
             return
         }
-        let target = card ?? Card(account: account, productName: productName, network: network, lastFour: lastFour, status: status, notes: notes)
+        guard let selectedNetworks = resolveNetworks() else { return }
+        let target = card ?? Card(
+            account: account,
+            productName: productName,
+            networks: selectedNetworks,
+            lastFour: normalizedLastFour,
+            status: status,
+            notes: notes
+        )
         target.account = account
-        target.network = network
+        target.networks = selectedNetworks
         target.productName = productName.trimmingCharacters(in: .whitespacesAndNewlines)
-        target.nickname = nickname
-        target.lastFour = lastFour
+        target.nickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.lastFour = normalizedLastFour
         target.status = status
         target.notes = notes
         do {
@@ -815,5 +1499,27 @@ private struct CardEditorView: View {
             modelContext.rollback()
             errorMessage = "卡片未保存：\(error.localizedDescription)"
         }
+    }
+
+    private func resolveNetworks() -> [CardNetwork]? {
+        if networkSelection == .other {
+            let name = customNetworkName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else {
+                errorMessage = "请填写卡组织名称。"
+                return nil
+            }
+            if let existing = networks.first(where: { !$0.isBuiltIn && $0.displayName.caseInsensitiveCompare(name) == .orderedSame }) {
+                return [existing]
+            }
+            let custom = CardNetwork(code: "custom.\(UUID().uuidString.lowercased())", displayName: name)
+            modelContext.insert(custom)
+            return [custom]
+        }
+        let selected = networkSelection.codes.compactMap { code in networks.first { $0.code == code } }
+        guard selected.count == networkSelection.codes.count else {
+            errorMessage = "内置卡组织尚未准备好，请重启应用后再试。"
+            return nil
+        }
+        return selected
     }
 }

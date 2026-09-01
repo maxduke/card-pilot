@@ -6,8 +6,8 @@ final class TransactionsTests: XCTestCase {
         let bank = Bank(name: "测试银行")
         let account = CreditCardAccount(bank: bank)
         let network = CardNetwork.makeBuiltIns()[0]
-        let firstCard = Card(account: account, productName: "主卡", network: network, lastFour: "1234")
-        let secondCard = Card(account: account, productName: "副卡", network: network, lastFour: "5678")
+        let firstCard = Card(account: account, productName: "主卡", networks: [network], lastFour: "1234")
+        let secondCard = Card(account: account, productName: "副卡", networks: [network], lastFour: "5678")
         let coffee = Transaction(
             card: firstCard,
             transactionOn: 20260801,
@@ -46,7 +46,7 @@ final class TransactionsTests: XCTestCase {
         let card = Card(
             account: account,
             productName: "测试卡",
-            network: CardNetwork.makeBuiltIns()[0],
+            networks: [CardNetwork.makeBuiltIns()[0]],
             lastFour: "1234"
         )
         let postingDatePromotion = Promotion(
@@ -55,14 +55,14 @@ final class TransactionsTests: XCTestCase {
             endOn: 20260831,
             eligibleCards: [card],
             qualificationDateBasis: .postingDate,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
         let manualPromotion = Promotion(
             title: "手动例外活动",
             startOn: 20260701,
             endOn: 20260731,
-            targetAmount: 100,
+            qualificationThreshold: 100,
             progressCurrencyCode: "CNY"
         )
 

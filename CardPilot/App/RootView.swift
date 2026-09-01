@@ -13,7 +13,10 @@ struct RootView: View {
 
     @StateObject private var appLock = AppLockController()
     @State private var selectedTab = Tab.dashboard
+    @State private var lastContentTab = Tab.dashboard
     @State private var showingSettings = false
+    @State private var showingTransactionEditor = false
+    @State private var tabBeforeTransactionEditor: Tab?
     @State private var isAuthenticating = false
     @State private var authenticationAttempt = 0
 
@@ -28,6 +31,7 @@ struct RootView: View {
     enum Tab: Hashable {
         case dashboard
         case cards
+        case addTransaction
         case promotions
         case transactions
     }
@@ -46,15 +50,34 @@ struct RootView: View {
                         .tabItem { Label("卡片", systemImage: "creditcard") }
                         .tag(Tab.cards)
 
+                    Color.clear
+                        .tabItem { Label("记一笔", systemImage: "plus.circle.fill") }
+                        .tag(Tab.addTransaction)
+
                     PromotionsView()
                         .tabItem { Label("促销", systemImage: "gift") }
                         .tag(Tab.promotions)
 
-                    TransactionsView()
+                    TransactionsView(isPresentingEditor: $showingTransactionEditor)
                         .tabItem { Label("交易", systemImage: "list.bullet.rectangle") }
                         .tag(Tab.transactions)
                 }
                 .privacySensitive()
+                .onChange(of: selectedTab) { _, tab in
+                    if tab == .addTransaction {
+                        tabBeforeTransactionEditor = lastContentTab
+                        showingTransactionEditor = true
+                        selectedTab = .transactions
+                    } else if tabBeforeTransactionEditor == nil {
+                        lastContentTab = tab
+                    }
+                }
+                .onChange(of: showingTransactionEditor) { _, isPresented in
+                    guard !isPresented, let previousTab = tabBeforeTransactionEditor else { return }
+                    tabBeforeTransactionEditor = nil
+                    selectedTab = previousTab
+                    lastContentTab = previousTab
+                }
                 .sheet(isPresented: $showingSettings) {
                     SettingsView()
                         .environmentObject(appLock)
@@ -67,7 +90,15 @@ struct RootView: View {
             authenticate()
         }
         .onChange(of: appLock.isLocked) { _, locked in
-            if locked { showingSettings = false }
+            if locked {
+                showingSettings = false
+                if let previousTab = tabBeforeTransactionEditor {
+                    tabBeforeTransactionEditor = nil
+                    selectedTab = previousTab
+                    lastContentTab = previousTab
+                }
+                showingTransactionEditor = false
+            }
         }
         .onChange(of: appLockEnabled) { _, enabled in
             if !appLock.setEnabled(enabled) { appLockEnabled = false }

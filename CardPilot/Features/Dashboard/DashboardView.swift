@@ -119,7 +119,9 @@ struct DashboardView: View {
 
     private var endingSoonPromotions: [Promotion] {
         activePromotions.filter {
-            isEndingSoon($0) && (try? PromotionCalculator.progress(for: $0).isComplete) != true
+            $0.qualificationThreshold != nil
+                && isEndingSoon($0)
+                && (try? PromotionCalculator.progress(for: $0).isComplete) != true
         }
     }
 
@@ -294,25 +296,30 @@ private struct BillingItemRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 3) {
                 Text(CardPilotUI.dateText(item.date))
                     .font(.subheadline)
+                    .monospacedDigit()
                 if item.status == .overdue && item.kind == .repayment {
                     Text("已逾期")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
             }
+            .frame(width: 82, alignment: .trailing)
             if item.kind == .repayment {
                 Button("已还", action: markRepaid)
                     .buttonStyle(.bordered)
                     .accessibilityLabel("标记 \(item.account.bank.name) 账期 \(item.cycleKey) 已还款")
+                    .frame(width: 54, alignment: .trailing)
+            } else {
+                Color.clear
+                    .frame(width: 54, height: 1)
             }
         }
         .padding(.vertical, 10)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.kind.title)，\(item.account.bank.name)，\(CardPilotUI.dateText(item.date))")
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -327,18 +334,37 @@ private struct PromotionProgressRow: View {
                 Text(promotion.title)
                     .font(.subheadline.weight(.medium))
                 Spacer()
-                if let progress {
-                    Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(progress.targetAmount, currencyCode: promotion.progressCurrencyCode))")
-                        .font(.caption)
-                        .foregroundStyle(progress.isComplete ? .green : .secondary)
-                }
+                primaryAmount
             }
             if let progress {
-                ProgressView(value: max(0, decimalDouble(progress.qualifiedAmount)), total: decimalDouble(progress.targetAmount))
+                if let threshold = progress.qualificationThreshold {
+                    ProgressView(
+                        value: clampedValue(progress.qualifiedAmount, upperBound: threshold),
+                        total: decimalDouble(threshold)
+                    )
                     .tint(progress.isComplete ? .green : .accentColor)
-                Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingAmount, currencyCode: promotion.progressCurrencyCode))")
-                    .font(.caption)
-                    .foregroundStyle(progress.isComplete ? .green : .secondary)
+                    Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingToThreshold ?? threshold, currencyCode: promotion.progressCurrencyCode))")
+                        .font(.caption)
+                        .foregroundStyle(progress.isComplete ? .green : .secondary)
+                    if let cap = progress.qualifyingCap {
+                        Text("封顶剩余 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if let cap = progress.qualifyingCap {
+                    ProgressView(
+                        value: clampedValue(progress.qualifiedAmount, upperBound: cap),
+                        total: decimalDouble(cap)
+                    )
+                    .tint((progress.remainingCap ?? .zero) == .zero ? .green : .accentColor)
+                    Text((progress.remainingCap ?? .zero) == .zero ? "已达封顶" : "封顶剩余 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
+                        .font(.caption)
+                        .foregroundStyle((progress.remainingCap ?? .zero) == .zero ? .green : .secondary)
+                } else {
+                    Text("已计入净额：\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("暂时无法计算进度")
                     .font(.caption)
@@ -351,5 +377,28 @@ private struct PromotionProgressRow: View {
 
     private func decimalDouble(_ value: Decimal) -> Double {
         NSDecimalNumber(decimal: value).doubleValue
+    }
+
+    @ViewBuilder
+    private var primaryAmount: some View {
+        if let progress {
+            if let threshold = progress.qualificationThreshold {
+                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
+                    .font(.caption)
+                    .foregroundStyle(progress.isComplete ? .green : .secondary)
+            } else if let cap = progress.qualifyingCap {
+                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(cap, currencyCode: promotion.progressCurrencyCode))")
+                    .font(.caption)
+                    .foregroundStyle((progress.remainingCap ?? .zero) == .zero ? .green : .secondary)
+            } else {
+                Text(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func clampedValue(_ amount: Decimal, upperBound: Decimal) -> Double {
+        decimalDouble(min(max(.zero, amount), upperBound))
     }
 }

@@ -2,10 +2,21 @@ import Foundation
 
 struct PromotionProgress: Equatable {
     let qualifiedAmount: Decimal
-    let targetAmount: Decimal
+    let qualificationThreshold: Decimal?
+    let qualifyingCap: Decimal?
 
-    var remainingAmount: Decimal { max(.zero, targetAmount - qualifiedAmount) }
-    var isComplete: Bool { qualifiedAmount >= targetAmount }
+    var remainingToThreshold: Decimal? {
+        qualificationThreshold.map { max(.zero, $0 - qualifiedAmount) }
+    }
+
+    var remainingCap: Decimal? {
+        qualifyingCap.map { max(.zero, $0 - qualifiedAmount) }
+    }
+
+    var isComplete: Bool {
+        guard let qualificationThreshold else { return false }
+        return qualifiedAmount >= qualificationThreshold
+    }
 }
 
 enum PromotionCalculationError: Error, Equatable {
@@ -15,11 +26,14 @@ enum PromotionCalculationError: Error, Equatable {
 
 enum PromotionCalculator {
     static func progress(
-        targetAmount: Decimal,
+        qualificationThreshold: Decimal? = nil,
+        qualifyingCap: Decimal? = nil,
         currencyCode: String,
         allocations: [(amount: Decimal, currencyCode: String, kind: TransactionKind, status: TransactionStatus)]
     ) throws -> PromotionProgress {
-        guard targetAmount > .zero else { throw PromotionCalculationError.invalidTarget }
+        guard [qualificationThreshold, qualifyingCap].compactMap(\.self).allSatisfy({ $0 > .zero }) else {
+            throw PromotionCalculationError.invalidTarget
+        }
         guard allocations.allSatisfy({ $0.currencyCode == currencyCode }) else {
             throw PromotionCalculationError.currencyMismatch
         }
@@ -28,17 +42,39 @@ enum PromotionCalculator {
             guard allocation.status == .active else { return result }
             return result + (allocation.kind == .refund ? -allocation.amount : allocation.amount)
         }
-        return PromotionProgress(qualifiedAmount: total, targetAmount: targetAmount)
+        return PromotionProgress(
+            qualifiedAmount: total,
+            qualificationThreshold: qualificationThreshold,
+            qualifyingCap: qualifyingCap
+        )
     }
 
     static func progress(for promotion: Promotion) throws -> PromotionProgress {
         try progress(
-            targetAmount: promotion.targetAmount,
+            qualificationThreshold: promotion.qualificationThreshold,
+            qualifyingCap: promotion.qualifyingCap,
             currencyCode: promotion.progressCurrencyCode,
             allocations: promotion.allocations.map {
                 ($0.qualifyingAmount, $0.currencyCode, $0.transaction.kind, $0.transaction.status)
             }
         )
+    }
+
+    static func suggestedQualifyingAmount(
+        transactionAmount: Decimal,
+        transactionCurrencyCode: String,
+        promotionCurrencyCode: String,
+        perTransactionThreshold: Decimal?,
+        currentQualifiedAmount: Decimal,
+        qualifyingCap: Decimal?
+    ) -> Decimal? {
+        guard transactionCurrencyCode == promotionCurrencyCode else { return nil }
+        guard transactionAmount > .zero else { return .zero }
+        if let perTransactionThreshold, transactionAmount < perTransactionThreshold {
+            return .zero
+        }
+        guard let qualifyingCap else { return transactionAmount }
+        return min(transactionAmount, max(.zero, qualifyingCap - currentQualifiedAmount))
     }
 
     static func overRefundedPromotionIDs(
