@@ -1003,7 +1003,7 @@ private struct AccountRow: View {
         .accessibilityLabel(accountAccessibilityLabel)
         .accessibilityHint("打开账户编辑")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(onEdit)
+        .accessibilityAction { onEdit() }
         .contextMenu {
             Button(action: onEdit) { Label("编辑账户", systemImage: "pencil") }
             Button(role: .destructive, action: onDelete) { Label("删除账户", systemImage: "trash") }
@@ -1113,7 +1113,7 @@ private struct CardRow: View {
         .accessibilityLabel("\(card.account.bank.name)，\(card.nickname.isEmpty ? card.productName : card.nickname)，\(cardNetworkSummary(card.networks))，末四位 \(card.lastFour)\(card.status == .inactive ? "，已停用" : "")")
         .accessibilityHint("打开卡片编辑")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(onEdit)
+        .accessibilityAction { onEdit() }
         .contextMenu {
             Button(action: onEdit) { Label("编辑卡片", systemImage: "pencil") }
             Button(role: .destructive, action: onDelete) { Label("删除卡片", systemImage: "trash") }

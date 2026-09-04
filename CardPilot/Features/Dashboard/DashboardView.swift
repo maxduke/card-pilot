@@ -189,7 +189,7 @@ struct DashboardView: View {
 
     private var endingSoonPromotions: [Promotion] {
         let enrollmentIDs = Set(enrollmentClosingSoonPromotions.map(\.id))
-        activePromotions.filter {
+        return activePromotions.filter {
             !enrollmentIDs.contains($0.id)
                 && $0.qualificationThreshold != nil
                 && isEndingSoon($0)
