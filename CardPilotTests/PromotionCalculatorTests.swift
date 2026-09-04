@@ -360,6 +360,13 @@ final class PromotionCalculatorTests: XCTestCase {
         )
         XCTAssertEqual(groupsWithoutArchived.first?.periods.count, 2)
         XCTAssertEqual(groupsWithoutArchived.first?.totalPeriodCount, 3)
+
+        let groupsAfterDeletingFirst = PromotionPresentation.groups(
+            from: [current, future],
+            today: 20260215,
+            includeArchived: false
+        )
+        XCTAssertEqual(groupsAfterDeletingFirst.first?.totalPeriodCount, 3)
     }
 
     func testPromotionPresentationSearchesOrganizersAndEligibleCards() {

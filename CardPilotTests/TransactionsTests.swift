@@ -2,6 +2,22 @@ import XCTest
 @testable import CardPilot
 
 final class TransactionsTests: XCTestCase {
+    func testPromotionFilterLabelDistinguishesSeriesPeriods() {
+        let promotion = Promotion(
+            seriesID: UUID(),
+            seriesIndex: 1,
+            title: "月度活动",
+            startOn: 20260201,
+            endOn: 20260228,
+            progressCurrencyCode: "CNY"
+        )
+
+        let label = promotionFilterLabel(promotion)
+
+        XCTAssertTrue(label.contains("第 2 期"))
+        XCTAssertTrue(label.contains(CardPilotUI.dateRangeText(start: 20260201, end: 20260228)))
+    }
+
     func testTransactionFilterDefaultsToAllAndMatchesCardMerchantOrCategory() {
         let bank = Bank(name: "测试银行")
         let account = CreditCardAccount(bank: bank)

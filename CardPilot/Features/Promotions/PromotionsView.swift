@@ -19,6 +19,10 @@ struct PromotionSeriesGroup: Identifiable {
 }
 
 enum PromotionPresentation {
+    static func totalPeriodCount(in periods: [Promotion]) -> Int {
+        max(periods.count, periods.compactMap(\.seriesIndex).max().map { $0 + 1 } ?? 0)
+    }
+
     static func groups(
         from promotions: [Promotion],
         today: Int,
@@ -39,7 +43,7 @@ enum PromotionPresentation {
                 id: key,
                 seriesID: representative.seriesID,
                 periods: periods,
-                totalPeriodCount: allPeriods.count,
+                totalPeriodCount: totalPeriodCount(in: allPeriods),
                 representative: representative,
                 status: status(of: representative, today: today)
             )
@@ -1747,7 +1751,7 @@ struct PromotionDetailView: View {
 
     private func periodIndexText(_ period: Promotion) -> String {
         guard let index = period.seriesIndex else { return "独立活动" }
-        return "第 \(index + 1) 期，共 \(seriesPromotions.count) 期"
+        return "第 \(index + 1) 期，共 \(PromotionPresentation.totalPeriodCount(in: seriesPromotions)) 期"
     }
 
     private func periodStatusText(_ period: Promotion) -> String {

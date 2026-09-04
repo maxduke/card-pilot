@@ -202,7 +202,7 @@ struct TransactionsView: View {
                     filterChip(filterKind == .refund ? "退款" : "消费") { self.filterKind = nil }
                 }
                 if let filterPromotionID, let promotion = promotions.first(where: { $0.id == filterPromotionID }) {
-                    filterChip(promotion.title) { self.filterPromotionID = nil }
+                    filterChip(promotionFilterLabel(promotion)) { self.filterPromotionID = nil }
                 }
                 if let filterStatus {
                     filterChip(filterStatus == .reversed ? "已冲正" : "有效") { self.filterStatus = nil }
@@ -379,6 +379,13 @@ private func cardLabel(_ card: Card) -> String {
 private func cardShortLabel(_ card: Card) -> String {
     let name = card.nickname.isEmpty ? card.productName : card.nickname
     return "\(card.account.bank.name) · \(name) · •••• \(card.lastFour)"
+}
+
+func promotionFilterLabel(_ promotion: Promotion) -> String {
+    var parts = [promotion.title]
+    if let index = promotion.seriesIndex { parts.append("第 \(index + 1) 期") }
+    parts.append(CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn))
+    return parts.joined(separator: " · ")
 }
 
 private func signedAmountText(_ transaction: Transaction) -> String {
@@ -585,7 +592,7 @@ private struct TransactionFilterSheet: View {
                     Picker("促销", selection: $promotionID) {
                         Text("全部促销").tag(nil as UUID?)
                         ForEach(promotions.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }, id: \.id) { promotion in
-                            Text(promotion.title).tag(Optional(promotion.id))
+                            Text(promotionFilterLabel(promotion)).tag(Optional(promotion.id))
                         }
                     }
                     .pickerStyle(.menu)
