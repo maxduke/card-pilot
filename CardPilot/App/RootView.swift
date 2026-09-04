@@ -179,6 +179,10 @@ struct RootView: View {
 
     private func handlePendingQuickActions() {
         guard !appLock.isLocked else { return }
+        showingSettings = false
+        showingCardOnboarding = false
+        tabBeforeTransactionEditor = nil
+        showingTransactionEditor = false
         while let action = quickActionRouter.takeNext() {
             switch action {
             case .addTransaction:
