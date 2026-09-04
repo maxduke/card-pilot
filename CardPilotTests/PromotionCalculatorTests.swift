@@ -351,6 +351,15 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertEqual(groups.first?.status, .active)
         XCTAssertEqual(groups.last?.representative.id, current.id)
         XCTAssertEqual(groups.last?.periods.map(\.id), [past.id, current.id, future.id])
+
+        past.archivedAt = Date()
+        let groupsWithoutArchived = PromotionPresentation.groups(
+            from: [past, current, future],
+            today: 20260215,
+            includeArchived: false
+        )
+        XCTAssertEqual(groupsWithoutArchived.first?.periods.count, 2)
+        XCTAssertEqual(groupsWithoutArchived.first?.totalPeriodCount, 3)
     }
 
     func testPromotionPresentationSearchesOrganizersAndEligibleCards() {

@@ -11,6 +11,7 @@ struct PromotionSeriesGroup: Identifiable {
     let id: String
     let seriesID: UUID?
     let periods: [Promotion]
+    let totalPeriodCount: Int
     let representative: Promotion
     let status: PromotionPresentationStatus
 
@@ -24,13 +25,13 @@ enum PromotionPresentation {
         includeArchived: Bool,
         searchText: String = ""
     ) -> [PromotionSeriesGroup] {
-        let candidates = promotions.filter { includeArchived || $0.archivedAt == nil }
-        let grouped = Dictionary(grouping: candidates) { promotion in
+        let grouped = Dictionary(grouping: promotions) { promotion in
             promotion.seriesID.map { "series:\($0.uuidString)" } ?? "promotion:\(promotion.id.uuidString)"
         }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return grouped.compactMap { key, values in
+        return grouped.compactMap { key, allPeriods in
+            let values = allPeriods.filter { includeArchived || $0.archivedAt == nil }
             let periods = values.sorted(by: periodOrder)
             guard query.isEmpty || periods.contains(where: { matches($0, query: query) }) else { return nil }
             guard let representative = representative(in: periods, today: today) else { return nil }
@@ -38,6 +39,7 @@ enum PromotionPresentation {
                 id: key,
                 seriesID: representative.seriesID,
                 periods: periods,
+                totalPeriodCount: allPeriods.count,
                 representative: representative,
                 status: status(of: representative, today: today)
             )
@@ -401,7 +403,7 @@ private struct PromotionRow: View {
 
     private var periodText: String {
         guard let index = promotion.seriesIndex else { return group.isSeries ? "多期活动" : "独立活动" }
-        return "第 \(index + 1) 期，共 \(group.periods.count) 期"
+        return "第 \(index + 1) 期，共 \(group.totalPeriodCount) 期"
     }
 
     private var organizerText: String {

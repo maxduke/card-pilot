@@ -5,7 +5,6 @@ struct CardsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Bank.name) private var banks: [Bank]
     @Query private var accounts: [CreditCardAccount]
-    @Query private var cards: [Card]
     @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
 
     @State private var editingBank: Bank?
@@ -30,7 +29,7 @@ struct CardsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if cards.isEmpty {
+                if banks.isEmpty {
                     ContentUnavailableView {
                         Label("还没有信用卡", systemImage: "creditcard.fill")
                     } description: {
