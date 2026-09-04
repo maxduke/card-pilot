@@ -430,7 +430,7 @@ private struct PromotionRow: View {
     private var statusColor: Color {
         switch group.status {
         case .active: return .green
-        case .upcoming: return .tint
+        case .upcoming: return .accentColor
         case .history: return .secondary
         }
     }
