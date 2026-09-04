@@ -306,4 +306,92 @@ final class PromotionCalculatorTests: XCTestCase {
 
         XCTAssertEqual(targets.map(\.id), [selected.id, current.id, upcoming.id])
     }
+
+    func testPromotionPresentationGroupsSeriesAndChoosesCurrentPeriod() {
+        let seriesID = UUID()
+        let past = Promotion(
+            seriesID: seriesID,
+            seriesIndex: 0,
+            title: "月度活动",
+            startOn: 20260101,
+            endOn: 20260131,
+            progressCurrencyCode: "CNY"
+        )
+        let current = Promotion(
+            seriesID: seriesID,
+            seriesIndex: 1,
+            title: "月度活动",
+            startOn: 20260201,
+            endOn: 20260228,
+            progressCurrencyCode: "CNY"
+        )
+        let future = Promotion(
+            seriesID: seriesID,
+            seriesIndex: 2,
+            title: "月度活动",
+            startOn: 20260301,
+            endOn: 20260331,
+            progressCurrencyCode: "CNY"
+        )
+        let standalone = Promotion(
+            title: "独立活动",
+            startOn: 20260210,
+            endOn: 20260220,
+            progressCurrencyCode: "CNY"
+        )
+
+        let groups = PromotionPresentation.groups(
+            from: [future, standalone, past, current],
+            today: 20260215,
+            includeArchived: false
+        )
+
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups.first?.representative.id, standalone.id)
+        XCTAssertEqual(groups.first?.status, .active)
+        XCTAssertEqual(groups.last?.representative.id, current.id)
+        XCTAssertEqual(groups.last?.periods.map(\.id), [past.id, current.id, future.id])
+    }
+
+    func testPromotionPresentationSearchesOrganizersAndEligibleCards() {
+        let bank = Bank(name: "搜索银行")
+        let account = CreditCardAccount(bank: bank)
+        let network = CardNetwork(code: "visa", displayName: "Visa")
+        let card = Card(account: account, productName: "旅行卡", networks: [network], lastFour: "2468")
+        let promotion = Promotion(
+            title: "周末回馈",
+            startOn: 20260201,
+            endOn: 20260228,
+            organizingBanks: [bank],
+            eligibleCards: [card],
+            progressCurrencyCode: "CNY"
+        )
+
+        XCTAssertEqual(
+            PromotionPresentation.groups(
+                from: [promotion],
+                today: 20260215,
+                includeArchived: false,
+                searchText: "搜索银行"
+            ).count,
+            1
+        )
+        XCTAssertEqual(
+            PromotionPresentation.groups(
+                from: [promotion],
+                today: 20260215,
+                includeArchived: false,
+                searchText: "2468"
+            ).count,
+            1
+        )
+        XCTAssertTrue(
+            PromotionPresentation.groups(
+                from: [promotion],
+                today: 20260215,
+                includeArchived: false,
+                searchText: "不存在"
+            ).isEmpty
+        )
+    }
 }

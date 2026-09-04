@@ -4,18 +4,21 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \CreditCardAccount.id) private var accounts: [CreditCardAccount]
+    @Query(sort: \Card.id) private var cards: [Card]
     @AppStorage("cardPilot.statementReminderOffsets") private var statementOffsets = "7,3,1,0"
     @AppStorage("cardPilot.repaymentReminderOffsets") private var repaymentOffsets = "7,3,1,0"
     @AppStorage("cardPilot.reminderTime") private var reminderTime = "09:00"
     @AppStorage("cardPilot.homeTimeZone") private var homeTimeZone = TimeZone.current.identifier
     @AppStorage("cardPilot.appLockEnabled") private var appLockEnabled = false
     @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
+    @AppStorage("cardPilot.notificationRevision") private var notificationRevision = 0
 
     @StateObject private var appLock = AppLockController()
     @State private var selectedTab = Tab.dashboard
     @State private var lastContentTab = Tab.dashboard
     @State private var showingSettings = false
     @State private var showingTransactionEditor = false
+    @State private var showingCardOnboarding = false
     @State private var tabBeforeTransactionEditor: Tab?
     @State private var isAuthenticating = false
     @State private var authenticationAttempt = 0
@@ -42,11 +45,22 @@ struct RootView: View {
                 LockShield(isAuthenticating: isAuthenticating, unlock: authenticate)
             } else {
                 TabView(selection: $selectedTab) {
-                    DashboardView(showingSettings: $showingSettings)
+                    DashboardView(
+                        showingSettings: $showingSettings,
+                        onAddCard: {
+                            selectedTab = .cards
+                            lastContentTab = .cards
+                            showingCardOnboarding = true
+                        },
+                        onOpenPromotions: {
+                            selectedTab = .promotions
+                            lastContentTab = .promotions
+                        }
+                    )
                         .tabItem { Label("首页", systemImage: "rectangle.grid.2x2") }
                         .tag(Tab.dashboard)
 
-                    CardsView()
+                    CardsView(showingCardOnboarding: $showingCardOnboarding)
                         .tabItem { Label("卡片", systemImage: "creditcard") }
                         .tag(Tab.cards)
 
@@ -65,9 +79,15 @@ struct RootView: View {
                 .privacySensitive()
                 .onChange(of: selectedTab) { _, tab in
                     if tab == .addTransaction {
-                        tabBeforeTransactionEditor = lastContentTab
-                        showingTransactionEditor = true
-                        selectedTab = .transactions
+                        if cards.isEmpty {
+                            selectedTab = .cards
+                            lastContentTab = .cards
+                            showingCardOnboarding = true
+                        } else {
+                            tabBeforeTransactionEditor = lastContentTab
+                            showingTransactionEditor = true
+                            selectedTab = .transactions
+                        }
                     } else if tabBeforeTransactionEditor == nil {
                         lastContentTab = tab
                     }
@@ -92,6 +112,7 @@ struct RootView: View {
         .onChange(of: appLock.isLocked) { _, locked in
             if locked {
                 showingSettings = false
+                showingCardOnboarding = false
                 if let previousTab = tabBeforeTransactionEditor {
                     tabBeforeTransactionEditor = nil
                     selectedTab = previousTab
@@ -129,7 +150,7 @@ struct RootView: View {
             }.sorted().joined(separator: ",")
             return "\(account.id)-\(account.bank.name)-\(account.statusRaw)-\(account.closedOn ?? 0)-\(rules)-\(cycles)"
         }.joined(separator: "|")
-        return "\(statementOffsets)|\(repaymentOffsets)|\(reminderTime)|\(homeTimeZone)|\(accountKey)"
+        return "\(statementOffsets)|\(repaymentOffsets)|\(reminderTime)|\(homeTimeZone)|\(notificationRevision)|\(accountKey)"
     }
 
     private func authenticate() {

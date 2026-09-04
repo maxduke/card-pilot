@@ -6,6 +6,8 @@ struct DashboardView: View {
     @Query private var accounts: [CreditCardAccount]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Binding var showingSettings: Bool
+    var onAddCard: () -> Void = {}
+    var onOpenPromotions: () -> Void = {}
     @State private var errorMessage: String?
     @State private var recentlyRepaid: DashboardBillingItem?
     @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
@@ -17,18 +19,40 @@ struct DashboardView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if !notificationWarning.isEmpty {
-                        Label(notificationWarning, systemImage: "bell.badge")
+                        Button { showingSettings = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bell.badge")
+                                Text(notificationWarning)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                            }
                             .font(.footnote)
                             .foregroundStyle(.orange)
-                            .accessibilityLabel("通知提示：\(notificationWarning)")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("通知提示：\(notificationWarning)，打开设置")
                     }
                     if billingItems.isEmpty && activePromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
-                        EmptyStateView(
-                            title: "开始使用 CardPilot",
-                            systemImage: "creditcard",
-                            message: "先添加信用卡账户或促销活动，首页会显示需要关注的日期和进度。"
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 300)
+                        if accounts.isEmpty {
+                            ContentUnavailableView {
+                                Label("开始使用 CardPilot", systemImage: "creditcard")
+                            } description: {
+                                Text("先添加一张信用卡，首页会自动整理账单、还款和促销提醒。")
+                            } actions: {
+                                Button("添加信用卡", systemImage: "plus", action: onAddCard)
+                                    .buttonStyle(.borderedProminent)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 300)
+                        } else {
+                            ContentUnavailableView(
+                                "目前无需处理",
+                                systemImage: "checkmark.circle",
+                                description: Text("新的账单、还款或促销节点出现后，会显示在这里。")
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 260)
+                        }
                     }
 
                     if !actionBillingItems.isEmpty || !enrollmentClosingSoonPromotions.isEmpty || !endingSoonPromotions.isEmpty {
@@ -90,15 +114,33 @@ struct DashboardView: View {
                     }
 
                     if !activePromotions.isEmpty {
-                        DashboardSection(title: "促销进度") {
-                            ForEach(activePromotions) { promotion in
-                                NavigationLink {
-                                    PromotionDetailView(promotion: promotion)
-                                } label: {
-                                    PromotionProgressRow(promotion: promotion)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("促销")
+                                .font(.headline)
+                            Button(action: onOpenPromotions) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "gift.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(Color.accentColor)
+                                        .frame(width: 38, height: 38)
+                                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("\(activePromotions.count) 个进行中")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text(promotionSummary)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(14)
+                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("促销，\(activePromotions.count) 个进行中，\(promotionSummary)，查看全部")
                         }
                     }
                 }
@@ -146,8 +188,10 @@ struct DashboardView: View {
     }
 
     private var endingSoonPromotions: [Promotion] {
+        let enrollmentIDs = Set(enrollmentClosingSoonPromotions.map(\.id))
         activePromotions.filter {
-            $0.qualificationThreshold != nil
+            !enrollmentIDs.contains($0.id)
+                && $0.qualificationThreshold != nil
                 && isEndingSoon($0)
                 && (try? PromotionCalculator.progress(for: $0).isComplete) != true
         }
@@ -166,13 +210,25 @@ struct DashboardView: View {
 
     private var accountsWithBillingItems: [CreditCardAccount] {
         var seen = Set<UUID>()
-        return billingItems.compactMap { item in
+        return scheduleBillingItems.compactMap { item in
             seen.insert(item.account.id).inserted ? item.account : nil
         }
     }
 
     private func billingItems(for account: CreditCardAccount) -> [DashboardBillingItem] {
-        billingItems.filter { $0.account.id == account.id }
+        scheduleBillingItems.filter { $0.account.id == account.id }
+    }
+
+    private var scheduleBillingItems: [DashboardBillingItem] {
+        let actionIDs = Set(actionBillingItems.map(\.id))
+        return billingItems.filter { !actionIDs.contains($0.id) }
+    }
+
+    private var promotionSummary: String {
+        let attentionIDs = Set((enrollmentClosingSoonPromotions + endingSoonPromotions).map(\.id))
+        if !attentionIDs.isEmpty { return "\(attentionIDs.count) 个需要关注" }
+        guard let endOn = activePromotions.map(\.endOn).min() else { return "查看全部促销" }
+        return "最近结束于 \(CardPilotUI.dateText(endOn))"
     }
 
     private var billingItems: [DashboardBillingItem] {
@@ -432,85 +488,5 @@ private struct AccountScheduleCard: View {
         let names = account.cards.map { $0.nickname.isEmpty ? $0.productName : $0.nickname }.sorted()
         let cards = names.isEmpty ? "未添加卡片" : names.count == 1 ? names[0] : "\(names[0]) 等 \(names.count) 张卡"
         return account.status == .closed ? "已关闭 · \(cards)" : cards
-    }
-}
-
-private struct PromotionProgressRow: View {
-    let promotion: Promotion
-
-    private var progress: PromotionProgress? { try? PromotionCalculator.progress(for: promotion) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text(promotion.title)
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                primaryAmount
-            }
-            if let progress {
-                if let threshold = progress.qualificationThreshold {
-                    ProgressView(
-                        value: clampedValue(progress.qualifiedAmount, upperBound: threshold),
-                        total: decimalDouble(threshold)
-                    )
-                    .tint(progress.isComplete ? .green : .accentColor)
-                    Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingToThreshold ?? threshold, currencyCode: promotion.progressCurrencyCode))")
-                        .font(.caption)
-                        .foregroundStyle(progress.isComplete ? .green : .secondary)
-                    if let cap = progress.qualifyingCap {
-                        Text("封顶剩余 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else if let cap = progress.qualifyingCap {
-                    ProgressView(
-                        value: clampedValue(progress.qualifiedAmount, upperBound: cap),
-                        total: decimalDouble(cap)
-                    )
-                    .tint((progress.remainingCap ?? .zero) == .zero ? .green : .accentColor)
-                    Text((progress.remainingCap ?? .zero) == .zero ? "已达封顶" : "封顶剩余 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
-                        .font(.caption)
-                        .foregroundStyle((progress.remainingCap ?? .zero) == .zero ? .green : .secondary)
-                } else {
-                    Text("已计入净额：\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Text("暂时无法计算进度")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 10)
-        .accessibilityElement(children: .combine)
-    }
-
-    private func decimalDouble(_ value: Decimal) -> Double {
-        NSDecimalNumber(decimal: value).doubleValue
-    }
-
-    @ViewBuilder
-    private var primaryAmount: some View {
-        if let progress {
-            if let threshold = progress.qualificationThreshold {
-                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
-                    .font(.caption)
-                    .foregroundStyle(progress.isComplete ? .green : .secondary)
-            } else if let cap = progress.qualifyingCap {
-                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(cap, currencyCode: promotion.progressCurrencyCode))")
-                    .font(.caption)
-                    .foregroundStyle((progress.remainingCap ?? .zero) == .zero ? .green : .secondary)
-            } else {
-                Text(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func clampedValue(_ amount: Decimal, upperBound: Decimal) -> Double {
-        decimalDouble(min(max(.zero, amount), upperBound))
     }
 }
