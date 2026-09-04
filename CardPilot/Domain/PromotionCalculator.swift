@@ -128,7 +128,7 @@ enum PromotionCalculator {
         if benefitTransactionCap == nil {
             usedTransactionCount = 0
         } else {
-            usedTransactionCount = Set(allocations.compactMap { allocation in
+            usedTransactionCount = Set<UUID>(allocations.compactMap { allocation in
                 guard let transactionID = allocation.transactionID,
                       allocation.amount > .zero,
                       allocation.kind == .purchase,
