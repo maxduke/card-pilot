@@ -103,6 +103,57 @@ final class PersistenceTests: XCTestCase {
         for promotion in invalidPromotions {
             XCTAssertThrowsError(try promotion.validate())
         }
+
+        let benefitPromotion = Promotion(
+            title: "逐笔优惠活动",
+            startOn: 20260801,
+            endOn: 20260831,
+            perTransactionThreshold: 10,
+            benefitTransactionCap: 10,
+            progressCurrencyCode: "CNY"
+        )
+        XCTAssertNoThrow(try benefitPromotion.validate())
+
+        for promotion in [
+            Promotion(title: "无效优惠笔数上限", startOn: 20260801, endOn: 20260831, benefitTransactionCap: 0, progressCurrencyCode: "CNY"),
+            Promotion(title: "逐笔与累计门槛冲突", startOn: 20260801, endOn: 20260831, qualificationThreshold: 100, benefitTransactionCap: 10, progressCurrencyCode: "CNY"),
+            Promotion(title: "逐笔与累计上限冲突", startOn: 20260801, endOn: 20260831, qualifyingCap: 100, benefitTransactionCap: 10, progressCurrencyCode: "CNY")
+        ] {
+            XCTAssertThrowsError(try promotion.validate())
+        }
+    }
+
+    func testPromotionAllocationRequiresPositiveAmount() throws {
+        let bank = Bank(name: "测试银行")
+        let account = CreditCardAccount(bank: bank)
+        let card = Card(
+            account: account,
+            productName: "测试卡",
+            networks: [CardNetwork.makeBuiltIns()[0]],
+            lastFour: "1234"
+        )
+        let promotion = Promotion(
+            title: "测试促销",
+            startOn: 20260801,
+            endOn: 20260831,
+            eligibleCards: [card],
+            progressCurrencyCode: "CNY"
+        )
+
+        XCTAssertThrowsError(try PromotionAllocation(
+            transaction: Transaction(
+                card: card,
+                transactionOn: 20260801,
+                amount: 10,
+                currencyCode: "CNY",
+                merchant: "测试商户"
+            ),
+            promotion: promotion,
+            qualifyingAmount: .zero,
+            currencyCode: "CNY"
+        ).validate()) { error in
+            XCTAssertEqual(error as? ModelValidationError, .invalidQualifyingAmount)
+        }
     }
 
     func testAccountRejectsDuplicateBaselineRules() throws {
@@ -166,6 +217,7 @@ final class PersistenceTests: XCTestCase {
             title: "系列周期",
             startOn: 20261001,
             endOn: 20261031,
+            benefitTransactionCap: 10,
             progressCurrencyCode: "CNY"
         )
         XCTAssertNoThrow(try promotion.validate())
@@ -175,6 +227,7 @@ final class PersistenceTests: XCTestCase {
         let fetched = try context.fetch(FetchDescriptor<Promotion>())
         XCTAssertEqual(fetched.first?.seriesID, seriesID)
         XCTAssertEqual(fetched.first?.seriesIndex, 2)
+        XCTAssertEqual(fetched.first?.benefitTransactionCap, 10)
     }
 
     func testDeletingAccountDependenciesAllowsAccountDeletion() throws {

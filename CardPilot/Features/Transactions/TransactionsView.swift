@@ -8,6 +8,7 @@ struct TransactionsView: View {
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
 
     @Binding private var isPresentingEditor: Bool
+    private let onAddCard: () -> Void
     @State private var editingTransaction: Transaction?
     @State private var detailTransaction: Transaction?
     @State private var transactionPendingDeletion: Transaction?
@@ -19,19 +20,34 @@ struct TransactionsView: View {
     @State private var showingFilterSheet = false
     @State private var searchText = ""
 
-    init(isPresentingEditor: Binding<Bool> = .constant(false)) {
+    init(
+        isPresentingEditor: Binding<Bool> = .constant(false),
+        onAddCard: @escaping () -> Void = {}
+    ) {
         _isPresentingEditor = isPresentingEditor
+        self.onAddCard = onAddCard
     }
 
     var body: some View {
         NavigationStack {
             Group {
                 if transactions.isEmpty {
-                    EmptyStateView(
-                        title: "还没有交易",
-                        systemImage: "list.bullet.rectangle",
-                        message: "记录一笔消费后，可以从候选促销中选择要计入的活动。"
-                    )
+                    if cards.isEmpty {
+                        ContentUnavailableView {
+                            Label("先添加信用卡", systemImage: "creditcard")
+                        } description: {
+                            Text("添加卡片后才能记录交易和促销进度。")
+                        } actions: {
+                            Button("添加信用卡", systemImage: "plus", action: onAddCard)
+                                .buttonStyle(.borderedProminent)
+                        }
+                    } else {
+                        EmptyStateView(
+                            title: "还没有交易",
+                            systemImage: "list.bullet.rectangle",
+                            message: "点击右上角加号记录一笔消费，并确认要计入的促销。"
+                        )
+                    }
                 } else if filteredTransactions.isEmpty {
                     VStack(spacing: 0) {
                         if hasActiveFilters {
@@ -358,7 +374,7 @@ private struct TransactionRow: View {
         .padding(.vertical, 7)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(transactionAccessibilityLabel(transaction))
-        .accessibilityHint("双击查看交易详情")
+        .accessibilityHint("查看交易详情")
     }
 
     private func transactionTag(_ title: String, color: Color) -> some View {
@@ -685,8 +701,9 @@ private struct TransactionEditorView: View {
         _notes = State(initialValue: transaction?.notes ?? "")
         _status = State(initialValue: transaction?.status ?? .active)
         _originalTransactionID = State(initialValue: transaction?.originalTransaction?.id ?? Self.noOriginalTransactionID)
-        _selectedPromotionIDs = State(initialValue: Set(transaction?.allocations.map { $0.promotion.id } ?? []))
-        _allocationAmounts = State(initialValue: Dictionary(uniqueKeysWithValues: (transaction?.allocations ?? []).map { ($0.promotion.id, CardPilotUI.editableAmountText($0.qualifyingAmount)) }))
+        let positiveAllocations = (transaction?.allocations ?? []).filter { $0.qualifyingAmount > .zero }
+        _selectedPromotionIDs = State(initialValue: Set(positiveAllocations.map { $0.promotion.id }))
+        _allocationAmounts = State(initialValue: Dictionary(uniqueKeysWithValues: positiveAllocations.map { ($0.promotion.id, CardPilotUI.editableAmountText($0.qualifyingAmount)) }))
         _showingInactiveCards = State(initialValue: transaction?.card.status == .inactive || cards.allSatisfy { $0.status == .inactive })
         _showingOtherFields = State(initialValue: transaction != nil)
     }
@@ -730,13 +747,24 @@ private struct TransactionEditorView: View {
     private var inheritedPromotionIDs: Set<UUID> {
         guard kind == .refund,
               let original = originalTransactions.first(where: { $0.id == originalTransactionID }) else { return [] }
-        return Set(original.allocations.map(\.promotion.id))
+        return Set(original.allocations.filter { $0.qualifyingAmount > .zero }.map(\.promotion.id))
     }
 
     private var currentAutomaticPromotionIDs: Set<UUID> {
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let sameCurrencyCandidates = candidatePromotions.filter { $0.progressCurrencyCode == normalizedCurrency }
-        return Set(sameCurrencyCandidates.map(\.id)).union(inheritedPromotionIDs)
+        guard kind == .purchase,
+              let transactionAmount = CardPilotUI.decimal(amountText),
+              transactionAmount > .zero else {
+            return inheritedPromotionIDs
+        }
+        let automaticCandidates = candidatePromotions.filter { promotion in
+            PromotionCalculator.shouldAutomaticallySelect(
+                promotion,
+                transactionAmount: transactionAmount,
+                transactionCurrencyCode: normalizedCurrency
+            )
+        }
+        return Set(automaticCandidates.map(\.id))
     }
 
     private var visiblePromotionIDs: Set<UUID> {
@@ -825,7 +853,10 @@ private struct TransactionEditorView: View {
             .onChange(of: transactionDate) { _, _ in refreshCandidates() }
             .onChange(of: postingDate) { _, _ in refreshCandidates() }
             .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
-            .onChange(of: amountText) { _, _ in refreshDefaultAllocationAmounts() }
+            .onChange(of: amountText) { _, _ in
+                refreshCandidates()
+                refreshDefaultAllocationAmounts()
+            }
             .onChange(of: currencyCode) { _, _ in
                 refreshCandidates()
                 refreshDefaultAllocationAmounts()
@@ -1028,7 +1059,7 @@ private struct TransactionEditorView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("当前卡片，\(cardLabel(selectedCard))")
-            .accessibilityHint("双击打开卡片选择")
+            .accessibilityHint("打开卡片选择")
             .sheet(isPresented: $showingCardPicker) {
                 CardSelectionSheet(
                     cards: selectableCards,
@@ -1092,7 +1123,7 @@ private struct TransactionEditorView: View {
                         }
                     }
                 }
-                Text("候选活动会默认勾选；可取消或调整计入金额。不同币种请手动填写银行认可的合格金额。")
+                Text("达到单笔门槛且有可计入金额的普通活动会默认勾选；逐笔优惠活动请手动选择。所有新分配的计入金额必须大于 0。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !inheritedPromotionIDs.isEmpty {
@@ -1124,6 +1155,9 @@ private struct TransactionEditorView: View {
 
     private func promotionSummary(_ promotion: Promotion) -> String {
         var parts = [promotion.progressCurrencyCode]
+        if let benefitTransactionCap = promotion.benefitTransactionCap {
+            parts.append("最多 \(benefitTransactionCap) 笔")
+        }
         if let threshold = promotion.qualificationThreshold {
             parts.append("达标 \(CardPilotUI.amountText(threshold))")
         }
@@ -1144,9 +1178,27 @@ private struct TransactionEditorView: View {
         guard normalizedCurrency == promotion.progressCurrencyCode else {
             return "币种不同，无法自动换算；请手动填写合格金额。"
         }
+        let alreadyCounted = transaction.map { transaction in
+            transaction.kind == .purchase
+                && transaction.status == .active
+                && transaction.allocations.contains {
+                    $0.promotion.id == promotion.id && $0.qualifyingAmount > .zero
+                }
+        } ?? false
+        if !alreadyCounted,
+           let cap = promotion.benefitTransactionCap,
+           let progress = try? PromotionCalculator.progress(for: promotion),
+           progress.usedTransactionCount >= cap {
+            return "本活动优惠笔数已用完；如需修正仍可手动记录本笔。"
+        }
+        if let cap = promotion.qualifyingCap,
+           let progress = try? PromotionCalculator.progress(for: promotion),
+           progress.qualifiedAmount >= cap {
+            return "本活动累计计入上限已用完；如需修正请手动填写正数。"
+        }
         guard let threshold = promotion.perTransactionThreshold,
               transactionAmount < threshold else { return nil }
-        return "本活动单笔至少 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))，本笔默认计入 0。"
+        return "本活动单笔至少 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))，请确认是否符合条款后填写正数。"
     }
 
     private func promotionBinding(_ id: UUID) -> Binding<Bool> {
@@ -1232,7 +1284,8 @@ private struct TransactionEditorView: View {
             currentQualifiedAmount: currentQualifiedAmount,
             qualifyingCap: promotion.qualifyingCap
         )
-        return suggestion.map(CardPilotUI.editableAmountText) ?? ""
+        guard let suggestion, suggestion > .zero else { return "" }
+        return CardPilotUI.editableAmountText(suggestion)
     }
 
     private var selectedPromotionsContainNonStacking: Bool {
@@ -1274,8 +1327,8 @@ private struct TransactionEditorView: View {
         let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
         var parsedAmounts: [UUID: Decimal] = [:]
         for promotion in selectedPromotions {
-            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? ""), amount >= .zero else {
-                errorMessage = "活动“\(promotion.title)”的计入金额格式不正确。"
+            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? ""), amount > .zero else {
+                errorMessage = "活动“\(promotion.title)”的计入金额应为大于 0 的数字。"
                 return
             }
             parsedAmounts[promotion.id] = amount

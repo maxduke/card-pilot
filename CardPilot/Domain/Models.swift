@@ -132,6 +132,8 @@ enum ModelValidationError: Error, Equatable {
     case invalidDateRange
     case invalidEnrollment
     case invalidTargetAmount
+    case invalidBenefitTransactionCap
+    case invalidPromotionRuleCombination
     case invalidNetworkCombination
     case invalidQualifyingAmount
     case invalidTransactionAmount
@@ -503,6 +505,8 @@ final class Promotion {
     var qualificationThreshold: Decimal?
     var qualifyingCap: Decimal?
     var perTransactionThreshold: Decimal?
+    /// Maximum number of distinct purchase transactions eligible for a per-transaction benefit.
+    var benefitTransactionCap: Int?
     var progressCurrencyCode: String
     var rules: String
     var exclusions: String
@@ -547,6 +551,7 @@ final class Promotion {
         qualificationThreshold: Decimal? = nil,
         qualifyingCap: Decimal? = nil,
         perTransactionThreshold: Decimal? = nil,
+        benefitTransactionCap: Int? = nil,
         progressCurrencyCode: String,
         rules: String = "",
         exclusions: String = "",
@@ -571,6 +576,7 @@ final class Promotion {
         self.qualificationThreshold = qualificationThreshold
         self.qualifyingCap = qualifyingCap
         self.perTransactionThreshold = perTransactionThreshold
+        self.benefitTransactionCap = benefitTransactionCap
         self.progressCurrencyCode = progressCurrencyCode
         self.rules = rules
         self.exclusions = exclusions
@@ -593,6 +599,13 @@ final class Promotion {
         }
         for amount in [qualificationThreshold, qualifyingCap, perTransactionThreshold].compactMap(\.self) {
             guard amount > .zero else { throw ModelValidationError.invalidTargetAmount }
+        }
+        if let benefitTransactionCap, benefitTransactionCap <= 0 {
+            throw ModelValidationError.invalidBenefitTransactionCap
+        }
+        if benefitTransactionCap != nil,
+           qualificationThreshold != nil || qualifyingCap != nil {
+            throw ModelValidationError.invalidPromotionRuleCombination
         }
         guard EnrollmentStatus(rawValue: enrollmentStatusRaw) != nil,
               QualificationDateBasis(rawValue: qualificationDateBasisRaw) != nil else {
@@ -746,7 +759,7 @@ final class PromotionAllocation {
     }
 
     func validate() throws {
-        guard qualifyingAmount >= .zero else { throw ModelValidationError.invalidQualifyingAmount }
+        guard qualifyingAmount > .zero else { throw ModelValidationError.invalidQualifyingAmount }
         guard isValidCurrencyCode(currencyCode) else {
             throw ModelValidationError.invalidCurrencyCode(currencyCode)
         }

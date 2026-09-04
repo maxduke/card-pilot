@@ -602,7 +602,7 @@ private struct CardOnboardingView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("双击选择并继续")
+                    .accessibilityHint("选择并继续")
                     if preset.id != filteredPresets.last?.id { Divider() }
                 }
             }

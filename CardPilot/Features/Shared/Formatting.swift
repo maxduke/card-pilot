@@ -260,6 +260,7 @@ struct BankBadge: View {
         "cn.pingan": "bank_pingan", "cn.cgb": "bank_cgbchina", "cn.hxb": "bank_hxb",
         "cn.czbank": "bank_czbank", "cn.hfbank": "bank_hfbank", "cn.cbhb": "bank_cbhb",
         "hk.hsbc": "bank_hsbc", "hk.hangseng": "bank_hangseng", "hk.bochk": "bank_boc",
+        "hk.scb": "bank_scb", "hk.bea": "bank_hkbea",
         "hk.citibank": "bank_citibank", "hk.dbs": "bank_dbs", "hk.dahsing": "bank_dahsing",
         "hk.citicintl": "bank_citicbank", "hk.ccba": "bank_ccb", "hk.icbcasia": "bank_icbc"
     ]
