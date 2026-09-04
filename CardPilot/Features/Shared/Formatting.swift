@@ -95,7 +95,9 @@ private struct CurrencyPickerSheet: View {
     }
 
     private var commonOptions: [CurrencyOption] {
-        CurrencyOption.commonCodes.compactMap { code in CurrencyOption.all.first { $0.code == code } }
+        CurrencyOption.commonCodes
+            .filter { !recentCodes.contains($0) }
+            .compactMap { code in CurrencyOption.all.first { $0.code == code } }
     }
 
     private var filteredOptions: [CurrencyOption] {
@@ -121,10 +123,14 @@ private struct CurrencyPickerSheet: View {
                         ForEach(commonOptions) { option in optionRow(option) }
                     }
                     Section("全部币种") {
-                        ForEach(CurrencyOption.all.filter { !CurrencyOption.commonCodes.contains($0.code) }) { option in
+                        ForEach(CurrencyOption.all.filter {
+                            !CurrencyOption.commonCodes.contains($0.code) && !recentCodes.contains($0.code)
+                        }) { option in
                             optionRow(option)
                         }
                     }
+                } else if filteredOptions.isEmpty {
+                    ContentUnavailableView.search(text: query)
                 } else {
                     Section {
                         ForEach(filteredOptions) { option in optionRow(option) }
@@ -201,23 +207,21 @@ struct BankBadge: View {
     let name: String
     let monogram: String
     let assetName: String?
-    let isPreset: Bool
 
-    init(name: String, monogram: String? = nil, assetName: String? = nil, isPreset: Bool = false) {
+    init(name: String, monogram: String? = nil, assetName: String? = nil) {
         self.name = name
         self.monogram = monogram ?? String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()
         self.assetName = assetName
-        self.isPreset = isPreset
     }
 
     init(preset: BankPreset) {
-        self.init(name: preset.displayName, monogram: preset.monogram, assetName: Self.assetNames[preset.code], isPreset: true)
+        self.init(name: preset.displayName, monogram: preset.monogram, assetName: Self.assetNames[preset.code])
     }
 
     init(bank: Bank) {
         self.init(name: bank.name, monogram: bank.presetCode.flatMap { code in
             BankPreset.catalog.first { $0.code == code }?.monogram
-        }, assetName: bank.presetCode.flatMap { Self.assetNames[$0] }, isPreset: bank.presetCode != nil)
+        }, assetName: bank.presetCode.flatMap { Self.assetNames[$0] })
     }
 
     var body: some View {
@@ -230,27 +234,12 @@ struct BankBadge: View {
                         .scaledToFit()
                         .padding(3)
                 }
-            } else if isPreset {
-                ZStack {
-                    LinearGradient(
-                        colors: [.indigo, .blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    Image(systemName: "building.columns.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                }
             } else {
                 ZStack {
-                    LinearGradient(
-                        colors: [.indigo, .blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    Color.accentColor.opacity(0.12)
                     Text(monogram)
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.tint)
                 }
             }
         }
@@ -292,62 +281,31 @@ struct CardNetworkBadge: View {
 
     var body: some View {
         Group {
-            switch code {
-            case "unionpay":
-                HStack(spacing: -3) {
-                    networkBlock(.red, text: "U")
-                    networkBlock(.blue, text: "P")
-                    networkBlock(.green, text: "")
-                }
-            case "visa":
-                Text("VISA")
-                    .font(.caption2.weight(.black).italic())
-                    .foregroundStyle(Color(red: 0.08, green: 0.19, blue: 0.55))
-            case "mastercard":
-                HStack(spacing: -7) {
-                    Circle()
-                        .fill(Color(red: 0.92, green: 0.12, blue: 0.16))
-                        .frame(width: 18, height: 18)
-                    Circle()
-                        .fill(Color(red: 1, green: 0.62, blue: 0.05).opacity(0.92))
-                        .frame(width: 18, height: 18)
-                }
-                .padding(.horizontal, 8)
-            case "amex":
-                Text("AMEX")
-                    .font(.system(size: 8, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 3)
-                    .background(Color(red: 0.05, green: 0.55, blue: 0.78), in: RoundedRectangle(cornerRadius: 3))
-            case "jcb":
-                HStack(spacing: 1) {
-                    networkBlock(.blue, text: "J")
-                    networkBlock(.red, text: "C")
-                    networkBlock(.green, text: "B")
-                }
-            default:
+            if let assetName {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 47, height: 30)
+            } else {
                 Text(shortName)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.primary)
+                    .padding(.horizontal, 8)
+                    .frame(minHeight: 26)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(.quaternary, lineWidth: 0.5)
+                    }
             }
         }
-            .frame(minWidth: 38, minHeight: 22)
-            .padding(.horizontal, 3)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(.quaternary, lineWidth: 0.5)
-            }
             .accessibilityLabel(displayName)
     }
 
-    private func networkBlock(_ color: Color, text: String) -> some View {
-        Text(text)
-            .font(.system(size: 7, weight: .black, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(width: 12, height: 16)
-            .background(color, in: RoundedRectangle(cornerRadius: 3))
+    private var assetName: String? {
+        ["unionpay", "visa", "mastercard", "amex", "jcb"].contains(code)
+            ? "network_\(code)"
+            : nil
     }
 
     private var shortName: String {

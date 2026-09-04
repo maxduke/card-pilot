@@ -2,6 +2,22 @@ import XCTest
 @testable import CardPilot
 
 final class TransactionsTests: XCTestCase {
+    func testPromotionFilterLabelDistinguishesSeriesPeriods() {
+        let promotion = Promotion(
+            seriesID: UUID(),
+            seriesIndex: 1,
+            title: "月度活动",
+            startOn: 20260201,
+            endOn: 20260228,
+            progressCurrencyCode: "CNY"
+        )
+
+        let label = promotionFilterLabel(promotion)
+
+        XCTAssertTrue(label.contains("第 2 期"))
+        XCTAssertTrue(label.contains(CardPilotUI.dateRangeText(start: 20260201, end: 20260228)))
+    }
+
     func testTransactionFilterDefaultsToAllAndMatchesCardMerchantOrCategory() {
         let bank = Bank(name: "测试银行")
         let account = CreditCardAccount(bank: bank)
@@ -76,6 +92,97 @@ final class TransactionsTests: XCTestCase {
         XCTAssertEqual(
             promotionsMatchingSearch([postingDatePromotion, manualPromotion], searchText: "例外").map(\.id),
             [manualPromotion.id]
+        )
+    }
+
+    func testTransactionsGroupByDateAndUseStableUUIDOrderWithinDate() {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"))
+        let card = Card(
+            account: account,
+            productName: "测试卡",
+            networks: [CardNetwork.makeBuiltIns()[0]],
+            lastFour: "1234"
+        )
+        let earlierID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let laterID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let sameDayLaterID = Transaction(
+            id: laterID,
+            card: card,
+            transactionOn: 20260801,
+            amount: 20,
+            currencyCode: "CNY",
+            merchant: "较晚 ID"
+        )
+        let sameDayEarlierID = Transaction(
+            id: earlierID,
+            card: card,
+            transactionOn: 20260801,
+            amount: 10,
+            currencyCode: "CNY",
+            merchant: "较早 ID"
+        )
+        let newerDate = Transaction(
+            card: card,
+            transactionOn: 20260802,
+            amount: 30,
+            currencyCode: "CNY",
+            merchant: "新日期"
+        )
+
+        let sections = groupedTransactionsByDate([sameDayLaterID, newerDate, sameDayEarlierID])
+
+        XCTAssertEqual(sections.map { $0.date }, [20260802, 20260801])
+        XCTAssertEqual(sections[1].transactions.map(\.id), [earlierID, laterID])
+    }
+
+    func testTransactionFilterSupportsTypeStatusAndPromotion() {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"))
+        let card = Card(
+            account: account,
+            productName: "测试卡",
+            networks: [CardNetwork.makeBuiltIns()[0]],
+            lastFour: "1234"
+        )
+        let purchase = Transaction(
+            card: card,
+            transactionOn: 20260801,
+            amount: 20,
+            currencyCode: "CNY",
+            merchant: "消费"
+        )
+        let refund = Transaction(
+            card: card,
+            kind: .refund,
+            transactionOn: 20260802,
+            amount: 5,
+            currencyCode: "CNY",
+            merchant: "退款",
+            originalTransaction: purchase,
+            status: .reversed
+        )
+        let promotion = Promotion(
+            title: "测试促销",
+            startOn: 20260801,
+            endOn: 20260831,
+            eligibleCards: [card],
+            progressCurrencyCode: "CNY"
+        )
+        purchase.allocations.append(
+            PromotionAllocation(
+                transaction: purchase,
+                promotion: promotion,
+                qualifyingAmount: 20,
+                currencyCode: "CNY"
+            )
+        )
+
+        XCTAssertEqual(
+            filterTransactions([purchase, refund], cardID: card.id, kind: .refund, promotionID: nil, status: .reversed, searchText: "").map(\.id),
+            [refund.id]
+        )
+        XCTAssertEqual(
+            filterTransactions([purchase, refund], cardID: nil, kind: nil, promotionID: promotion.id, status: nil, searchText: "").map(\.id),
+            [purchase.id]
         )
     }
 }

@@ -5,7 +5,6 @@ struct CardsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Bank.name) private var banks: [Bank]
     @Query private var accounts: [CreditCardAccount]
-    @Query private var cards: [Card]
     @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
 
     @State private var editingBank: Bank?
@@ -14,16 +13,23 @@ struct CardsView: View {
     @State private var showingBankEditor = false
     @State private var showingAccountEditor = false
     @State private var showingCardEditor = false
-    @State private var showingCardOnboarding = false
+    @Binding private var showingCardOnboarding: Bool
     @State private var showingArchivedBanks = false
     @State private var showingInactiveCards = false
+    @State private var query = ""
     @State private var errorMessage: String?
     @State private var accountPendingDeletion: CreditCardAccount?
+    @State private var bankPendingDeletion: Bank?
+    @State private var cardPendingDeletion: Card?
+
+    init(showingCardOnboarding: Binding<Bool> = .constant(false)) {
+        _showingCardOnboarding = showingCardOnboarding
+    }
 
     var body: some View {
         NavigationStack {
             Group {
-                if visibleBanks.isEmpty {
+                if banks.isEmpty {
                     ContentUnavailableView {
                         Label("还没有信用卡", systemImage: "creditcard.fill")
                     } description: {
@@ -32,11 +38,13 @@ struct CardsView: View {
                         Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
                             .buttonStyle(.borderedProminent)
                     }
+                } else if visibleBanks.isEmpty {
+                    ContentUnavailableView.search(text: query)
                 } else {
                     List {
                         ForEach(visibleBanks, id: \.id) { bank in
                             Section {
-                                let bankAccounts = accounts.filter { $0.bank.id == bank.id }
+                                let bankAccounts = bankAccounts(for: bank)
                                 if bankAccounts.isEmpty {
                                     Text("尚未添加信用卡账户")
                                         .foregroundStyle(.secondary)
@@ -47,12 +55,12 @@ struct CardsView: View {
                                             onEdit: { editingAccount = account; showingAccountEditor = true },
                                             onDelete: { requestDeleteAccount(account) }
                                         )
-                                        ForEach(account.cards.filter { showingInactiveCards || $0.status == .active }.sorted { ($0.nickname.isEmpty ? $0.productName : $0.nickname) < ($1.nickname.isEmpty ? $1.productName : $1.nickname) }, id: \.id) { card in
+                                        ForEach(visibleCards(for: account), id: \.id) { card in
                                             CardRow(card: card) {
                                                 editingCard = card
                                                 showingCardEditor = true
                                             } onDelete: {
-                                                deleteCard(card)
+                                                requestDeleteCard(card)
                                             }
                                             .padding(.leading, 22)
                                         }
@@ -62,6 +70,11 @@ struct CardsView: View {
                                 HStack {
                                     BankBadge(bank: bank)
                                     Text(bank.name)
+                                    if bank.archivedAt != nil {
+                                        Text("已归档")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Spacer()
                                     Button {
                                         editingBank = bank
@@ -81,7 +94,7 @@ struct CardsView: View {
                                     Label("编辑银行", systemImage: "pencil")
                                 }
                                 Button(role: .destructive) {
-                                    deleteBank(bank)
+                                    requestDeleteBank(bank)
                                 } label: {
                                     Label("删除银行", systemImage: "trash")
                                 }
@@ -91,6 +104,7 @@ struct CardsView: View {
                     .listStyle(.insetGrouped)
                 }
             }
+            .searchable(text: $query, prompt: "搜索银行、卡片或末四位")
             .navigationTitle("卡片")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -143,6 +157,24 @@ struct CardsView: View {
             } message: {
                 Text("将永久删除该账户的账务规则和账期记录，此操作无法撤销。")
             }
+            .confirmationDialog("确认删除银行？", isPresented: bankDeletePresented) {
+                Button("永久删除", role: .destructive) {
+                    if let bankPendingDeletion { deleteBank(bankPendingDeletion) }
+                    bankPendingDeletion = nil
+                }
+                Button("取消", role: .cancel) { bankPendingDeletion = nil }
+            } message: {
+                Text("将永久删除这个未被使用的银行，此操作无法撤销。")
+            }
+            .confirmationDialog("确认删除卡片？", isPresented: cardDeletePresented) {
+                Button("永久删除", role: .destructive) {
+                    if let cardPendingDeletion { deleteCard(cardPendingDeletion) }
+                    cardPendingDeletion = nil
+                }
+                Button("取消", role: .cancel) { cardPendingDeletion = nil }
+            } message: {
+                Text("将永久删除这张未被使用的卡片，此操作无法撤销。")
+            }
             .alert("无法完成操作", isPresented: errorPresented) {
                 Button("好", role: .cancel) { errorMessage = nil }
             } message: {
@@ -162,8 +194,52 @@ struct CardsView: View {
         )
     }
 
+    private var bankDeletePresented: Binding<Bool> {
+        Binding(get: { bankPendingDeletion != nil }, set: { if !$0 { bankPendingDeletion = nil } })
+    }
+
+    private var cardDeletePresented: Binding<Bool> {
+        Binding(get: { cardPendingDeletion != nil }, set: { if !$0 { cardPendingDeletion = nil } })
+    }
+
     private var visibleBanks: [Bank] {
-        banks.filter { showingArchivedBanks || $0.archivedAt == nil || !$0.accounts.isEmpty }
+        banks.filter { bank in
+            (showingArchivedBanks || bank.archivedAt == nil || !bank.accounts.isEmpty)
+                && (normalizedQuery.isEmpty || bank.name.localizedCaseInsensitiveContains(normalizedQuery)
+                    || !bankAccounts(for: bank).isEmpty)
+        }
+    }
+
+    private var normalizedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func bankAccounts(for bank: Bank) -> [CreditCardAccount] {
+        let bankAccounts = accounts.filter { $0.bank.id == bank.id }
+        guard !normalizedQuery.isEmpty,
+              !bank.name.localizedCaseInsensitiveContains(normalizedQuery) else { return bankAccounts }
+        return bankAccounts.filter { account in
+            account.notes.localizedCaseInsensitiveContains(normalizedQuery)
+                || account.cards.contains { card in
+                    (showingInactiveCards || card.status == .active) && cardMatchesQuery(card)
+                }
+        }
+    }
+
+    private func visibleCards(for account: CreditCardAccount) -> [Card] {
+        account.cards.filter { card in
+            (showingInactiveCards || card.status == .active)
+                && (normalizedQuery.isEmpty
+                    || account.bank.name.localizedCaseInsensitiveContains(normalizedQuery)
+                    || account.notes.localizedCaseInsensitiveContains(normalizedQuery)
+                    || cardMatchesQuery(card))
+        }.sorted { ($0.nickname.isEmpty ? $0.productName : $0.nickname) < ($1.nickname.isEmpty ? $1.productName : $1.nickname) }
+    }
+
+    private func cardMatchesQuery(_ card: Card) -> Bool {
+        card.productName.localizedCaseInsensitiveContains(normalizedQuery)
+            || card.nickname.localizedCaseInsensitiveContains(normalizedQuery)
+            || card.lastFour.contains(normalizedQuery)
     }
 
     private func save() {
@@ -182,6 +258,14 @@ struct CardsView: View {
         }
         modelContext.delete(bank)
         save()
+    }
+
+    private func requestDeleteBank(_ bank: Bank) {
+        guard bank.accounts.isEmpty, bank.organizedPromotions.isEmpty else {
+            errorMessage = "该银行仍被账户或促销主办方引用，不能删除。"
+            return
+        }
+        bankPendingDeletion = bank
     }
 
     private func requestDeleteAccount(_ account: CreditCardAccount) {
@@ -208,6 +292,14 @@ struct CardsView: View {
         }
         modelContext.delete(card)
         save()
+    }
+
+    private func requestDeleteCard(_ card: Card) {
+        guard card.transactions.isEmpty, card.eligiblePromotions.isEmpty else {
+            errorMessage = "该卡仍被交易或促销适用卡引用，不能删除。"
+            return
+        }
+        cardPendingDeletion = card
     }
 }
 
@@ -280,10 +372,6 @@ private struct NetworkChoiceTile: View {
                         }
                     }
                 }
-                Text(choice.title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
                 Spacer(minLength: 0)
                 if selection == choice {
                     Image(systemName: "checkmark.circle.fill")
@@ -611,7 +699,10 @@ private struct CardOnboardingView: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                 VStack(alignment: .leading, spacing: 2) {
+                    Text(cardAccountDisplayName(account))
                     Text(creditLimitText(for: account))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text("账单与还款规则沿用此账户")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -866,7 +957,7 @@ private struct AccountRow: View {
             Image(systemName: account.status == .active ? "rectangle.stack" : "rectangle.stack.badge.minus")
                 .foregroundStyle(account.status == .active ? .blue : .secondary)
             VStack(alignment: .leading, spacing: 3) {
-                Text(account.bank.name)
+                Text(accountTitle)
                     .font(.subheadline.weight(.semibold))
                 if let creditLimit = account.creditLimit {
                     Text("额度 \(CardPilotUI.amountText(creditLimit, currencyCode: account.limitCurrencyCode))")
@@ -901,14 +992,35 @@ private struct AccountRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onEdit)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accountAccessibilityLabel)
+        .accessibilityHint("打开账户编辑")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onEdit() }
         .contextMenu {
             Button(action: onEdit) { Label("编辑账户", systemImage: "pencil") }
             Button(role: .destructive, action: onDelete) { Label("删除账户", systemImage: "trash") }
         }
+    }
+
+    private var accountTitle: String {
+        let lastFours = account.cards.sorted { $0.lastFour < $1.lastFour }.prefix(2).map { "•••• \($0.lastFour)" }
+        return lastFours.isEmpty ? "信用卡账户" : "账户 · \(lastFours.joined(separator: " / "))"
+    }
+
+    private var accountAccessibilityLabel: String {
+        var parts = [account.bank.name, accountTitle]
+        if account.status == .closed { parts.append("已关闭") }
+        if let creditLimit = account.creditLimit {
+            parts.append("额度 \(CardPilotUI.amountText(creditLimit, currencyCode: account.limitCurrencyCode))")
+        }
+        return parts.joined(separator: "，")
     }
 
     private func repaymentText(_ rule: BillingRuleVersion) -> String {
@@ -990,11 +1102,17 @@ private struct CardRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onEdit)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("卡片，末四位 \(card.lastFour)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(card.account.bank.name)，\(card.nickname.isEmpty ? card.productName : card.nickname)，\(cardNetworkSummary(card.networks))，末四位 \(card.lastFour)\(card.status == .inactive ? "，已停用" : "")")
+        .accessibilityHint("打开卡片编辑")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onEdit() }
         .contextMenu {
             Button(action: onEdit) { Label("编辑卡片", systemImage: "pencil") }
             Button(role: .destructive, action: onDelete) { Label("删除卡片", systemImage: "trash") }
@@ -1155,8 +1273,11 @@ private struct AccountEditorView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if account != nil {
-                        TextField("规则变更生效账期（YYYYMM）", text: $effectiveCycleKeyText)
-                            .keyboardType(.numberPad)
+                        MonthKeyPicker(
+                            title: "规则变更生效账期",
+                            selection: $effectiveCycleKeyText,
+                            offsets: 1...60
+                        )
                         Text("修改规则会新增版本，不会改写历史账期。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -1165,8 +1286,11 @@ private struct AccountEditorView: View {
 
                 if account != nil {
                     Section("单期日期覆盖") {
-                        TextField("账期（YYYYMM）", text: $overrideCycleKeyText)
-                            .keyboardType(.numberPad)
+                        MonthKeyPicker(
+                            title: "账期",
+                            selection: $overrideCycleKeyText,
+                            offsets: -60...24
+                        )
                         Toggle("覆盖账单日", isOn: $hasStatementOverride)
                         if hasStatementOverride {
                             DatePicker("实际账单日", selection: $statementOverrideDate, displayedComponents: .date)
@@ -1230,7 +1354,7 @@ private struct AccountEditorView: View {
             if ruleChanged {
                 guard let effectiveCycleKey = Int(effectiveCycleKeyText),
                       LocalDate.isValidMonthKey(effectiveCycleKey) else {
-                    errorMessage = "生效账期应为有效的 YYYYMM。"
+                    errorMessage = "请选择有效的生效账期。"
                     return
                 }
                 guard !account.billingRuleVersions.contains(where: { $0.effectiveCycleKey == effectiveCycleKey }) else {
@@ -1250,7 +1374,7 @@ private struct AccountEditorView: View {
             }
             guard let parsedCycleKey = Int(overrideCycleKeyText),
                   LocalDate.isValidMonthKey(parsedCycleKey) else {
-                errorMessage = "覆盖账期应为有效的 YYYYMM。"
+                errorMessage = "请选择有效的覆盖账期。"
                 return
             }
             overrideCycleKey = parsedCycleKey
@@ -1362,6 +1486,30 @@ private struct AccountEditorView: View {
     }
 }
 
+private struct MonthKeyPicker: View {
+    // ponytail: a focused rolling window keeps the menu usable; switch to an unbounded month sheet if long-range edits become common.
+    let title: String
+    @Binding var selection: String
+    let offsets: ClosedRange<Int>
+
+    private var monthKeys: [Int] {
+        let today = CardPilotUI.localDate(from: Date())
+        var keys = Set(offsets.map { today.addingMonths($0, timeZone: CardPilotUI.homeTimeZone).monthKey })
+        if let selected = Int(selection), LocalDate.isValidMonthKey(selected) { keys.insert(selected) }
+        return keys.sorted()
+    }
+
+    var body: some View {
+        Picker(title, selection: $selection) {
+            ForEach(monthKeys, id: \.self) { monthKey in
+                Text(CardPilotUI.monthKeyText(monthKey)).tag(String(monthKey))
+            }
+        }
+        .pickerStyle(.menu)
+        .accessibilityValue(CardPilotUI.monthKeyText(Int(selection)))
+    }
+}
+
 func selectableAccountBanks(_ banks: [Bank], currentBankID: UUID?) -> [Bank] {
     banks.filter { $0.archivedAt == nil || $0.id == currentBankID }
 }
@@ -1374,6 +1522,11 @@ func matchingPresetBanks(_ banks: [Bank], preset: BankPreset) -> [Bank] {
             && $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 .localizedCaseInsensitiveCompare(preset.displayName) == .orderedSame
     }
+}
+
+private func cardAccountDisplayName(_ account: CreditCardAccount) -> String {
+    let endings = account.cards.sorted { $0.lastFour < $1.lastFour }.prefix(2).map { "•••• \($0.lastFour)" }
+    return endings.isEmpty ? "\(account.bank.name) · 信用卡账户" : "\(account.bank.name) · \(endings.joined(separator: " / "))"
 }
 
 private struct CardEditorView: View {
@@ -1413,7 +1566,7 @@ private struct CardEditorView: View {
                 Section("卡片") {
                     Picker("信用卡账户", selection: $accountID) {
                         ForEach(accounts, id: \.id) { account in
-                            Text("\(account.bank.name) · 账户").tag(account.id)
+                            Text(cardAccountDisplayName(account)).tag(account.id)
                         }
                     }
                     Text("卡组织组合")
