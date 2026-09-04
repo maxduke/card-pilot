@@ -959,7 +959,7 @@ private struct TransactionEditorView: View {
                 selectedPromotionIDs.isEmpty ? "本笔未计入促销" : "已选择 \(selectedPromotionIDs.count) 个促销",
                 systemImage: selectedPromotionIDs.isEmpty ? "tag.slash" : "checkmark.circle"
             )
-            .foregroundStyle(selectedPromotionIDs.isEmpty ? .secondary : .tint)
+            .foregroundStyle(selectedPromotionIDs.isEmpty ? Color.secondary : Color.accentColor)
             Text("请检查候选活动与计入金额；点击“确认并保存”后才会写入这笔交易。")
                 .font(.caption)
                 .foregroundStyle(.secondary)

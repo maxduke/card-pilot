@@ -670,7 +670,7 @@ private struct PromotionEditorView: View {
                 VStack(spacing: 3) {
                     Image(systemName: item.rawValue <= step.rawValue ? "checkmark.circle.fill" : "circle")
                         .font(.subheadline)
-                        .foregroundStyle(item.rawValue <= step.rawValue ? .tint : .secondary)
+                        .foregroundStyle(item.rawValue <= step.rawValue ? Color.accentColor : Color.secondary)
                     Text(item.title)
                         .font(.caption.weight(item == step ? .semibold : .regular))
                         .foregroundStyle(item == step ? .primary : .secondary)
@@ -1679,7 +1679,7 @@ struct PromotionDetailView: View {
         HStack(spacing: 12) {
             Image(systemName: allocation.transaction.kind == .refund ? "arrow.uturn.backward.circle.fill" : "cart.circle.fill")
                 .font(.title3)
-                .foregroundStyle(allocation.transaction.kind == .refund ? .orange : .tint)
+                .foregroundStyle(allocation.transaction.kind == .refund ? Color.orange : Color.accentColor)
             VStack(alignment: .leading, spacing: 3) {
                 Text(allocation.transaction.merchant.isEmpty ? "未填写商户" : allocation.transaction.merchant)
                     .font(.subheadline.weight(.medium))
@@ -2003,7 +2003,7 @@ private struct AllocationEditorView: View {
                     .font(.caption.monospacedDigit())
                 Text(PromotionCalculator.includes(transaction, in: promotion) ? "推荐" : "手动")
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(PromotionCalculator.includes(transaction, in: promotion) ? .tint : .orange)
+                    .foregroundStyle(PromotionCalculator.includes(transaction, in: promotion) ? Color.accentColor : Color.orange)
             }
             if transaction.id == transactionID {
                 Image(systemName: "checkmark")
