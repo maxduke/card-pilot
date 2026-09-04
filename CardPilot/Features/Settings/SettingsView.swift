@@ -158,7 +158,7 @@ struct SettingsView: View {
         case .denied:
             Button("前往系统通知设置") { openNotificationSettings() }
         case .authorized, .provisional, .ephemeral:
-            EmptyView()
+            Button("管理系统通知设置") { openNotificationSettings() }
         @unknown default:
             Button("前往系统通知设置") { openNotificationSettings() }
         }
