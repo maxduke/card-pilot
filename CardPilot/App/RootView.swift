@@ -39,29 +39,33 @@ struct RootView: View {
     enum Tab: Hashable {
         case dashboard
         case cards
+        case addTransaction
         case promotions
         case transactions
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: tabSelection) {
             DashboardView(showingSettings: $showingSettings, onAddCard: addCard)
-                .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) { quickEntryButton }
                 .tabItem { Label("首页", systemImage: "rectangle.grid.2x2") }
                 .tag(Tab.dashboard)
 
             CardsView(showingCardOnboarding: $showingCardOnboarding)
-                .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) { quickEntryButton }
                 .tabItem { Label("卡片", systemImage: "creditcard") }
                 .tag(Tab.cards)
 
+            Color.clear
+                .tabItem {
+                    Label("记一笔", systemImage: "plus.circle.fill")
+                        .accessibilityIdentifier("quickAddTransaction")
+                }
+                .tag(Tab.addTransaction)
+
             PromotionsView()
-                .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) { quickEntryButton }
                 .tabItem { Label("促销", systemImage: "gift") }
                 .tag(Tab.promotions)
 
             TransactionsView(onAddCard: addCard)
-                .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) { quickEntryButton }
                 .tabItem { Label("交易", systemImage: "list.bullet.rectangle") }
                 .tag(Tab.transactions)
         }
@@ -105,18 +109,17 @@ struct RootView: View {
         .task(id: notificationConfigurationKey) { await rebuildNotifications() }
     }
 
-    private var quickEntryButton: some View {
-        HStack {
-            Spacer()
-            Button("记一笔", systemImage: "plus") { addTransaction() }
-                .font(.headline)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityIdentifier("quickAddTransaction")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.bar)
+    private var tabSelection: Binding<Tab> {
+        Binding(
+            get: { selectedTab },
+            set: { tab in
+                if tab == .addTransaction {
+                    addTransaction()
+                } else {
+                    selectedTab = tab
+                }
+            }
+        )
     }
 
     private func addCard() {

@@ -1556,26 +1556,36 @@ struct PromotionDetailView: View {
             if seriesPromotions.count > 1 {
                 seriesSection
             }
-            Section {
-                if !displayedPromotion.rewardDescription.isEmpty {
-                    Text(displayedPromotion.rewardDescription).font(.headline)
+            Section("更新进度") {
+                VStack(spacing: 12) {
+                    Button {
+                        showingTransactionEditor = true
+                    } label: {
+                        centeredActionLabel("记录新消费", systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(cards.isEmpty)
+                    .accessibilityIdentifier("recordPromotionTransaction")
+
+                    Button {
+                        addAllocation()
+                    } label: {
+                        centeredActionLabel("选择已有交易", systemImage: "tray.and.arrow.down.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(transactions.isEmpty)
+                    .accessibilityIdentifier("allocateExistingTransaction")
                 }
-                Button {
-                    showingTransactionEditor = true
-                } label: {
-                    Label("记录消费", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(cards.isEmpty)
+                .padding(.vertical, 4)
+
                 if cards.isEmpty {
-                    Text("添加信用卡后即可记录消费。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                if displayedPromotion.enrollmentStatus == .notEnrolled {
-                    Button("标记已报名", systemImage: "person.crop.circle.badge.checkmark", action: markEnrolled)
-                    Text("请先在银行完成报名，再更新这里的记录。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("添加信用卡后即可记录新消费。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if transactions.isEmpty {
+                    Text("目前没有可选择的已有交易，可以先记录一笔新消费。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             Section("进度") {
@@ -1588,31 +1598,20 @@ struct PromotionDetailView: View {
             }
             Section("计入活动的交易") {
                 if sortedAllocations.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "arrow.down.circle")
+                    VStack(spacing: 8) {
+                        Image(systemName: "tray")
                             .font(.title2)
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(.secondary)
                         Text("还没有计入活动的交易")
                             .font(.subheadline.weight(.medium))
-                        Text("把符合条款的交易分配到本期后，进度会自动更新。")
+                        Text("使用上方入口记录新消费，或从已有交易中选择。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button {
-                            addAllocation()
-                        } label: {
-                            Label("计入已有交易", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                 } else {
-                    Button {
-                        addAllocation()
-                    } label: {
-                        Label("计入已有交易", systemImage: "plus")
-                    }
                     ForEach(sortedAllocations, id: \.id) { allocation in
                         Button {
                             editingAllocation = allocation
@@ -1633,6 +1632,12 @@ struct PromotionDetailView: View {
             }
             Section("报名与资格") {
                 LabeledContent("报名状态", value: enrollmentText)
+                if displayedPromotion.enrollmentStatus == .notEnrolled {
+                    Button("标记已报名", systemImage: "person.crop.circle.badge.checkmark", action: markEnrolled)
+                    Text("请先在银行完成报名，再更新这里的记录。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 if let enrolledOn = displayedPromotion.enrolledOn {
                     LabeledContent("报名日期", value: CardPilotUI.dateText(enrolledOn))
                 }
@@ -1720,24 +1725,15 @@ struct PromotionDetailView: View {
                 }
                 .accessibilityLabel("编辑促销")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    if displayedPromotion.seriesID == nil {
-                        Button {
-                            copyToNextMonth()
-                        } label: {
-                            Label("复制到下个月", systemImage: "doc.on.doc")
-                        }
-                    }
+            if displayedPromotion.seriesID == nil {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        addAllocation()
+                        copyToNextMonth()
                     } label: {
-                        Label("计入已有交易", systemImage: "plus")
+                        Image(systemName: "doc.on.doc")
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                    .accessibilityLabel("复制到下个月")
                 }
-                .accessibilityLabel("促销操作")
             }
         }
         .sheet(isPresented: $showingTransactionEditor) {
@@ -1769,6 +1765,18 @@ struct PromotionDetailView: View {
         }
     }
 
+    private func centeredActionLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+
     private var seriesSection: some View {
         Section("促销系列") {
             HStack {
@@ -1776,7 +1784,8 @@ struct PromotionDetailView: View {
                     selectPeriod(at: displayedPeriodIndex - 1)
                 } label: {
                     Image(systemName: "chevron.left")
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .disabled(displayedPeriodIndex == 0)
                 .accessibilityLabel("上一期")
@@ -1808,7 +1817,8 @@ struct PromotionDetailView: View {
                     selectPeriod(at: displayedPeriodIndex + 1)
                 } label: {
                     Image(systemName: "chevron.right")
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .disabled(displayedPeriodIndex >= seriesPromotions.count - 1)
                 .accessibilityLabel("下一期")
