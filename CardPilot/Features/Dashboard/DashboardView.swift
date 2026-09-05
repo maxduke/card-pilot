@@ -7,7 +7,6 @@ struct DashboardView: View {
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Binding var showingSettings: Bool
     var onAddCard: () -> Void = {}
-    var onOpenPromotions: () -> Void = {}
     @State private var errorMessage: String?
     @State private var recentlyRepaid: DashboardBillingItem?
     @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
@@ -34,7 +33,7 @@ struct DashboardView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("通知提示：\(notificationWarning)，打开设置")
                     }
-                    if billingItems.isEmpty && activePromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
+                    if billingItems.isEmpty && unfinishedPromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
                         if accounts.isEmpty {
                             ContentUnavailableView {
                                 Label("开始使用 CardPilot", systemImage: "creditcard")
@@ -55,7 +54,7 @@ struct DashboardView: View {
                         }
                     }
 
-                    if !actionBillingItems.isEmpty || !enrollmentClosingSoonPromotions.isEmpty || !endingSoonPromotions.isEmpty {
+                    if !actionBillingItems.isEmpty || !enrollmentClosingSoonPromotions.isEmpty {
                         DashboardSection(title: "待处理") {
                             ForEach(actionBillingItems) { item in
                                 BillingItemRow(item: item, showsBank: true) {
@@ -80,23 +79,16 @@ struct DashboardView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
-                            ForEach(endingSoonPromotions) { promotion in
-                                NavigationLink {
-                                    PromotionDetailView(promotion: promotion)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "clock.badge.exclamationmark")
-                                            .foregroundStyle(.orange)
-                                        Text(promotion.title)
-                                        Spacer()
-                                        Text("结束于 \(CardPilotUI.dateText(promotion.endOn))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.vertical, 10)
-                                    .accessibilityElement(children: .combine)
-                                }
-                                .buttonStyle(.plain)
+                        }
+                    }
+
+                    if !unfinishedPromotions.isEmpty {
+                        DashboardSection(title: "继续完成") {
+                            ForEach(unfinishedPromotions) { promotion in
+                                DashboardPromotionRow(
+                                    promotion: promotion,
+                                    isEndingSoon: isEndingSoon(promotion)
+                                )
                             }
                         }
                     }
@@ -113,36 +105,6 @@ struct DashboardView: View {
                         }
                     }
 
-                    if !activePromotions.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("促销")
-                                .font(.headline)
-                            Button(action: onOpenPromotions) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "gift.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(Color.accentColor)
-                                        .frame(width: 38, height: 38)
-                                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("\(activePromotions.count) 个进行中")
-                                            .font(.subheadline.weight(.semibold))
-                                        Text(promotionSummary)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .padding(14)
-                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("促销，\(activePromotions.count) 个进行中，\(promotionSummary)，查看全部")
-                        }
-                    }
                 }
                 .padding()
             }
@@ -187,18 +149,16 @@ struct DashboardView: View {
         promotions.filter { $0.archivedAt == nil && $0.startOn <= today.rawValue && today.rawValue <= $0.endOn }
     }
 
-    private var endingSoonPromotions: [Promotion] {
-        let enrollmentIDs = Set(enrollmentClosingSoonPromotions.map(\.id))
-        return activePromotions.filter {
-            !enrollmentIDs.contains($0.id)
-                && $0.qualificationThreshold != nil
-                && isEndingSoon($0)
-                && (try? PromotionCalculator.progress(for: $0).isComplete) != true
-        }
-    }
-
     private var enrollmentClosingSoonPromotions: [Promotion] {
         promotionsWithEnrollmentDeadlineWithin(promotions, today: today)
+    }
+
+    private var unfinishedPromotions: [Promotion] {
+        dashboardPromotionsToContinue(
+            activePromotions,
+            today: today,
+            excludingEnrollmentDeadlineIDs: Set(enrollmentClosingSoonPromotions.map(\.id))
+        )
     }
 
     private var actionBillingItems: [DashboardBillingItem] {
@@ -222,13 +182,6 @@ struct DashboardView: View {
     private var scheduleBillingItems: [DashboardBillingItem] {
         let actionIDs = Set(actionBillingItems.map(\.id))
         return billingItems.filter { !actionIDs.contains($0.id) }
-    }
-
-    private var promotionSummary: String {
-        let attentionIDs = Set((enrollmentClosingSoonPromotions + endingSoonPromotions).map(\.id))
-        if !attentionIDs.isEmpty { return "\(attentionIDs.count) 个需要关注" }
-        guard let endOn = activePromotions.map(\.endOn).min() else { return "查看全部促销" }
-        return "最近结束于 \(CardPilotUI.dateText(endOn))"
     }
 
     private var billingItems: [DashboardBillingItem] {
@@ -319,6 +272,102 @@ struct DashboardView: View {
             modelContext.rollback()
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+func dashboardPromotionsToContinue(
+    _ promotions: [Promotion],
+    today: LocalDate,
+    excludingEnrollmentDeadlineIDs: Set<UUID> = []
+) -> [Promotion] {
+    promotions
+        .filter { promotion in
+            guard promotion.archivedAt == nil,
+                  promotion.startOn <= today.rawValue,
+                  today.rawValue <= promotion.endOn,
+                  !excludingEnrollmentDeadlineIDs.contains(promotion.id),
+                  promotion.qualificationThreshold != nil || promotion.benefitTransactionCap != nil,
+                  let progress = try? PromotionCalculator.progress(for: promotion) else { return false }
+            return !progress.isComplete
+        }
+        .sorted {
+            if $0.endOn != $1.endOn { return $0.endOn < $1.endOn }
+            let titleOrder = $0.title.localizedCaseInsensitiveCompare($1.title)
+            return titleOrder == .orderedSame ? $0.id.uuidString < $1.id.uuidString : titleOrder == .orderedAscending
+        }
+}
+
+private struct DashboardPromotionRow: View {
+    let promotion: Promotion
+    let isEndingSoon: Bool
+
+    private var progress: PromotionProgress? {
+        try? PromotionCalculator.progress(for: promotion)
+    }
+
+    var body: some View {
+        NavigationLink {
+            PromotionDetailView(promotion: promotion)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "gift.fill")
+                    .foregroundStyle(.tint)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(promotion.title)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(2)
+                    Text(eligibleCardText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if let progress {
+                        HStack(spacing: 8) {
+                            Text(progressText(progress))
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.tint)
+                            Spacer(minLength: 4)
+                            Text("结束 \(CardPilotUI.dateText(promotion.endOn))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if isEndingSoon {
+                        Label("即将结束", systemImage: "clock.badge.exclamationmark")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 10)
+            .accessibilityElement(children: .combine)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var eligibleCardText: String {
+        let labels = promotion.eligibleCards
+            .sorted {
+                let lhs = $0.nickname.isEmpty ? $0.productName : $0.nickname
+                let rhs = $1.nickname.isEmpty ? $1.productName : $1.nickname
+                return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+            }
+            .map { card in
+                let name = card.nickname.isEmpty ? card.productName : card.nickname
+                return "\(card.account.bank.name) \(name)"
+            }
+        guard !labels.isEmpty else { return "未限定适用卡" }
+        guard labels.count > 2 else { return labels.joined(separator: "、") }
+        return labels.prefix(2).joined(separator: "、") + " 等 \(labels.count) 张卡"
+    }
+
+    private func progressText(_ progress: PromotionProgress) -> String {
+        if let cap = progress.benefitTransactionCap {
+            return "已用 \(progress.usedTransactionCount)/\(cap) 笔"
+        }
+        guard let remaining = progress.remainingToThreshold else { return "待完成" }
+        return "剩余 \(CardPilotUI.amountText(remaining, currencyCode: promotion.progressCurrencyCode))"
     }
 }
 

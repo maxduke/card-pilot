@@ -14,12 +14,14 @@ struct RootView: View {
     @AppStorage("cardPilot.notificationRevision") private var notificationRevision = 0
 
     @StateObject private var appLock = AppLockController()
+    @ObservedObject private var quickActionRouter = CardPilotQuickActionRouter.shared
     @State private var selectedTab = Tab.dashboard
     @State private var lastContentTab = Tab.dashboard
     @State private var showingSettings = false
     @State private var showingTransactionEditor = false
     @State private var showingCardOnboarding = false
     @State private var tabBeforeTransactionEditor: Tab?
+    @State private var promotionsViewID = UUID()
     @State private var isAuthenticating = false
     @State private var authenticationAttempt = 0
 
@@ -51,10 +53,6 @@ struct RootView: View {
                             selectedTab = .cards
                             lastContentTab = .cards
                             showingCardOnboarding = true
-                        },
-                        onOpenPromotions: {
-                            selectedTab = .promotions
-                            lastContentTab = .promotions
                         }
                     )
                         .tabItem { Label("首页", systemImage: "rectangle.grid.2x2") }
@@ -69,10 +67,18 @@ struct RootView: View {
                         .tag(Tab.addTransaction)
 
                     PromotionsView()
+                        .id(promotionsViewID)
                         .tabItem { Label("促销", systemImage: "gift") }
                         .tag(Tab.promotions)
 
-                    TransactionsView(isPresentingEditor: $showingTransactionEditor)
+                    TransactionsView(
+                        isPresentingEditor: $showingTransactionEditor,
+                        onAddCard: {
+                            selectedTab = .cards
+                            lastContentTab = .cards
+                            showingCardOnboarding = true
+                        }
+                    )
                         .tabItem { Label("交易", systemImage: "list.bullet.rectangle") }
                         .tag(Tab.transactions)
                 }
@@ -108,6 +114,10 @@ struct RootView: View {
         .onAppear {
             if !appLock.setEnabled(appLockEnabled) { appLockEnabled = false }
             authenticate()
+            handlePendingQuickActions()
+        }
+        .onChange(of: quickActionRouter.pendingActions) { _, _ in
+            handlePendingQuickActions()
         }
         .onChange(of: appLock.isLocked) { _, locked in
             if locked {
@@ -119,6 +129,8 @@ struct RootView: View {
                     lastContentTab = previousTab
                 }
                 showingTransactionEditor = false
+            } else {
+                handlePendingQuickActions()
             }
         }
         .onChange(of: appLockEnabled) { _, enabled in
@@ -162,6 +174,24 @@ struct RootView: View {
             _ = await appLock.unlock()
             guard attempt == authenticationAttempt else { return }
             isAuthenticating = false
+        }
+    }
+
+    private func handlePendingQuickActions() {
+        guard !appLock.isLocked else { return }
+        showingSettings = false
+        showingCardOnboarding = false
+        tabBeforeTransactionEditor = nil
+        showingTransactionEditor = false
+        while let action = quickActionRouter.takeNext() {
+            switch action {
+            case .addTransaction:
+                selectedTab = .addTransaction
+            case .promotionProgress:
+                promotionsViewID = UUID()
+                selectedTab = .promotions
+                lastContentTab = .promotions
+            }
         }
     }
 

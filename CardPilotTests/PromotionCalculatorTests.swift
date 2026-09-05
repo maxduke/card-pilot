@@ -67,6 +67,47 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertFalse(progress.isComplete)
     }
 
+    func testBenefitProgressCountsDistinctActivePurchaseTransactions() throws {
+        let firstTransactionID = UUID()
+        let secondTransactionID = UUID()
+        let refundTransactionID = UUID()
+        let reversedTransactionID = UUID()
+        let zeroAmountTransactionID = UUID()
+
+        let progress = try PromotionCalculator.progress(
+            benefitTransactionCap: 3,
+            currencyCode: "CNY",
+            allocations: [
+                (firstTransactionID, 10, "CNY", .purchase, .active),
+                (firstTransactionID, 20, "CNY", .purchase, .active),
+                (secondTransactionID, 10, "CNY", .purchase, .active),
+                (refundTransactionID, 10, "CNY", .refund, .active),
+                (reversedTransactionID, 10, "CNY", .purchase, .reversed),
+                (zeroAmountTransactionID, .zero, "CNY", .purchase, .active)
+            ]
+        )
+
+        XCTAssertEqual(progress.usedTransactionCount, 2)
+        XCTAssertEqual(progress.remainingTransactionCount, 1)
+        XCTAssertFalse(progress.isComplete)
+    }
+
+    func testBenefitProgressPreservesFactsBeyondCapAndDoesNotCountRefunds() throws {
+        let progress = try PromotionCalculator.progress(
+            benefitTransactionCap: 1,
+            currencyCode: "CNY",
+            allocations: [
+                (UUID(), 10, "CNY", .purchase, .active),
+                (UUID(), 10, "CNY", .purchase, .active),
+                (UUID(), 10, "CNY", .refund, .active)
+            ]
+        )
+
+        XCTAssertEqual(progress.usedTransactionCount, 2)
+        XCTAssertEqual(progress.remainingTransactionCount, 0)
+        XCTAssertTrue(progress.isComplete)
+    }
+
     func testSuggestionHonorsCurrencyThresholdAndRemainingCap() {
         XCTAssertNil(PromotionCalculator.suggestedQualifyingAmount(
             transactionAmount: 100,
@@ -108,6 +149,40 @@ final class PromotionCalculatorTests: XCTestCase {
             currentQualifiedAmount: 700,
             qualifyingCap: 500
         ), 0)
+    }
+
+    func testAutomaticSelectionRequiresAnOrdinaryPromotionWithAPositiveSuggestion() {
+        let ordinary = Promotion(
+            title: "累计活动",
+            startOn: 20260801,
+            endOn: 20260831,
+            perTransactionThreshold: 10,
+            progressCurrencyCode: "CNY"
+        )
+        let perTransactionBenefit = Promotion(
+            title: "逐笔优惠",
+            startOn: 20260801,
+            endOn: 20260831,
+            perTransactionThreshold: 10,
+            benefitTransactionCap: 10,
+            progressCurrencyCode: "CNY"
+        )
+
+        XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(
+            ordinary,
+            transactionAmount: 10,
+            transactionCurrencyCode: "CNY"
+        ))
+        XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(
+            ordinary,
+            transactionAmount: 9,
+            transactionCurrencyCode: "CNY"
+        ))
+        XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(
+            perTransactionBenefit,
+            transactionAmount: 10,
+            transactionCurrencyCode: "CNY"
+        ))
     }
 
     func testUnknownDateBasisAcceptsEitherTransactionOrPostingDate() {
@@ -279,6 +354,25 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertEqual(copied.startOn, 20260228)
         XCTAssertEqual(copied.endOn, 20260328)
         XCTAssertNotEqual(copied.id, template.id)
+    }
+
+    func testMonthlySeriesAndCopyPreserveBenefitTransactionCap() throws {
+        let template = Promotion(
+            title: "逐笔月度活动",
+            startOn: 20260101,
+            endOn: 20260131,
+            perTransactionThreshold: 10,
+            benefitTransactionCap: 10,
+            progressCurrencyCode: "CNY"
+        )
+
+        let periods = Promotion.makeMonthlySeries(from: template, through: 20260331)
+        XCTAssertEqual(periods.map(\.benefitTransactionCap), [10, 10, 10])
+        XCTAssertEqual(periods.map(\.perTransactionThreshold), [10, 10, 10])
+
+        let copied = try XCTUnwrap(template.copiedToNextMonth())
+        XCTAssertEqual(copied.benefitTransactionCap, 10)
+        XCTAssertEqual(copied.perTransactionThreshold, 10)
     }
 
     func testSeriesBulkEditKeepsSelectedHistoricalPeriodButSkipsOtherEndedPeriods() {

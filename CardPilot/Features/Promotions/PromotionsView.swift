@@ -459,7 +459,9 @@ private struct PromotionRow: View {
     private var accessibilityText: String {
         var values = [promotion.title, statusText, organizerText, periodText, CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn), enrollmentText]
         if let progress {
-            if let threshold = progress.qualificationThreshold {
+            if let cap = progress.benefitTransactionCap {
+                values.append("已用 \(progress.usedTransactionCount)/\(cap) 笔，剩余 \(progress.remainingTransactionCount ?? cap) 笔")
+            } else if let threshold = progress.qualificationThreshold {
                 values.append("进度 \(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))，目标 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
             } else {
                 values.append("已计入 \(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))")
@@ -476,7 +478,14 @@ private struct PromotionProgressSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 4 : 8) {
-            if let threshold = progress.qualificationThreshold {
+            if let cap = progress.benefitTransactionCap {
+                Text("已用 \(progress.usedTransactionCount) / \(cap) 笔")
+                    .font(compact ? .caption : .body)
+                    .foregroundStyle(progress.isComplete ? .green : .primary)
+                Text(progress.isComplete ? "优惠笔数已用完" : "还可完成 \(progress.remainingTransactionCount ?? cap) 笔")
+                    .font(.caption)
+                    .foregroundStyle(progress.isComplete ? .green : .secondary)
+            } else if let threshold = progress.qualificationThreshold {
                 ProgressView(
                     value: decimalDouble(min(max(.zero, progress.qualifiedAmount), threshold)),
                     total: decimalDouble(threshold)
@@ -534,6 +543,18 @@ private enum PromotionEditorStep: Int, CaseIterable, Hashable {
     }
 }
 
+private enum PromotionProgressMode: String, CaseIterable, Hashable {
+    case cumulative
+    case perTransaction
+
+    var title: String {
+        switch self {
+        case .cumulative: return "累计消费"
+        case .perTransaction: return "逐笔优惠"
+        }
+    }
+}
+
 private struct PromotionEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -547,9 +568,11 @@ private struct PromotionEditorView: View {
     @State private var endDate: Date
     @State private var repeatsMonthly: Bool
     @State private var repeatUntilDate: Date
+    @State private var progressMode: PromotionProgressMode
     @State private var qualificationThresholdText: String
     @State private var qualifyingCapText: String
     @State private var perTransactionThresholdText: String
+    @State private var benefitTransactionCapText: String
     @State private var currencyCode: String
     @State private var selectedBankIDs: Set<UUID>
     @State private var selectedNetworkIDs: Set<UUID>
@@ -583,9 +606,11 @@ private struct PromotionEditorView: View {
         _endDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.endOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _repeatsMonthly = State(initialValue: false)
         _repeatUntilDate = State(initialValue: promotion.flatMap { try? LocalDate(rawValue: $0.endOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
+        _progressMode = State(initialValue: promotion?.benefitTransactionCap == nil ? .cumulative : .perTransaction)
         _qualificationThresholdText = State(initialValue: promotion.flatMap { $0.qualificationThreshold.map(CardPilotUI.editableAmountText) } ?? "")
         _qualifyingCapText = State(initialValue: promotion.flatMap { $0.qualifyingCap.map(CardPilotUI.editableAmountText) } ?? "")
         _perTransactionThresholdText = State(initialValue: promotion.flatMap { $0.perTransactionThreshold.map(CardPilotUI.editableAmountText) } ?? "")
+        _benefitTransactionCapText = State(initialValue: promotion?.benefitTransactionCap.map { String($0) } ?? "")
         _currencyCode = State(initialValue: promotion?.progressCurrencyCode ?? "CNY")
         _selectedBankIDs = State(initialValue: Set(promotion?.organizingBanks.map(\.id) ?? []))
         _selectedNetworkIDs = State(initialValue: Set(promotion?.organizingNetworks.map(\.id) ?? []))
@@ -715,12 +740,27 @@ private struct PromotionEditorView: View {
                 }
             }
             Section("金额与进度") {
-                TextField("累计达标门槛（可选）", text: $qualificationThresholdText)
-                    .keyboardType(.decimalPad)
-                TextField("累计计入上限（可选）", text: $qualifyingCapText)
-                    .keyboardType(.decimalPad)
-                TextField("单笔计入门槛（可选）", text: $perTransactionThresholdText)
-                    .keyboardType(.decimalPad)
+                Picker("进度类型", selection: $progressMode) {
+                    ForEach(PromotionProgressMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                if progressMode == .perTransaction {
+                    TextField("优惠笔数上限", text: $benefitTransactionCapText)
+                        .keyboardType(.numberPad)
+                    TextField("单笔满足金额（可选）", text: $perTransactionThresholdText)
+                        .keyboardType(.decimalPad)
+                    Text("每笔符合条件的消费计 1 笔；这里只记录已用笔数，不计算优惠金额。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    TextField("累计达标门槛（可选）", text: $qualificationThresholdText)
+                        .keyboardType(.decimalPad)
+                    TextField("累计计入上限（可选）", text: $qualifyingCapText)
+                        .keyboardType(.decimalPad)
+                    TextField("单笔计入门槛（可选）", text: $perTransactionThresholdText)
+                        .keyboardType(.decimalPad)
+                }
                 CurrencyPickerView(selection: $currencyCode, title: "进度币种")
                     .disabled(promotion?.allocations.isEmpty == false)
                 if promotion?.allocations.isEmpty == false {
@@ -728,7 +768,9 @@ private struct PromotionEditorView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text("不适用的规则留空；填写的金额必须大于 0。")
+                Text(progressMode == .perTransaction
+                     ? "笔数上限必须为正整数；单笔满足金额留空表示不设门槛。"
+                     : "不适用的规则留空；填写的金额必须大于 0。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -805,7 +847,7 @@ private struct PromotionEditorView: View {
                 }
             }
             Section("规则与奖励") {
-                TextField("规则（首版仅自动计算累计消费）", text: $rules, axis: .vertical)
+                TextField("规则（首版仅自动计算累计消费与优惠笔数）", text: $rules, axis: .vertical)
                 TextField("排除项", text: $exclusions, axis: .vertical)
                 TextField("奖励说明", text: $rewardDescription, axis: .vertical)
                 TextField("备注", text: $notes, axis: .vertical)
@@ -819,6 +861,7 @@ private struct PromotionEditorView: View {
                 LabeledContent("有效期", value: CardPilotUI.dateRangeText(start: CardPilotUI.rawDate(startDate), end: CardPilotUI.rawDate(endDate)))
                 LabeledContent("主办方", value: organizerSummary)
                 LabeledContent("适用卡", value: selectedCardIDs.isEmpty ? "未限定" : "\(selectedCardIDs.count) 张")
+                LabeledContent("进度规则", value: progressSummary)
                 LabeledContent("报名", value: enrollmentSummary)
             }
         }
@@ -846,6 +889,16 @@ private struct PromotionEditorView: View {
         case .notEnrolled: return "尚未报名"
         case .enrolled: return "已报名"
         }
+    }
+
+    private var progressSummary: String {
+        if progressMode == .perTransaction {
+            let cap = benefitTransactionCapText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cap.isEmpty ? "逐笔优惠，未填写笔数上限" : "逐笔优惠，最多 \(cap) 笔"
+        }
+        return qualificationThresholdText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "累计记录"
+            : "累计达标"
     }
 
     private func selectionSummary(title: String, value: String, systemImage: String) -> some View {
@@ -889,14 +942,24 @@ private struct PromotionEditorView: View {
             errorMessage = "请选择有效的进度币种。"
             return false
         }
-        guard parseOptionalAmount(qualificationThresholdText, label: "累计达标门槛").isValid,
-              parseOptionalAmount(qualifyingCapText, label: "累计计入上限").isValid,
-              parseOptionalAmount(perTransactionThresholdText, label: "单笔计入门槛").isValid else { return false }
+        guard validateProgressFields() else { return false }
         guard !repeatsMonthly || monthlyPeriodPreview.count >= 2 else {
             errorMessage = "系列结束日期必须容纳至少两个完整周期。"
             return false
         }
         return true
+    }
+
+    private func validateProgressFields() -> Bool {
+        switch progressMode {
+        case .cumulative:
+            return parseOptionalAmount(qualificationThresholdText, label: "累计达标门槛").isValid
+                && parseOptionalAmount(qualifyingCapText, label: "累计计入上限").isValid
+                && parseOptionalAmount(perTransactionThresholdText, label: "单笔计入门槛").isValid
+        case .perTransaction:
+            guard parseOptionalAmount(perTransactionThresholdText, label: "单笔满足金额").isValid else { return false }
+            return parsePositiveInteger(benefitTransactionCapText, label: "优惠笔数上限").isValid
+        }
     }
 
     private func retreat() {
@@ -1003,12 +1066,23 @@ private struct PromotionEditorView: View {
             errorMessage = "已有促销分配后不能修改进度币种。"
             return
         }
-        let threshold = parseOptionalAmount(qualificationThresholdText, label: "累计达标门槛")
-        guard threshold.isValid else { return }
-        let cap = parseOptionalAmount(qualifyingCapText, label: "累计计入上限")
-        guard cap.isValid else { return }
-        let perTransactionThreshold = parseOptionalAmount(perTransactionThresholdText, label: "单笔计入门槛")
-        guard perTransactionThreshold.isValid else { return }
+        let threshold: (value: Decimal?, isValid: Bool)
+        let cap: (value: Decimal?, isValid: Bool)
+        let perTransactionThreshold: (value: Decimal?, isValid: Bool)
+        let benefitTransactionCap: (value: Int?, isValid: Bool)
+        switch progressMode {
+        case .cumulative:
+            threshold = parseOptionalAmount(qualificationThresholdText, label: "累计达标门槛")
+            cap = parseOptionalAmount(qualifyingCapText, label: "累计计入上限")
+            perTransactionThreshold = parseOptionalAmount(perTransactionThresholdText, label: "单笔计入门槛")
+            benefitTransactionCap = (nil, true)
+        case .perTransaction:
+            threshold = (nil, true)
+            cap = (nil, true)
+            perTransactionThreshold = parseOptionalAmount(perTransactionThresholdText, label: "单笔满足金额")
+            benefitTransactionCap = parsePositiveInteger(benefitTransactionCapText, label: "优惠笔数上限")
+        }
+        guard threshold.isValid, cap.isValid, perTransactionThreshold.isValid, benefitTransactionCap.isValid else { return }
 
         let startOn = CardPilotUI.rawDate(startDate)
         let endOn = CardPilotUI.rawDate(endDate)
@@ -1043,6 +1117,7 @@ private struct PromotionEditorView: View {
                 qualificationThreshold: threshold.value,
                 qualifyingCap: cap.value,
                 perTransactionThreshold: perTransactionThreshold.value,
+                benefitTransactionCap: benefitTransactionCap.value,
                 progressCurrencyCode: normalizedCurrency,
                 rules: rules,
                 exclusions: exclusions,
@@ -1078,6 +1153,7 @@ private struct PromotionEditorView: View {
             qualificationThreshold: threshold.value,
             qualifyingCap: cap.value,
             perTransactionThreshold: perTransactionThreshold.value,
+            benefitTransactionCap: benefitTransactionCap.value,
             progressCurrencyCode: normalizedCurrency,
             rules: rules,
             exclusions: exclusions,
@@ -1107,6 +1183,7 @@ private struct PromotionEditorView: View {
             candidate.qualificationThreshold = threshold.value
             candidate.qualifyingCap = cap.value
             candidate.perTransactionThreshold = perTransactionThreshold.value
+            candidate.benefitTransactionCap = benefitTransactionCap.value
             candidate.progressCurrencyCode = normalizedCurrency
             candidate.rules = rules
             candidate.exclusions = exclusions
@@ -1155,6 +1232,15 @@ private struct PromotionEditorView: View {
             return (nil, false)
         }
         return (amount, true)
+    }
+
+    private func parsePositiveInteger(_ text: String, label: String) -> (value: Int?, isValid: Bool) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Int(normalized), value > 0 else {
+            errorMessage = "\(label)应为大于 0 的整数。"
+            return (nil, false)
+        }
+        return (value, true)
     }
 }
 
@@ -1274,9 +1360,9 @@ private struct CardSelectionView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        if !recommendations.isEmpty {
-                            Button("全选推荐") {
-                                selectedCardIDs.formUnion(recommendations.map(\.card.id))
+                        if !filteredRecommendations.isEmpty {
+                            Button(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "全选推荐" : "全选搜索结果") {
+                                selectedCardIDs.formUnion(filteredRecommendations.map(\.card.id))
                             }
                             .font(.subheadline.weight(.medium))
                         }
@@ -1539,7 +1625,13 @@ struct PromotionDetailView: View {
                     LabeledContent("累计计入上限", value: CardPilotUI.amountText(cap, currencyCode: displayedPromotion.progressCurrencyCode))
                 }
                 if let perTransactionThreshold = displayedPromotion.perTransactionThreshold {
-                    LabeledContent("单笔计入门槛", value: CardPilotUI.amountText(perTransactionThreshold, currencyCode: displayedPromotion.progressCurrencyCode))
+                    LabeledContent(
+                        displayedPromotion.benefitTransactionCap == nil ? "单笔计入门槛" : "单笔满足金额",
+                        value: CardPilotUI.amountText(perTransactionThreshold, currencyCode: displayedPromotion.progressCurrencyCode)
+                    )
+                }
+                if let benefitTransactionCap = displayedPromotion.benefitTransactionCap {
+                    LabeledContent("优惠笔数上限", value: "\(benefitTransactionCap) 笔")
                 }
             }
             if !displayedPromotion.rewardDescription.isEmpty
@@ -2026,11 +2118,16 @@ private struct AllocationEditorView: View {
               transaction.kind == .purchase,
               transaction.currencyCode == promotion.progressCurrencyCode,
               let progress = try? PromotionCalculator.progress(for: promotion) else { return nil }
+        if allocation == nil,
+           let cap = promotion.benefitTransactionCap,
+           progress.usedTransactionCount >= cap {
+            return "优惠笔数已达到 \(cap) 笔；如需记录第 \(progress.usedTransactionCount + 1) 笔，请确认后仍可保存。"
+        }
         if let threshold = promotion.perTransactionThreshold, transaction.amount < threshold {
-            return "这笔交易低于单笔计入门槛，已默认填 0；如银行条款另有说明，可手动修改。"
+            return "这笔交易低于单笔计入门槛；如银行条款另有说明，可手动填写正数。"
         }
         if let cap = promotion.qualifyingCap, progress.qualifiedAmount >= cap {
-            return "活动已达到累计计入上限，已默认填 0；如需修正可手动修改。"
+            return "活动已达到累计计入上限；如需修正可手动填写正数。"
         }
         if let cap = promotion.qualifyingCap,
            let suggested = PromotionCalculator.suggestedQualifyingAmount(
@@ -2083,7 +2180,7 @@ private struct AllocationEditorView: View {
             perTransactionThreshold: promotion.perTransactionThreshold,
             currentQualifiedAmount: progress.qualifiedAmount,
             qualifyingCap: promotion.qualifyingCap
-        ) else {
+        ), suggestedAmount > .zero else {
             amountText = ""
             return
         }
@@ -2098,8 +2195,8 @@ private struct AllocationEditorView: View {
 
     private func save(allowingOverRefund: Bool = false) {
         guard let transaction = selectedTransaction else { errorMessage = "请选择交易。"; return }
-        guard let amount = CardPilotUI.decimal(amountText), amount >= .zero else {
-            errorMessage = "合格金额应为不小于 0 的数字。"
+        guard let amount = CardPilotUI.decimal(amountText), amount > .zero else {
+            errorMessage = "合格金额应为大于 0 的数字。"
             return
         }
         if allocation == nil && promotion.allocations.contains(where: { $0.transaction.id == transaction.id }) {
