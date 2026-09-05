@@ -213,6 +213,13 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertFalse(PromotionCalculator.includes(transaction, in: promotion))
     }
 
+    func testUnenrolledPromotionRequiresExplicitSelection() {
+        let promotion = Promotion(title: "需报名活动", startOn: 20260901, endOn: 20260930, enrollmentStatus: .notEnrolled, progressCurrencyCode: "CNY")
+        XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(promotion, transactionAmount: 100, transactionCurrencyCode: "CNY"))
+        promotion.enrollmentStatus = .enrolled
+        XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(promotion, transactionAmount: 100, transactionCurrencyCode: "CNY"))
+    }
+
     func testOverRefundedPromotionIDsUseOnlyOtherActiveRefunds() {
         let promotionID = UUID()
         let editingRefundID = UUID()

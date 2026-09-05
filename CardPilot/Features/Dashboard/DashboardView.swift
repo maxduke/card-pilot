@@ -17,7 +17,7 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
-                    if !notificationWarning.isEmpty {
+                    if !accounts.isEmpty && !notificationWarning.isEmpty {
                         Button { showingSettings = true } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "bell.badge")
@@ -114,7 +114,7 @@ struct DashboardView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
-                        Text("已标记 \(recentlyRepaid.account.bank.name) \(CardPilotUI.monthKeyText(recentlyRepaid.cycleKey)) 已还款")
+                        Text("已标记 \(CardPilotUI.accountName(recentlyRepaid.account)) \(CardPilotUI.monthKeyText(recentlyRepaid.cycleKey)) 已还款")
                             .font(.footnote)
                             .lineLimit(2)
                         Spacer()
@@ -357,7 +357,7 @@ private struct DashboardPromotionRow: View {
                 let name = card.nickname.isEmpty ? card.productName : card.nickname
                 return "\(card.account.bank.name) \(name)"
             }
-        guard !labels.isEmpty else { return "未限定适用卡" }
+        guard !labels.isEmpty else { return "尚未选择适用卡" }
         guard labels.count > 2 else { return labels.joined(separator: "、") }
         return labels.prefix(2).joined(separator: "、") + " 等 \(labels.count) 张卡"
     }
@@ -465,15 +465,20 @@ private struct BillingItemRow: View {
                     Text(item.kind.title)
                         .font(.subheadline.weight(.medium))
                     Text(showsBank
-                         ? "\(item.account.bank.name) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
+                         ? "\(CardPilotUI.accountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
                          : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(CardPilotUI.dateText(item.date))
-                    .font(.subheadline)
-                    .monospacedDigit()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(CardPilotUI.relativeDateText(item.date, today: CardPilotUI.localDate(from: .now)))
+                        .font(.subheadline.weight(.semibold))
+                    Text(CardPilotUI.shortDateText(item.date, relativeTo: CardPilotUI.localDate(from: .now)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .monospacedDigit()
             }
 
             if item.kind == .repayment {
@@ -487,8 +492,9 @@ private struct BillingItemRow: View {
                     Button("标记已还", action: markRepaid)
                         .font(.caption.weight(.semibold))
                         .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .accessibilityLabel("标记 \(item.account.bank.name) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
+                        .controlSize(.regular)
+                        .frame(minHeight: 44)
+                        .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
                 }
             }
         }
@@ -507,7 +513,7 @@ private struct AccountScheduleCard: View {
             HStack(spacing: 12) {
                 BankBadge(bank: account.bank)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.bank.name)
+                    Text(CardPilotUI.accountName(account))
                         .font(.headline)
                     Text(accountSubtitle)
                         .font(.caption)

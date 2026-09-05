@@ -46,6 +46,21 @@ struct CurrencyOption: Identifiable, Hashable {
     }
 }
 
+struct BillingDayPicker: View {
+    let title: String
+    @Binding var value: Int
+    var isDayOfMonth = true
+
+    var body: some View {
+        Picker(title, selection: $value) {
+            ForEach(1...(isDayOfMonth ? 31 : 90), id: \.self) { day in
+                Text(isDayOfMonth ? "每月 \(day) 日" : "\(day) 天").tag(day)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+}
+
 struct CurrencyPickerView: View {
     @Binding private var selection: String
     private let title: String
@@ -339,6 +354,43 @@ func cardNetworkSummary(_ networks: [CardNetwork]) -> String {
 
 enum CardPilotUI {
     static let maximumReminderOffset = 365
+
+    static func accountName(_ account: CreditCardAccount) -> String {
+        let cards = account.cards.sorted {
+            $0.lastFour == $1.lastFour ? $0.id.uuidString < $1.id.uuidString : $0.lastFour < $1.lastFour
+        }
+        let labels = cards.prefix(2).map { card in
+            "\(card.nickname.isEmpty ? card.productName : card.nickname) · 尾号 \(card.lastFour)"
+        }
+        let identity = labels.isEmpty ? "\(account.limitCurrencyCode) 信用卡账户" : labels.joined(separator: " / ")
+        return "\(account.bank.name) · \(identity)" + (cards.count > 2 ? " 等 \(cards.count) 张卡" : "")
+    }
+
+    static func accountAccessibilityLabel(_ account: CreditCardAccount, summary: CardAccountBillingSummary) -> String {
+        var parts = [accountName(account)]
+        if account.status == .closed { parts.append("已关闭") }
+        if let limit = account.creditLimit { parts.append("额度 \(amountText(limit, currencyCode: account.limitCurrencyCode))") }
+        if let date = summary.nextStatementDate { parts.append("下次账单 \(dateText(date))") }
+        if let date = summary.nextRepaymentDate {
+            parts.append("\(summary.nextRepaymentStatus == .overdue ? "逾期还款" : "下次还款") \(dateText(date))")
+        }
+        return parts.joined(separator: "，")
+    }
+
+    static func shortDateText(_ date: LocalDate, relativeTo today: LocalDate) -> String {
+        date.year == today.year ? "\(date.month)月\(date.day)日" : dateText(date)
+    }
+
+    static func relativeDateText(_ date: LocalDate, today: LocalDate, timeZone: TimeZone = homeTimeZone) -> String {
+        let days = LocalDate.calendar(timeZone: timeZone).dateComponents([.day], from: today.date(in: timeZone), to: date.date(in: timeZone)).day ?? 0
+        switch days {
+        case 0: return "今天"
+        case 1: return "明天"
+        case 2...7: return "\(days) 天后"
+        case ..<0: return "已过 \(-days) 天"
+        default: return shortDateText(date, relativeTo: today)
+        }
+    }
 
     struct ReminderTime: Equatable {
         let hour: Int

@@ -2,6 +2,14 @@ import XCTest
 @testable import CardPilot
 
 final class FormattingTests: XCTestCase {
+    func testRelativeDatesHandleYearBoundaryAndOverdueDays() throws {
+        let today = try LocalDate(rawValue: 20261231)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        XCTAssertEqual(CardPilotUI.relativeDateText(try LocalDate(rawValue: 20270101), today: today, timeZone: utc), "明天")
+        XCTAssertEqual(CardPilotUI.relativeDateText(today, today: today, timeZone: utc), "今天")
+        XCTAssertEqual(CardPilotUI.relativeDateText(try LocalDate(rawValue: 20261228), today: today, timeZone: utc), "已过 3 天")
+        XCTAssertEqual(CardPilotUI.shortDateText(try LocalDate(rawValue: 20270101), relativeTo: today), "2027年01月01日")
+    }
     func testDecimalParsesDisplayedChineseGroupingAndOrdinaryDecimals() {
         XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(8_000)), 8_000)
         XCTAssertEqual(CardPilotUI.decimal("8000.50"), 8_000.5)

@@ -7,7 +7,7 @@ struct TransactionsView: View {
     @Query private var cards: [Card]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
 
-    @Binding private var isPresentingEditor: Bool
+    @State private var isPresentingEditor = false
     private let onAddCard: () -> Void
     @State private var editingTransaction: Transaction?
     @State private var detailTransaction: Transaction?
@@ -21,10 +21,8 @@ struct TransactionsView: View {
     @State private var searchText = ""
 
     init(
-        isPresentingEditor: Binding<Bool> = .constant(false),
         onAddCard: @escaping () -> Void = {}
     ) {
-        _isPresentingEditor = isPresentingEditor
         self.onAddCard = onAddCard
     }
 
@@ -42,11 +40,17 @@ struct TransactionsView: View {
                                 .buttonStyle(.borderedProminent)
                         }
                     } else {
-                        EmptyStateView(
-                            title: "还没有交易",
-                            systemImage: "list.bullet.rectangle",
-                            message: "点击右上角加号记录一笔消费，并确认要计入的促销。"
-                        )
+                        ContentUnavailableView {
+                            Label("还没有交易", systemImage: "list.bullet.rectangle")
+                        } description: {
+                            Text("记录第一笔消费，开始追踪支出和活动进度。")
+                        } actions: {
+                            Button("记一笔", systemImage: "plus") {
+                                editingTransaction = nil
+                                isPresentingEditor = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
                     }
                 } else if filteredTransactions.isEmpty {
                     VStack(spacing: 0) {
@@ -451,7 +455,7 @@ private struct TransactionDetailView: View {
                         Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
                             .font(.title3.weight(.semibold))
                         Text(signedAmountText(transaction))
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .font(.largeTitle.bold())
                             .monospacedDigit()
                             .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
                             .strikethrough(transaction.status == .reversed)
@@ -642,13 +646,16 @@ private struct TransactionFilterSheet: View {
     }
 }
 
-private struct TransactionEditorView: View {
+struct TransactionEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let transaction: Transaction?
     let cards: [Card]
     let promotions: [Promotion]
     let transactions: [Transaction]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @FocusState private var amountIsFocused: Bool
+    @ScaledMetric(relativeTo: .caption) private var stepIndicatorSize = 28
 
     @AppStorage("cardPilot.lastUsedCardID") private var lastUsedCardID = ""
     @State private var cardID: UUID
@@ -679,13 +686,14 @@ private struct TransactionEditorView: View {
 
     private static let noOriginalTransactionID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
-    init(transaction: Transaction?, cards: [Card], promotions: [Promotion], transactions: [Transaction]) {
+    init(transaction: Transaction?, cards: [Card], promotions: [Promotion], transactions: [Transaction], initialPromotion: Promotion? = nil) {
         self.transaction = transaction
         self.cards = cards
         self.promotions = promotions
         self.transactions = transactions
         let savedCardID = UserDefaults.standard.string(forKey: "cardPilot.lastUsedCardID")
         let initialCard = transaction?.card
+            ?? initialPromotion?.eligibleCards.first(where: { $0.status == .active })
             ?? cards.first(where: { $0.status == .active && $0.id.uuidString == savedCardID })
             ?? cards.first(where: { $0.status == .active })
             ?? cards.first
@@ -702,8 +710,14 @@ private struct TransactionEditorView: View {
         _status = State(initialValue: transaction?.status ?? .active)
         _originalTransactionID = State(initialValue: transaction?.originalTransaction?.id ?? Self.noOriginalTransactionID)
         let positiveAllocations = (transaction?.allocations ?? []).filter { $0.qualifyingAmount > .zero }
-        _selectedPromotionIDs = State(initialValue: Set(positiveAllocations.map { $0.promotion.id }))
-        _allocationAmounts = State(initialValue: Dictionary(uniqueKeysWithValues: positiveAllocations.map { ($0.promotion.id, CardPilotUI.editableAmountText($0.qualifyingAmount)) }))
+        var initialIDs = Set(positiveAllocations.map { $0.promotion.id })
+        var initialAmounts = Dictionary(uniqueKeysWithValues: positiveAllocations.map { ($0.promotion.id, CardPilotUI.editableAmountText($0.qualifyingAmount)) })
+        if transaction == nil, let initialPromotion {
+            initialIDs.insert(initialPromotion.id)
+            initialAmounts[initialPromotion.id] = ""
+        }
+        _selectedPromotionIDs = State(initialValue: initialIDs)
+        _allocationAmounts = State(initialValue: initialAmounts)
         _showingInactiveCards = State(initialValue: transaction?.card.status == .inactive || cards.allSatisfy { $0.status == .inactive })
         _showingOtherFields = State(initialValue: transaction != nil)
     }
@@ -764,6 +778,9 @@ private struct TransactionEditorView: View {
                 transactionCurrencyCode: normalizedCurrency
             )
         }
+        if automaticCandidates.count > 1 && automaticCandidates.contains(where: { !$0.stackingAllowed }) {
+            return []
+        }
         return Set(automaticCandidates.map(\.id))
     }
 
@@ -791,10 +808,28 @@ private struct TransactionEditorView: View {
         return amount > .zero
     }
 
+    private var needsPromotionConfirmation: Bool {
+        !candidatePromotions.isEmpty || !selectedPromotionIDs.isEmpty || !postingDatePendingPromotions.isEmpty
+    }
+
+    private var confirmationWarnings: [String] {
+        var warnings: [String] = []
+        if selectedPromotionIDs.count > 1 && selectedPromotionsContainNonStacking { warnings.append("活动不可叠加") }
+        if !selectedPromotionsOutsideCandidates.isEmpty { warnings.append("卡片或日期需核对") }
+        if promotions.contains(where: { selectedPromotionIDs.contains($0.id) && $0.enrollmentStatus == .notEnrolled }) {
+            warnings.append("活动尚未报名")
+        }
+        return warnings
+    }
+
+    private var editSnapshot: String {
+        editorSnapshot(cardID, kind, transactionDate, postingDate, hasPostingDate, amountText, currencyCode, merchant, category, notes, status, originalTransactionID, selectedPromotionIDs.map(\.uuidString).sorted(), allocationAmounts.sorted { $0.key.uuidString < $1.key.uuidString }.map { "\($0.key):\($0.value)" })
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                editorStepIndicator
+                if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
                 Form {
                     if editorStep == 0 {
                         basicTransactionSections
@@ -814,15 +849,23 @@ private struct TransactionEditorView: View {
                         Button("返回修改交易") { editorStep = 0 }
                             .font(.footnote.weight(.medium))
                             .padding(.top, 8)
+                        if !confirmationWarnings.isEmpty {
+                            Label(confirmationWarnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal)
+                                .padding(.top, 8)
+                        }
                     }
                     Button {
-                        if editorStep == 0 {
+                        amountIsFocused = false
+                        if editorStep == 0 && needsPromotionConfirmation {
                             continueToPromotionConfirmation()
                         } else {
                             save()
                         }
                     } label: {
-                        Text(editorStep == 0 ? "继续确认促销" : "确认并保存")
+                        Text(editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -830,10 +873,12 @@ private struct TransactionEditorView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .disabled(!isAmountPositive || selectedCard == nil)
+                    .accessibilityIdentifier("saveTransaction")
                 }
                 .background(.bar)
             }
             .onAppear(perform: initializePromotions)
+            .task { if transaction == nil { amountIsFocused = true } }
             .onChange(of: cardID) { _, _ in
                 if transaction == nil, let selectedCard {
                     currencyCode = selectedCard.account.limitCurrencyCode
@@ -864,7 +909,7 @@ private struct TransactionEditorView: View {
             .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    EditorCancelButton()
                 }
             }
             .alert("退款超出可退范围", isPresented: Binding(
@@ -877,6 +922,7 @@ private struct TransactionEditorView: View {
                 Text(overRefundWarningMessage ?? "")
             }
         }
+        .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
     }
 
     private var editorStepIndicator: some View {
@@ -898,9 +944,9 @@ private struct TransactionEditorView: View {
         HStack(spacing: 6) {
             Text("\(number)")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(isCurrent ? .white : .secondary)
-                .frame(width: 22, height: 22)
-                .background(isCurrent ? Color.accentColor : Color.secondary.opacity(0.15), in: Circle())
+                .foregroundStyle(isCurrent ? Color("ActionForeground") : Color.secondary)
+                .frame(width: stepIndicatorSize, height: stepIndicatorSize)
+                .background(isCurrent ? Color("ActionBackground") : Color.secondary.opacity(0.15), in: Circle())
             Text(title)
                 .font(.caption.weight(isCurrent ? .semibold : .regular))
                 .foregroundStyle(isCurrent ? .primary : .secondary)
@@ -925,14 +971,19 @@ private struct TransactionEditorView: View {
         }
 
         Section("金额") {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+            layout {
                 TextField("0.00", text: $amountText)
-                    .font(.system(size: 34, weight: .semibold, design: .rounded))
+                    .font(.largeTitle.weight(.semibold))
                     .monospacedDigit()
                     .keyboardType(.decimalPad)
+                    .focused($amountIsFocused)
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("交易金额")
+                    .accessibilityIdentifier("transactionAmount")
                 CurrencyPickerView(selection: $currencyCode, title: "币种")
                     .fixedSize(horizontal: true, vertical: false)
             }
@@ -988,10 +1039,29 @@ private struct TransactionEditorView: View {
                 }
             }
         }
+        if !needsPromotionConfirmation {
+            Section {
+                Label("本笔不计入活动", systemImage: "tag.slash")
+                    .foregroundStyle(.secondary)
+                Button("手动选择活动") {
+                    amountIsFocused = false
+                    continueToPromotionConfirmation()
+                }
+                .disabled(!isAmountPositive)
+            }
+        }
     }
 
     @ViewBuilder
     private var promotionConfirmationSections: some View {
+        Section("本笔交易") {
+            if let selectedCard { Text(cardLabel(selectedCard)).font(.subheadline) }
+            Text(CardPilotUI.amountText(CardPilotUI.decimal(amountText) ?? .zero, currencyCode: currencyCode))
+                .font(.title2.bold())
+                .monospacedDigit()
+            LabeledContent(kind == .refund ? "退款日期" : "消费日期", value: CardPilotUI.dateText(CardPilotUI.rawDate(transactionDate)))
+            if !merchant.isEmpty { LabeledContent("商户", value: merchant) }
+        }
         Section {
             Label(
                 selectedPromotionIDs.isEmpty ? "本笔未计入促销" : "已选择 \(selectedPromotionIDs.count) 个促销",
@@ -1083,7 +1153,7 @@ private struct TransactionEditorView: View {
             if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label("本笔未计入促销", systemImage: "tag.slash")
                     .foregroundStyle(.secondary)
-                Text("当前卡片和日期没有高置信候选；仍可搜索全部促销并手动选择。")
+                Text("当前卡片和日期没有匹配的活动；仍可搜索全部促销并手动选择。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if visiblePromotions.isEmpty {
@@ -1123,7 +1193,7 @@ private struct TransactionEditorView: View {
                         }
                     }
                 }
-                Text("达到单笔门槛且有可计入金额的普通活动会默认勾选；逐笔优惠活动请手动选择。所有新分配的计入金额必须大于 0。")
+                Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !inheritedPromotionIDs.isEmpty {
@@ -1236,9 +1306,9 @@ private struct TransactionEditorView: View {
         guard !didInitializePromotions else { return }
         if transaction == nil {
             let automaticIDs = currentAutomaticPromotionIDs
-            selectedPromotionIDs = automaticIDs
+            selectedPromotionIDs.formUnion(automaticIDs)
             automaticallySelectedPromotionIDs = automaticIDs
-            for promotion in promotions where automaticIDs.contains(promotion.id) {
+            for promotion in promotions where selectedPromotionIDs.contains(promotion.id) {
                 allocationAmounts[promotion.id] = defaultAmount(for: promotion)
             }
         }
