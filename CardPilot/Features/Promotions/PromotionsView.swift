@@ -165,13 +165,21 @@ struct PromotionsView: View {
         NavigationStack {
             Group {
                 if groups.isEmpty {
-                    EmptyStateView(
-                        title: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "还没有促销活动" : "没有匹配的促销",
-                        systemImage: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "gift" : "magnifyingglass",
-                        message: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? "把银行或卡组织活动记录下来，就能手动追踪累计消费进度。"
-                            : "试试搜索活动标题、银行、卡组织或适用卡。"
-                    )
+                    ContentUnavailableView {
+                        Label(trimmedSearchText.isEmpty ? "还没有促销活动" : "没有匹配的促销", systemImage: trimmedSearchText.isEmpty ? "gift" : "magnifyingglass")
+                    } description: {
+                        Text(trimmedSearchText.isEmpty ? "记录一个活动，随时查看还差多少、还能用几次。" : "试试活动标题、银行、卡组织或卡片末四位。")
+                    } actions: {
+                        if trimmedSearchText.isEmpty {
+                            Button("添加活动", systemImage: "plus") {
+                                editingPromotion = nil
+                                showingEditor = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            Button("清除搜索") { searchText = "" }
+                        }
+                    }
                 } else {
                     List {
                         promotionSection(title: "进行中", groups: activeGroups)
@@ -374,6 +382,12 @@ private struct PromotionRow: View {
                 Spacer()
                 statusBadge
             }
+            if !promotion.rewardDescription.isEmpty {
+                Text(promotion.rewardDescription)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+            }
             HStack(spacing: 6) {
                 Image(systemName: "building.2")
                     .font(.caption)
@@ -435,7 +449,7 @@ private struct PromotionRow: View {
 
     private var statusColor: Color {
         switch group.status {
-        case .active: return .green
+        case .active: return .secondary
         case .upcoming: return .accentColor
         case .history: return .secondary
         }
@@ -630,6 +644,10 @@ private struct PromotionEditorView: View {
         _seriesEditScope = State(initialValue: .thisOnly)
     }
 
+    private var editSnapshot: String {
+        editorSnapshot(title, startDate, endDate, repeatsMonthly, repeatUntilDate, progressMode, qualificationThresholdText, qualifyingCapText, perTransactionThresholdText, benefitTransactionCapText, currencyCode, selectedBankIDs.map(\.uuidString).sorted(), selectedNetworkIDs.map(\.uuidString).sorted(), selectedCardIDs.map(\.uuidString).sorted(), enrollmentStatus, hasEnrolledOn, enrolledOn, hasEnrollmentDeadline, enrollmentDeadline, qualificationDateBasis, stackingAllowed, rules, exclusions, rewardDescription, notes, archived, seriesEditScope)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -660,7 +678,7 @@ private struct PromotionEditorView: View {
                                 Label("上一步", systemImage: "chevron.left")
                             }
                         }
-                        Button("取消") { dismiss() }
+                        EditorCancelButton()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -687,6 +705,7 @@ private struct PromotionEditorView: View {
                 )
             }
         }
+        .protectEdits(snapshot: editSnapshot)
     }
 
     private var editorStepIndicator: some View {
@@ -797,7 +816,7 @@ private struct PromotionEditorView: View {
             Section("适用卡") {
                 selectionSummary(
                     title: "已选择卡片",
-                    value: selectedCardIDs.isEmpty ? "未限定适用卡" : "\(selectedCardIDs.count) 张卡",
+                    value: selectedCardIDs.isEmpty ? "尚未选择适用卡" : "\(selectedCardIDs.count) 张卡",
                     systemImage: "creditcard"
                 )
                 if !selectedCardsPreview.isEmpty {
@@ -860,7 +879,7 @@ private struct PromotionEditorView: View {
                 LabeledContent("活动", value: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未填写" : title)
                 LabeledContent("有效期", value: CardPilotUI.dateRangeText(start: CardPilotUI.rawDate(startDate), end: CardPilotUI.rawDate(endDate)))
                 LabeledContent("主办方", value: organizerSummary)
-                LabeledContent("适用卡", value: selectedCardIDs.isEmpty ? "未限定" : "\(selectedCardIDs.count) 张")
+                LabeledContent("适用卡", value: selectedCardIDs.isEmpty ? "尚未选择" : "\(selectedCardIDs.count) 张")
                 LabeledContent("进度规则", value: progressSummary)
                 LabeledContent("报名", value: enrollmentSummary)
             }
@@ -1485,6 +1504,8 @@ struct PromotionDetailView: View {
     @Query(sort: \Bank.name) private var banks: [Bank]
     @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
     @Query private var cards: [Card]
+    @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
+    @State private var showingTransactionEditor = false
     @Query private var allPromotions: [Promotion]
     @State private var showingAllocationEditor = false
     @State private var editingAllocation: PromotionAllocation?
@@ -1535,6 +1556,28 @@ struct PromotionDetailView: View {
             if seriesPromotions.count > 1 {
                 seriesSection
             }
+            Section {
+                if !displayedPromotion.rewardDescription.isEmpty {
+                    Text(displayedPromotion.rewardDescription).font(.headline)
+                }
+                Button {
+                    showingTransactionEditor = true
+                } label: {
+                    Label("记录消费", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(cards.isEmpty)
+                if cards.isEmpty {
+                    Text("添加信用卡后即可记录消费。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                if displayedPromotion.enrollmentStatus == .notEnrolled {
+                    Button("标记已报名", systemImage: "person.crop.circle.badge.checkmark", action: markEnrolled)
+                    Text("请先在银行完成报名，再更新这里的记录。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             Section("进度") {
                 if let progress {
                     PromotionProgressSummary(promotion: displayedPromotion, progress: progress, compact: false)
@@ -1543,13 +1586,13 @@ struct PromotionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("促销分配") {
+            Section("计入活动的交易") {
                 if sortedAllocations.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "arrow.down.circle")
                             .font(.title2)
                             .foregroundStyle(.tint)
-                        Text("还没有分配交易")
+                        Text("还没有计入活动的交易")
                             .font(.subheadline.weight(.medium))
                         Text("把符合条款的交易分配到本期后，进度会自动更新。")
                             .font(.caption)
@@ -1558,7 +1601,7 @@ struct PromotionDetailView: View {
                         Button {
                             addAllocation()
                         } label: {
-                            Label("添加第一笔分配", systemImage: "plus")
+                            Label("计入已有交易", systemImage: "plus")
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -1568,7 +1611,7 @@ struct PromotionDetailView: View {
                     Button {
                         addAllocation()
                     } label: {
-                        Label("添加促销分配", systemImage: "plus")
+                        Label("计入已有交易", systemImage: "plus")
                     }
                     ForEach(sortedAllocations, id: \.id) { allocation in
                         Button {
@@ -1661,7 +1704,7 @@ struct PromotionDetailView: View {
                 }
             } else {
                 Section("适用卡") {
-                    Text("未限定适用卡，符合日期与交易状态的交易可手动分配。")
+                    Text("尚未选择适用卡。本活动不会出现在自动推荐中，你仍可手动计入交易。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -1689,13 +1732,16 @@ struct PromotionDetailView: View {
                     Button {
                         addAllocation()
                     } label: {
-                        Label("添加促销分配", systemImage: "plus")
+                        Label("计入已有交易", systemImage: "plus")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("促销操作")
             }
+        }
+        .sheet(isPresented: $showingTransactionEditor) {
+            TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
         }
         .sheet(isPresented: $showingPromotionEditor) {
             PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards)
@@ -1868,6 +1914,18 @@ struct PromotionDetailView: View {
         selectedPeriodID = seriesPromotions[index].id
     }
 
+    private func markEnrolled() {
+        displayedPromotion.enrollmentStatus = .enrolled
+        displayedPromotion.enrolledOn = CardPilotUI.rawDate(.now)
+        do {
+            try displayedPromotion.validate()
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            errorMessage = "报名状态未保存：\(error.localizedDescription)"
+        }
+    }
+
     private func addAllocation() {
         editingAllocation = nil
         showingAllocationEditor = true
@@ -1973,6 +2031,10 @@ private struct AllocationEditorView: View {
         transactions.first { $0.id == transactionID }
     }
 
+    private var editSnapshot: String {
+        editorSnapshot(transactionID, amountText)
+    }
+
     var body: some View {
         NavigationStack {
             editorForm
@@ -1985,7 +2047,7 @@ private struct AllocationEditorView: View {
             }
             .navigationTitle(allocation == nil ? "添加促销分配" : "编辑促销分配")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存") { save() } }
             }
             .alert("退款分配超出可退范围", isPresented: overRefundWarningPresented) {
@@ -1995,6 +2057,7 @@ private struct AllocationEditorView: View {
                 Text(overRefundWarningMessage ?? "")
             }
         }
+        .protectEdits(snapshot: editSnapshot)
     }
 
     private var editorForm: some View {

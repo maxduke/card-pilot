@@ -2,6 +2,19 @@ import XCTest
 @testable import CardPilot
 
 final class AccountSummaryTests: XCTestCase {
+    func testAccountLabelsDistinguishCardsAndSpeakRepaymentDates() throws {
+        let bank = Bank(name: "同一家银行")
+        let first = CreditCardAccount(bank: bank)
+        let second = CreditCardAccount(bank: bank)
+        first.cards = [Card(account: first, productName: "日常卡", networks: [], lastFour: "1234")]
+        second.cards = [Card(account: second, productName: "旅行卡", networks: [], lastFour: "5678")]
+        XCTAssertNotEqual(CardPilotUI.accountName(first), CardPilotUI.accountName(second))
+        XCTAssertTrue(CardPilotUI.accountName(first).contains("1234"))
+        let summary = CardAccountBillingSummary(nextStatementDate: try LocalDate(rawValue: 20260910), nextRepaymentDate: try LocalDate(rawValue: 20260903), nextRepaymentStatus: .overdue)
+        let label = CardPilotUI.accountAccessibilityLabel(first, summary: summary)
+        XCTAssertTrue(label.contains("下次账单 2026年09月10日"))
+        XCTAssertTrue(label.contains("逾期还款 2026年09月03日"))
+    }
     private let utc = TimeZone(secondsFromGMT: 0)!
 
     func testUsesSavedOverridesAndSkipsPaidRepaymentForActiveAccount() throws {

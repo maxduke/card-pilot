@@ -186,6 +186,7 @@ enum PromotionCalculator {
         transactionCurrencyCode: String
     ) -> Bool {
         guard promotion.benefitTransactionCap == nil,
+              promotion.enrollmentStatus != .notEnrolled,
               let progress = try? progress(for: promotion),
               let suggestion = suggestedQualifyingAmount(
                   transactionAmount: transactionAmount,

@@ -441,6 +441,7 @@ private struct CardOnboardingView: View {
         }
     }
 
+    @State private var currentCycleAlreadyRepaid = false
     @State private var step: Step = .bank
     @State private var region: BankPresetRegion = .mainland
     @State private var bankQuery = ""
@@ -494,10 +495,14 @@ private struct CardOnboardingView: View {
         existingAccountID.flatMap { id in matchingAccounts.first { $0.id == id } }
     }
 
+    private var editSnapshot: String {
+        editorSnapshot(selectedPresetCode as Any, customBank, customBankName, accountMode, existingAccountID as Any, limitText, currencyCode, statementDay, repaymentKind, repaymentValue, networkSelection, customNetworkName, productName, nickname, lastFour, currentCycleAlreadyRepaid)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ProgressView(value: Double(step.rawValue + 1), total: Double(Step.allCases.count))
+                ProgressView(value: Double((onboardingSteps.firstIndex(of: step) ?? 0) + 1), total: Double(onboardingSteps.count))
                     .tint(.accentColor)
                     .padding(.horizontal)
                     .padding(.top, 4)
@@ -526,7 +531,7 @@ private struct CardOnboardingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    EditorCancelButton()
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -555,6 +560,26 @@ private struct CardOnboardingView: View {
                 currencyCode = region == .mainland ? "CNY" : "HKD"
             }
         }
+        .protectEdits(snapshot: editSnapshot)
+    }
+
+    private var onboardingSteps: [Step] {
+        var steps: [Step] = [.bank]
+        if !matchingAccounts.isEmpty { steps.append(.account) }
+        if accountMode == .new { steps.append(.billing) }
+        steps.append(.card)
+        return steps
+    }
+
+    private var previewCycle: BillingCycle? {
+        try? BillingCalculator.calculate(
+            accountStatus: .active,
+            closedOn: nil,
+            cycleKey: CardPilotUI.localDate(from: .now).monthKey,
+            rules: [BillingRuleInput(effectiveCycleKey: nil, statementDay: statementDay, repaymentKind: repaymentKind, repaymentValue: repaymentValue)],
+            today: CardPilotUI.localDate(from: .now),
+            timeZone: CardPilotUI.homeTimeZone
+        )
     }
 
     private var bankIsReady: Bool {
@@ -580,7 +605,7 @@ private struct CardOnboardingView: View {
                     Button {
                         selectedPresetCode = preset.code
                         customBank = false
-                        withAnimation { step = .account }
+                        withAnimation { step = matchingAccounts.isEmpty ? .billing : .account }
                     } label: {
                         HStack(spacing: 12) {
                             BankBadge(preset: preset)
@@ -743,19 +768,27 @@ private struct CardOnboardingView: View {
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                Stepper("账单日：每月 \(statementDay) 日", value: $statementDay, in: 1...31)
+                BillingDayPicker(title: "账单日", value: $statementDay)
                 Picker("还款规则", selection: $repaymentKind) {
                     Text("固定日").tag(RepaymentRuleKind.fixedDay)
                     Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
                 }
-                Stepper(
-                    repaymentKind == .fixedDay ? "还款日：每月 \(repaymentValue) 日" : "天数：\(repaymentValue)",
-                    value: $repaymentValue,
-                    in: repaymentKind == .fixedDay ? 1...31 : 1...90
-                )
+                BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue, isDayOfMonth: repaymentKind == .fixedDay)
+                .onChange(of: repaymentKind) { _, kind in
+                    if kind == .fixedDay { repaymentValue = min(31, repaymentValue) }
+                }
                 Text("不存在的日期会按当月最后一天计算。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let cycle = previewCycle {
+                    Divider()
+                    LabeledContent("本期账单", value: CardPilotUI.dateText(cycle.statementDate))
+                    LabeledContent("本期还款", value: CardPilotUI.dateText(cycle.repaymentDate))
+                    Toggle("本期已经还款", isOn: $currentCycleAlreadyRepaid)
+                    Text("请核对银行账单。已处理本期还款时打开此选项，避免重复提醒。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -809,13 +842,13 @@ private struct CardOnboardingView: View {
             }
             if matchingAccounts.isEmpty { accountMode = .new }
             existingAccountID = matchingAccounts.first?.id
-            step = .account
+            step = matchingAccounts.isEmpty ? .billing : .account
         case .account:
             if accountMode == .existing && selectedExistingAccount == nil {
                 errorMessage = "请选择要共用的账户。"
                 return
             }
-            step = .billing
+            step = accountMode == .existing ? .card : .billing
         case .billing:
             guard validateBillingInput() else { return }
             step = .card
@@ -826,8 +859,8 @@ private struct CardOnboardingView: View {
 
     private func previousStep() {
         errorMessage = nil
-        guard let previous = Step(rawValue: step.rawValue - 1) else { return }
-        step = previous
+        guard let index = onboardingSteps.firstIndex(of: step), index > 0 else { return }
+        step = onboardingSteps[index - 1]
     }
 
     private func validateBillingInput() -> Bool {
@@ -904,6 +937,12 @@ private struct CardOnboardingView: View {
                 try account.validateBillingConfiguration()
                 modelContext.insert(account)
                 modelContext.insert(rule)
+                if currentCycleAlreadyRepaid {
+                    let record = BillingCycleRecord(account: account, cycleKey: account.trackingStartCycleKey)
+                    record.repaidAt = .now
+                    account.billingCycles.append(record)
+                    modelContext.insert(record)
+                }
             }
             try cardNetworks.forEach { try $0.validate() }
             try card.validate()
@@ -1015,12 +1054,7 @@ private struct AccountRow: View {
     }
 
     private var accountAccessibilityLabel: String {
-        var parts = [account.bank.name, accountTitle]
-        if account.status == .closed { parts.append("已关闭") }
-        if let creditLimit = account.creditLimit {
-            parts.append("额度 \(CardPilotUI.amountText(creditLimit, currencyCode: account.limitCurrencyCode))")
-        }
-        return parts.joined(separator: "，")
+        CardPilotUI.accountAccessibilityLabel(account, summary: billingSummary)
     }
 
     private func repaymentText(_ rule: BillingRuleVersion) -> String {
@@ -1136,6 +1170,10 @@ private struct BankEditorView: View {
         _archived = State(initialValue: bank?.archivedAt != nil)
     }
 
+    private var editSnapshot: String {
+        editorSnapshot(name, notes, archived)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1153,10 +1191,11 @@ private struct BankEditorView: View {
             }
             .navigationTitle(bank == nil ? "添加银行" : "编辑银行")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
             }
         }
+        .protectEdits(snapshot: editSnapshot)
     }
 
     private func save() {
@@ -1199,6 +1238,7 @@ private struct AccountEditorView: View {
     @State private var hasRepaymentOverride: Bool
     @State private var repaymentOverrideDate: Date
     @State private var selectedCycleIsRepaid: Bool
+    @State private var pendingUnpaidCycleKeys: Set<Int> = []
     @State private var notes: String
     @State private var errorMessage: String?
 
@@ -1236,6 +1276,10 @@ private struct AccountEditorView: View {
         _notes = State(initialValue: account?.notes ?? "")
     }
 
+    private var editSnapshot: String {
+        editorSnapshot(bankID, limitText, currencyCode, status, closedDate, statementDay, repaymentKind, repaymentValue, effectiveCycleKeyText, overrideCycleKeyText, hasStatementOverride, statementOverrideDate, hasRepaymentOverride, repaymentOverrideDate, notes, pendingUnpaidCycleKeys.sorted())
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1259,16 +1303,15 @@ private struct AccountEditorView: View {
                 }
 
                 Section("账务规则") {
-                    Stepper("账单日：每月 \(statementDay) 日", value: $statementDay, in: 1...31)
+                    BillingDayPicker(title: "账单日", value: $statementDay)
                     Picker("还款规则", selection: $repaymentKind) {
                         Text("固定日").tag(RepaymentRuleKind.fixedDay)
                         Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
                     }
-                    Stepper(
-                        repaymentKind == .fixedDay ? "还款日：每月 \(repaymentValue) 日" : "天数：\(repaymentValue)",
-                        value: $repaymentValue,
-                        in: repaymentKind == .fixedDay ? 1...31 : 1...90
-                    )
+                    BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue, isDayOfMonth: repaymentKind == .fixedDay)
+                    .onChange(of: repaymentKind) { _, kind in
+                        if kind == .fixedDay { repaymentValue = min(31, repaymentValue) }
+                    }
                     Text("不存在的日期会按当月最后一天计算。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1285,7 +1328,7 @@ private struct AccountEditorView: View {
                 }
 
                 if account != nil {
-                    Section("单期日期覆盖") {
+                    Section("调整本期日期") {
                         MonthKeyPicker(
                             title: "账期",
                             selection: $overrideCycleKeyText,
@@ -1302,6 +1345,15 @@ private struct AccountEditorView: View {
                         Text("单期覆盖只影响所选账期；还款日必须晚于账单日。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let cycleKey = Int(overrideCycleKeyText), pendingUnpaidCycleKeys.contains(cycleKey) {
+                            Label("保存后将恢复该账期的待还款状态", systemImage: "clock.arrow.circlepath")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Button("保留已还款状态") {
+                                pendingUnpaidCycleKeys.remove(cycleKey)
+                                selectedCycleIsRepaid = true
+                            }
+                        }
                         if selectedCycleIsRepaid {
                             Button("撤销已还款", role: .destructive, action: clearSelectedCycleRepaid)
                                 .accessibilityLabel("撤销账期 \(overrideCycleKeyText) 的已还款状态")
@@ -1316,10 +1368,11 @@ private struct AccountEditorView: View {
             }
             .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
             }
         }
+        .protectEdits(snapshot: editSnapshot)
     }
 
     private func save() {
@@ -1426,6 +1479,9 @@ private struct AccountEditorView: View {
             updatedCycleRecord = record
         }
         do {
+            for record in target.billingCycles where pendingUnpaidCycleKeys.contains(record.cycleKey) {
+                record.repaidAt = nil
+            }
             try target.validate()
             try target.validateBillingConfiguration()
             if let overrideCycleKey, let updatedCycleRecord {
@@ -1455,7 +1511,7 @@ private struct AccountEditorView: View {
         let record = account.billingCycles.first { $0.cycleKey == cycleKey }
         hasStatementOverride = record?.statementDateOverride != nil
         hasRepaymentOverride = record?.repaymentDateOverride != nil
-        selectedCycleIsRepaid = record?.repaidAt != nil
+        selectedCycleIsRepaid = record?.repaidAt != nil && !pendingUnpaidCycleKeys.contains(cycleKey)
         let fallback = (try? LocalDate.firstDay(ofMonthKey: cycleKey).date(in: CardPilotUI.homeTimeZone)) ?? Date()
         statementOverrideDate = record?.statementDateOverride.flatMap {
             try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone)
@@ -1468,22 +1524,14 @@ private struct AccountEditorView: View {
     private func clearSelectedCycleRepaid() {
         guard let account,
               let cycleKey = Int(overrideCycleKeyText),
-              let record = account.billingCycles.first(where: { $0.cycleKey == cycleKey }) else {
+              account.billingCycles.contains(where: { $0.cycleKey == cycleKey && $0.repaidAt != nil }) else {
             errorMessage = "找不到要撤销的已还账期。"
             return
         }
-        record.repaidAt = nil
-        do {
-            try record.validate()
-            try account.validateBillingConfiguration()
-            try modelContext.save()
-            selectedCycleIsRepaid = false
-        } catch {
-            modelContext.rollback()
-            selectedCycleIsRepaid = true
-            errorMessage = "还款状态未更改：\(error.localizedDescription)"
-        }
+        pendingUnpaidCycleKeys.insert(cycleKey)
+        selectedCycleIsRepaid = false
     }
+
 }
 
 private struct MonthKeyPicker: View {
@@ -1525,8 +1573,7 @@ func matchingPresetBanks(_ banks: [Bank], preset: BankPreset) -> [Bank] {
 }
 
 private func cardAccountDisplayName(_ account: CreditCardAccount) -> String {
-    let endings = account.cards.sorted { $0.lastFour < $1.lastFour }.prefix(2).map { "•••• \($0.lastFour)" }
-    return endings.isEmpty ? "\(account.bank.name) · 信用卡账户" : "\(account.bank.name) · \(endings.joined(separator: " / "))"
+    CardPilotUI.accountName(account)
 }
 
 private struct CardEditorView: View {
@@ -1558,6 +1605,10 @@ private struct CardEditorView: View {
         _lastFour = State(initialValue: card?.lastFour ?? "")
         _status = State(initialValue: card?.status ?? .active)
         _notes = State(initialValue: card?.notes ?? "")
+    }
+
+    private var editSnapshot: String {
+        editorSnapshot(accountID, networkSelection, customNetworkName, productName, nickname, lastFour, status, notes)
     }
 
     var body: some View {
@@ -1608,10 +1659,11 @@ private struct CardEditorView: View {
             }
             .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
             }
         }
+        .protectEdits(snapshot: editSnapshot)
     }
 
     private func save() {

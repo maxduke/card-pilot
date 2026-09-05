@@ -5,6 +5,7 @@ import UserNotifications
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appLock: AppLockController
     @AppStorage("cardPilot.statementReminderOffsets") private var storedStatementOffsets = "7,3,1,0"
     @AppStorage("cardPilot.repaymentReminderOffsets") private var storedRepaymentOffsets = "7,3,1,0"
@@ -12,6 +13,12 @@ struct SettingsView: View {
     @AppStorage("cardPilot.homeTimeZone") private var storedHomeTimeZone = TimeZone.current.identifier
     @AppStorage("cardPilot.appLockEnabled") private var appLockEnabled = false
     @AppStorage("cardPilot.notificationRevision") private var notificationAuthorizationRevision = 0
+    @AppStorage("cardPilot.statementRemindersEnabled") private var statementRemindersEnabled = true
+    @AppStorage("cardPilot.repaymentRemindersEnabled") private var repaymentRemindersEnabled = true
+    @AppStorage("cardPilot.nextReminderDate") private var nextReminderDate = 0.0
+    @AppStorage("cardPilot.firstOmittedReminderDate") private var firstOmittedReminderDate = 0.0
+    @AppStorage("cardPilot.scheduledReminderCount") private var scheduledReminderCount = 0
+    @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
 
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var showingTimeZonePicker = false
@@ -21,12 +28,14 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    Toggle("账单日提醒", isOn: $statementRemindersEnabled)
                     NavigationLink {
                         ReminderOffsetsEditor(title: "账单日提醒", storedValue: $storedStatementOffsets)
                     } label: {
                         LabeledContent("提醒提前", value: reminderSummary(storedStatementOffsets))
                     }
                     .accessibilityHint("编辑账单日前的提醒天数")
+                    .disabled(!statementRemindersEnabled)
                 } header: {
                     Text("账单日提醒")
                 } footer: {
@@ -34,12 +43,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("还款日提醒", isOn: $repaymentRemindersEnabled)
                     NavigationLink {
                         ReminderOffsetsEditor(title: "还款日提醒", storedValue: $storedRepaymentOffsets)
                     } label: {
                         LabeledContent("提醒提前", value: reminderSummary(storedRepaymentOffsets))
                     }
                     .accessibilityHint("编辑还款日前的提醒天数")
+                    .disabled(!repaymentRemindersEnabled)
                 } header: {
                     Text("还款日提醒")
                 } footer: {
@@ -71,6 +82,27 @@ struct SettingsView: View {
                     Text("提醒始终按照固定时区触发，不会随设备旅行自动切换。")
                 }
 
+                Section {
+                    LabeledContent("已安排", value: "\(scheduledReminderCount) 条提醒")
+                    if nextReminderDate > 0 {
+                        LabeledContent("下一次提醒", value: reminderDateText(nextReminderDate))
+                    }
+                    if firstOmittedReminderDate > 0 {
+                        LabeledContent("最早未安排", value: reminderDateText(firstOmittedReminderDate))
+                            .foregroundStyle(.orange)
+                    }
+                    if !notificationWarning.isEmpty {
+                        Text(notificationWarning).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Button("刷新提醒", systemImage: "arrow.clockwise") {
+                        notificationAuthorizationRevision &+= 1
+                    }
+                } header: {
+                    Text("提醒计划")
+                } footer: {
+                    Text("应用会在打开时补充后续提醒。减少提前提醒节点可以安排更长时间的计划。活动报名和结束日期目前仅显示在首页。")
+                }
+
                 Section("安全与隐私") {
                     Toggle("使用生物识别或设备密码锁定", isOn: appLockBinding)
                     Label("CardPilot 不需要完整卡号或 CVV。", systemImage: "lock.shield")
@@ -86,6 +118,9 @@ struct SettingsView: View {
                 }
             }
             .task { await refreshNotificationStatus() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await refreshNotificationStatus() } }
+            }
             .sheet(isPresented: $showingTimeZonePicker) {
                 TimeZonePicker(selectedIdentifier: $storedHomeTimeZone)
             }
@@ -95,6 +130,14 @@ struct SettingsView: View {
                 Text(errorMessage ?? "未知错误")
             }
         }
+    }
+
+    private func reminderDateText(_ timestamp: Double) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = reminderTimeZone
+        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        return formatter.string(from: Date(timeIntervalSince1970: timestamp))
     }
 
     private var appLockBinding: Binding<Bool> {

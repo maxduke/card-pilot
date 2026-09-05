@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 import XCTest
 @testable import CardPilot
 
@@ -32,7 +33,7 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertNotEqual(plans[0].accountID, plans[1].accountID)
     }
 
-    func testEachAccountOrdersPlansByFireDateBeforeRoundRobin() throws {
+    func testPlansOrderByFireDateAcrossBillingCycles() throws {
         let timeZone = TimeZone(secondsFromGMT: 0)!
         let accountID = UUID()
         let distantCycle = BillingCycle(
@@ -128,13 +129,128 @@ final class NotificationSchedulerTests: XCTestCase {
         let omitted = NotificationScheduleResult(
             scheduledCount: 48,
             omittedCount: 4,
-            lastScheduledDate: try! LocalDate(rawValue: 20260920).date(in: timeZone)
+            lastScheduledDate: try! LocalDate(rawValue: 20260920).date(in: timeZone),
+            firstOmittedDate: try! LocalDate(rawValue: 20260921).date(in: timeZone)
         )
 
         XCTAssertEqual(notificationWarningMessage(status: .denied, result: omitted, timeZone: timeZone), "通知权限已关闭，请前往系统设置开启。")
         XCTAssertEqual(notificationWarningMessage(status: .notDetermined, result: noOmissions, timeZone: timeZone), "尚未授权通知权限。")
         XCTAssertEqual(notificationWarningMessage(status: .authorized, result: noOmissions, timeZone: timeZone), "")
         XCTAssertTrue(notificationWarningMessage(status: .authorized, result: omitted, timeZone: timeZone).contains("另有 4 条"))
+        XCTAssertTrue(notificationWarningMessage(status: .authorized, result: omitted, timeZone: timeZone).contains("2026-09-21"))
+        XCTAssertFalse(notificationWarningMessage(status: .authorized, result: omitted, timeZone: timeZone).contains("安排至"))
+    }
+
+    func testTenAccountsHaveNoEarlierOmissionsThanTheScheduledWindow() throws {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let cycles = try (0..<10).flatMap { index -> [BillingReminderCycle] in
+            let accountID = UUID()
+            return try (9...12).map { month in
+                BillingReminderCycle(accountID: accountID, accountName: "账户 \(index)", cycle: BillingCycle(
+                    cycleKey: 202600 + month,
+                    statementDate: try LocalDate(year: 2026, month: month, day: 10 + index),
+                    repaymentDate: try LocalDate(year: 2026, month: month, day: 20 + index),
+                    status: .pending, repaidAt: nil
+                ))
+            }
+        }
+        let plans = try LocalNotificationScheduler.plans(
+            cycles: cycles, statementOffsets: [7, 3, 1, 0], repaymentOffsets: [7, 3, 1, 0],
+            reminderHour: 9, reminderMinute: 0, timeZone: utc,
+            now: try LocalDate(rawValue: 20260905).date(in: utc)
+        )
+        let result = LocalNotificationScheduler.scheduleResult(for: plans)
+        XCTAssertEqual(result.scheduledCount, 48)
+        XCTAssertEqual(result.omittedCount, plans.count - 48)
+        let lastScheduled = try XCTUnwrap(result.lastScheduledDate)
+        let firstOmitted = try XCTUnwrap(result.firstOmittedDate)
+        XCTAssertGreaterThanOrEqual(firstOmitted, lastScheduled)
+        XCTAssertEqual(result.nextScheduledDate, plans.map(\.fireDate).min())
+        XCTAssertTrue(plans.dropFirst(48).allSatisfy { $0.fireDate >= lastScheduled })
+    }
+
+    func testSimultaneousRemindersPrioritizeRepayment() throws {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let cycle = BillingCycle(cycleKey: 202609, statementDate: try LocalDate(rawValue: 20260910), repaymentDate: try LocalDate(rawValue: 20260920), status: .pending, repaidAt: nil)
+        let plans = try LocalNotificationScheduler.plans(
+            cycles: [BillingReminderCycle(accountID: UUID(), accountName: "账户", cycle: cycle)],
+            statementOffsets: [0], repaymentOffsets: [10], reminderHour: 9, reminderMinute: 0,
+            timeZone: utc, now: try LocalDate(rawValue: 20260901).date(in: utc)
+        )
+        XCTAssertEqual(plans.map(\.event), [.repayment, .statement])
+    }
+
+    func testRebuildRemovesPaidRemindersAndPreservesUnownedRequests() async throws {
+        let client = TestNotificationClient()
+        let external = UNNotificationRequest(identifier: "unowned", content: UNMutableNotificationContent(), trigger: nil)
+        client.requests[external.identifier] = external
+        let scheduler = LocalNotificationScheduler(client: client)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let accountID = UUID()
+        let pending = try reminderFixture(accountID: accountID, paid: false)
+        _ = try await scheduler.rebuild(cycles: [pending], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: try LocalDate(rawValue: 20260901).date(in: utc))
+        XCTAssertEqual(client.requests.count, 3)
+
+        let paid = try reminderFixture(accountID: accountID, paid: true)
+        _ = try await scheduler.rebuild(cycles: [paid], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: try LocalDate(rawValue: 20260901).date(in: utc))
+        XCTAssertEqual(client.requests.count, 2)
+        XCTAssertNotNil(client.requests["unowned"])
+        XCTAssertFalse(client.requests.keys.contains { $0.contains("repayment") })
+        let request = try XCTUnwrap(client.requests.values.first { $0.identifier.hasPrefix("cardpilot.") })
+        XCTAssertEqual(request.content.userInfo["accountID"] as? String, accountID.uuidString)
+        XCTAssertTrue(request.content.body.contains("尾号 1234"))
+    }
+
+    func testNewerRebuildWaitsForInFlightAddAndWins() async throws {
+        let client = TestNotificationClient()
+        let scheduler = LocalNotificationScheduler(client: client)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let accountID = UUID()
+        let pending = try reminderFixture(accountID: accountID, paid: false)
+        let paid = try reminderFixture(accountID: accountID, paid: true)
+        let now = try LocalDate(rawValue: 20260901).date(in: utc)
+        let addStarted = expectation(description: "Old add is suspended")
+        client.pauseNextAdd = true
+        client.onPausedAdd = { addStarted.fulfill() }
+        let old = Task {
+            try await scheduler.rebuild(cycles: [pending], statementOffsets: [], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: now)
+        }
+        await fulfillment(of: [addStarted], timeout: 2)
+
+        let latestStarted = expectation(description: "New rebuild is enqueued")
+        let latest = Task {
+            latestStarted.fulfill()
+            return try await scheduler.rebuild(cycles: [paid], statementOffsets: [], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: now)
+        }
+        await fulfillment(of: [latestStarted], timeout: 2)
+        client.resumeAdd()
+        _ = try? await old.value
+        let result = try await latest.value
+        XCTAssertEqual(result.scheduledCount, 0)
+        XCTAssertTrue(client.requests.isEmpty, "A stale add must not restore the paid reminder")
+    }
+
+    func testAddFailureDoesNotEraseStillValidRequests() async throws {
+        let client = TestNotificationClient()
+        let scheduler = LocalNotificationScheduler(client: client)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let cycle = try reminderFixture(accountID: UUID(), paid: false)
+        let now = try LocalDate(rawValue: 20260901).date(in: utc)
+        _ = try await scheduler.rebuild(cycles: [cycle], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: now)
+        let existing = Set(client.requests.keys)
+        client.failAdds = true
+        do {
+            _ = try await scheduler.rebuild(cycles: [cycle], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: now)
+            XCTFail("Expected notification client error")
+        } catch TestNotificationClient.Failure.addFailed {}
+        XCTAssertEqual(Set(client.requests.keys), existing)
+    }
+
+    private func reminderFixture(accountID: UUID, paid: Bool) throws -> BillingReminderCycle {
+        BillingReminderCycle(accountID: accountID, accountName: "招商银行 · 日常卡 · 尾号 1234", cycle: BillingCycle(
+            cycleKey: 202609, statementDate: try LocalDate(rawValue: 20260910), repaymentDate: try LocalDate(rawValue: 20260920),
+            status: paid ? .paid : .pending, repaidAt: paid ? Date() : nil
+        ))
     }
 
     func testReminderCycleOffsetsLookBackForLongRelativeRepaymentRules() {
@@ -155,5 +271,37 @@ final class NotificationSchedulerTests: XCTestCase {
             ),
             Set([202606, 202608, 202609])
         )
+    }
+}
+
+@MainActor
+private final class TestNotificationClient: NotificationClient {
+    enum Failure: Error { case addFailed }
+    var requests: [String: UNNotificationRequest] = [:]
+    var pauseNextAdd = false
+    var failAdds = false
+    var onPausedAdd: (() -> Void)?
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func requestAuthorization() async throws -> Bool { true }
+    func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
+    func pendingRequests() async -> [UNNotificationRequest] { Array(requests.values) }
+    func removeRequests(withIdentifiers identifiers: [String]) {
+        for identifier in identifiers { requests.removeValue(forKey: identifier) }
+    }
+    func add(_ request: UNNotificationRequest) async throws {
+        if pauseNextAdd {
+            pauseNextAdd = false
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                onPausedAdd?()
+            }
+        }
+        if failAdds { throw Failure.addFailed }
+        requests[request.identifier] = request
+    }
+    func resumeAdd() {
+        continuation?.resume()
+        continuation = nil
     }
 }

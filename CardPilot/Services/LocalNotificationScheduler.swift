@@ -11,27 +11,65 @@ struct NotificationScheduleResult: Equatable {
     let scheduledCount: Int
     let omittedCount: Int
     let lastScheduledDate: Date?
+    var nextScheduledDate: Date? = nil
+    var firstOmittedDate: Date? = nil
 }
 
 @MainActor
-final class LocalNotificationScheduler {
-    static let identifierPrefix = "cardpilot."
-    // ponytail: use a 48-request rolling window; add background refresh only if real usage exhausts it.
-    static let requestLimit = 48
+protocol NotificationClient {
+    func requestAuthorization() async throws -> Bool
+    func authorizationStatus() async -> UNAuthorizationStatus
+    func pendingRequests() async -> [UNNotificationRequest]
+    func removeRequests(withIdentifiers identifiers: [String])
+    func add(_ request: UNNotificationRequest) async throws
+}
 
-    private let center: UNUserNotificationCenter
+@MainActor
+struct SystemNotificationClient: NotificationClient {
+    var center = UNUserNotificationCenter.current()
 
-    init(center: UNUserNotificationCenter = .current()) {
-        self.center = center
-    }
-
-    @discardableResult
     func requestAuthorization() async throws -> Bool {
         try await center.requestAuthorization(options: [.alert, .sound])
     }
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await center.notificationSettings().authorizationStatus
+    }
+
+    func pendingRequests() async -> [UNNotificationRequest] {
+        await center.pendingNotificationRequests()
+    }
+
+    func removeRequests(withIdentifiers identifiers: [String]) {
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        try await center.add(request)
+    }
+}
+
+@MainActor
+final class LocalNotificationScheduler {
+    nonisolated static let identifierPrefix = "cardpilot."
+    // Keep a bounded chronological window; a later request must never hide an earlier omission.
+    nonisolated static let requestLimit = 48
+
+    private let client: any NotificationClient
+    private var revision = 0
+    private var rebuildTask: Task<NotificationScheduleResult, Error>?
+
+    init(client: (any NotificationClient)? = nil) {
+        self.client = client ?? SystemNotificationClient()
+    }
+
+    @discardableResult
+    func requestAuthorization() async throws -> Bool {
+        try await client.requestAuthorization()
+    }
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await client.authorizationStatus()
     }
 
     func rebuild(
@@ -52,16 +90,40 @@ final class LocalNotificationScheduler {
             timeZone: timeZone,
             now: now
         )
-        let pending = await center.pendingNotificationRequests()
-        center.removePendingNotificationRequests(
-            withIdentifiers: Array(pending.lazy.map(\.identifier).filter(Self.owns))
-        )
+        try Task.checkCancellation()
+        revision += 1
+        let currentRevision = revision
+        let previous = rebuildTask
+        let task = Task { @MainActor in
+            // Await the preceding writer, even if superseded while an OS add was in flight.
+            _ = try? await previous?.value
+            guard currentRevision == self.revision else { throw CancellationError() }
+            return try await self.apply(plans, revision: currentRevision, timeZone: timeZone)
+        }
+        rebuildTask = task
+        defer { if revision == currentRevision { rebuildTask = nil } }
+        let result = try await task.value
+        try Task.checkCancellation()
+        return result
+    }
 
-        for plan in plans.prefix(Self.requestLimit) {
+    private func apply(_ plans: [ReminderPlan], revision: Int, timeZone: TimeZone) async throws -> NotificationScheduleResult {
+        let selected = Array(plans.prefix(Self.requestLimit))
+        let desiredIDs = Set(selected.map(\.identifier))
+        let pending = await client.pendingRequests()
+        guard revision == self.revision else { throw CancellationError() }
+        // Remove paid/changed reminders immediately, but retain still-valid requests if an add fails.
+        client.removeRequests(withIdentifiers: pending.map(\.identifier).filter {
+            Self.owns($0) && !desiredIDs.contains($0)
+        })
+
+        for plan in selected {
+            guard revision == self.revision else { throw CancellationError() }
             let content = UNMutableNotificationContent()
             content.title = plan.title
             content.body = plan.body
             content.sound = .default
+            content.userInfo = ["accountID": plan.accountID.uuidString, "cycleKey": plan.cycleKey]
             var components = LocalDate.calendar(timeZone: timeZone)
                 .dateComponents([.year, .month, .day, .hour, .minute], from: plan.fireDate)
             components.timeZone = timeZone
@@ -70,14 +132,20 @@ final class LocalNotificationScheduler {
                 content: content,
                 trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             )
-            try await center.add(request)
+            try await client.add(request)
         }
+        guard revision == self.revision else { throw CancellationError() }
+        return Self.scheduleResult(for: plans)
+    }
 
-        let scheduled = min(plans.count, Self.requestLimit)
+    static func scheduleResult(for plans: [ReminderPlan], limit: Int = requestLimit) -> NotificationScheduleResult {
+        let scheduled = min(plans.count, max(0, limit))
         return NotificationScheduleResult(
             scheduledCount: scheduled,
             omittedCount: max(0, plans.count - scheduled),
-            lastScheduledDate: plans.prefix(scheduled).map(\.fireDate).max()
+            lastScheduledDate: plans.prefix(scheduled).map(\.fireDate).max(),
+            nextScheduledDate: plans.prefix(scheduled).map(\.fireDate).min(),
+            firstOmittedDate: plans.dropFirst(scheduled).map(\.fireDate).min()
         )
     }
 
@@ -131,33 +199,11 @@ final class LocalNotificationScheduler {
                 }
             }
         }
-        var groups = Dictionary(grouping: plans, by: \.accountID).mapValues { plans in
-            plans.sorted {
-                $0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate
-            }
+        return plans.sorted {
+            if $0.fireDate != $1.fireDate { return $0.fireDate < $1.fireDate }
+            if $0.event != $1.event { return $0.event == .repayment }
+            return $0.identifier < $1.identifier
         }
-        let accountIDs = groups.keys.sorted { $0.uuidString < $1.uuidString }
-        var priorityPlans: [ReminderPlan] = []
-        for accountID in accountIDs {
-            guard var group = groups[accountID] else { continue }
-            for event in [ReminderEvent.statement, .repayment] {
-                guard let index = group.firstIndex(where: { $0.event == event }) else { continue }
-                priorityPlans.append(group.remove(at: index))
-            }
-            groups[accountID] = group
-        }
-        priorityPlans.sort {
-            $0.fireDate == $1.fireDate ? $0.identifier < $1.identifier : $0.fireDate < $1.fireDate
-        }
-        var fairPlans: [ReminderPlan] = []
-        while groups.values.contains(where: { !$0.isEmpty }) {
-            for accountID in accountIDs {
-                guard var group = groups[accountID], !group.isEmpty else { continue }
-                fairPlans.append(group.removeFirst())
-                groups[accountID] = group
-            }
-        }
-        return priorityPlans + fairPlans
     }
 
     struct ReminderPlan: Equatable {
@@ -194,10 +240,10 @@ func notificationWarningMessage(
         return "尚未授权通知权限。"
     case .authorized, .provisional, .ephemeral:
         guard result.omittedCount > 0 else { return "" }
-        let lastDate = result.lastScheduledDate.map {
+        let firstOmittedDate = result.firstOmittedDate.map {
             LocalDate(date: $0, timeZone: timeZone).description
         } ?? "未知日期"
-        return "通知仅安排至 \(lastDate)，另有 \(result.omittedCount) 条待刷新。"
+        return "已安排 \(result.scheduledCount) 条提醒；从 \(firstOmittedDate) 起另有 \(result.omittedCount) 条尚未安排。请减少提醒节点或稍后重新打开应用刷新。"
     @unknown default:
         return result.omittedCount > 0 ? "通知权限状态未知，另有 \(result.omittedCount) 条待刷新。" : "通知权限状态未知。"
     }
