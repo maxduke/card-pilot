@@ -1557,26 +1557,39 @@ struct PromotionDetailView: View {
                 seriesSection
             }
             Section("更新进度") {
-                VStack(spacing: 12) {
-                    Button {
-                        showingTransactionEditor = true
-                    } label: {
-                        centeredActionLabel("记录新消费", systemImage: "plus.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(cards.isEmpty)
-                    .accessibilityIdentifier("recordPromotionTransaction")
-
-                    Button {
-                        addAllocation()
-                    } label: {
-                        centeredActionLabel("选择已有交易", systemImage: "tray.and.arrow.down.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(transactions.isEmpty)
-                    .accessibilityIdentifier("allocateExistingTransaction")
+                Button {
+                    showingTransactionEditor = true
+                } label: {
+                    promotionActionLabel(
+                        title: "记录新消费",
+                        subtitle: "创建交易并自动带入本活动",
+                        systemImage: "plus",
+                        tint: .accentColor,
+                        isEnabled: !cards.isEmpty
+                    )
                 }
-                .padding(.vertical, 4)
+                .buttonStyle(.plain)
+                .disabled(cards.isEmpty)
+                .accessibilityLabel("记录新消费")
+                .accessibilityHint("创建交易并预选当前活动")
+                .accessibilityIdentifier("recordPromotionTransaction")
+
+                Button {
+                    addAllocation()
+                } label: {
+                    promotionActionLabel(
+                        title: "选择已有交易",
+                        subtitle: "从交易记录中选择并填写计入金额",
+                        systemImage: "list.bullet.rectangle",
+                        tint: .secondary,
+                        isEnabled: !transactions.isEmpty
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(transactions.isEmpty)
+                .accessibilityLabel("选择已有交易")
+                .accessibilityHint("从交易记录中选择并计入当前活动")
+                .accessibilityIdentifier("allocateExistingTransaction")
 
                 if cards.isEmpty {
                     Text("添加信用卡后即可记录新消费。")
@@ -1765,15 +1778,39 @@ struct PromotionDetailView: View {
         }
     }
 
-    private func centeredActionLabel(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: 8) {
-            Spacer(minLength: 0)
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-            Spacer(minLength: 0)
+    private func promotionActionLabel(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color,
+        isEnabled: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(isEnabled ? tint : Color.secondary)
+                .frame(width: 36, height: 36)
+                .background(
+                    (isEnabled ? tint : Color.secondary).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
-        .frame(minHeight: 44)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         .contentShape(Rectangle())
     }
 
