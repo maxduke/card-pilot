@@ -922,7 +922,7 @@ struct TransactionEditorView: View {
                 Text(overRefundWarningMessage ?? "")
             }
         }
-        .protectEdits(snapshot: editSnapshot)
+        .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
     }
 
     private var editorStepIndicator: some View {

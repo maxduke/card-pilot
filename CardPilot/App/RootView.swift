@@ -238,7 +238,7 @@ struct RootView: View {
             // A newer configuration owns the schedule and its status.
         } catch {
             guard requestRevision == notificationRequestRevision else { return }
-            notificationWarning = "本地提醒更新失败，请检查设置后重试。"
+            notificationWarning = "本地提醒更新失败，部分提醒可能仍沿用上次计划。请检查设置后重试。"
         }
     }
 

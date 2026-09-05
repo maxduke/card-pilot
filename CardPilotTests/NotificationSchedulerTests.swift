@@ -230,7 +230,7 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertTrue(client.requests.isEmpty, "A stale add must not restore the paid reminder")
     }
 
-    func testAddFailureDoesNotEraseStillValidRequests() async throws {
+    func testAddFailureKeepsPreviousRequestsUntilRetry() async throws {
         let client = TestNotificationClient()
         let scheduler = LocalNotificationScheduler(client: client)
         let utc = TimeZone(secondsFromGMT: 0)!
@@ -238,12 +238,18 @@ final class NotificationSchedulerTests: XCTestCase {
         let now = try LocalDate(rawValue: 20260901).date(in: utc)
         _ = try await scheduler.rebuild(cycles: [cycle], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: now)
         let existing = Set(client.requests.keys)
+        let previousHours = client.requests.mapValues {
+            ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents.hour
+        }
         client.failAdds = true
         do {
-            _ = try await scheduler.rebuild(cycles: [cycle], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0, timeZone: utc, now: now)
+            _ = try await scheduler.rebuild(cycles: [cycle], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 10, reminderMinute: 0, timeZone: utc, now: now)
             XCTFail("Expected notification client error")
         } catch TestNotificationClient.Failure.addFailed {}
         XCTAssertEqual(Set(client.requests.keys), existing)
+        XCTAssertEqual(client.requests.mapValues {
+            ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents.hour
+        }, previousHours)
     }
 
     private func reminderFixture(accountID: UUID, paid: Bool) throws -> BillingReminderCycle {

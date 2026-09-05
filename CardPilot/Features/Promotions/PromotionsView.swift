@@ -2034,6 +2034,7 @@ private struct AllocationEditorView: View {
     @State private var amountText: String
     @State private var transactionSearchText = ""
     @State private var showingTransactionChoices = false
+    @State private var didInitialize = false
     @State private var errorMessage: String?
     @State private var overRefundWarningMessage: String?
 
@@ -2085,7 +2086,10 @@ private struct AllocationEditorView: View {
     var body: some View {
         NavigationStack {
             editorForm
-            .onAppear(perform: setInitialAmount)
+            .onAppear {
+                setInitialAmount()
+                didInitialize = true
+            }
             .onChange(of: transactionID) { _, _ in setInitialAmountIfBlank() }
             .onChange(of: transactionSearchText) { _, newValue in
                 if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2104,7 +2108,7 @@ private struct AllocationEditorView: View {
                 Text(overRefundWarningMessage ?? "")
             }
         }
-        .protectEdits(snapshot: editSnapshot)
+        .protectEdits(snapshot: editSnapshot, isReady: didInitialize)
     }
 
     private var editorForm: some View {

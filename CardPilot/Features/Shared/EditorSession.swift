@@ -25,8 +25,8 @@ extension EnvironmentValues {
 }
 
 extension View {
-    func protectEdits(snapshot: String) -> some View {
-        modifier(EditorSessionModifier(snapshot: snapshot))
+    func protectEdits(snapshot: String, isReady: Bool = true) -> some View {
+        modifier(EditorSessionModifier(snapshot: snapshot, isReady: isReady))
     }
 }
 
@@ -38,6 +38,7 @@ func editorSnapshot(_ values: Any...) -> String {
 private struct EditorSessionModifier: ViewModifier {
     @Environment(\.dismiss) private var dismiss
     let snapshot: String
+    let isReady: Bool
     @State private var initialSnapshot: String?
     @State private var showingDiscardConfirmation = false
 
@@ -50,12 +51,19 @@ private struct EditorSessionModifier: ViewModifier {
                 else { dismiss() }
             })
             .interactiveDismissDisabled(hasChanges)
-            .onAppear { if initialSnapshot == nil { initialSnapshot = snapshot } }
+            .onAppear { captureInitialSnapshotIfReady() }
+            .onChange(of: isReady) { _, _ in captureInitialSnapshotIfReady() }
             .confirmationDialog("放弃未保存的修改？", isPresented: $showingDiscardConfirmation, titleVisibility: .visible) {
                 Button("放弃修改", role: .destructive) { dismiss() }
                 Button("继续编辑", role: .cancel) {}
             } message: {
                 Text("这些修改尚未保存。你也可以继续编辑，稍后再保存。")
             }
+    }
+
+    private func captureInitialSnapshotIfReady() {
+        if isReady && initialSnapshot == nil {
+            initialSnapshot = snapshot
+        }
     }
 }
