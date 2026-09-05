@@ -37,7 +37,7 @@
 
 - `git diff --check`：通过。
 - 官方 `swift:6.0` Docker 镜像中对 `CardPilot` 与 `CardPilotTests` 的全部 Swift 文件运行 `swiftc -frontend -parse`：通过。语法解析不等同于 iOS SDK 类型检查或链接。
-- Linux 临时 SwiftPM 隔离测试：49 项、0 失败。包含 AccountSummary 6 项、BillingCalculator 7 项、CardDetails 3 项、Formatting 8 项、NotificationScheduler 12 项、PromotionCalculator 前 11 项，以及 UIWorkflowSupport 2 项。
+- Linux 临时 SwiftPM 隔离测试：51 项、0 失败。包含 AccountSummary 6 项、BillingCalculator 7 项、CardDetails 5 项、Formatting 8 项、NotificationScheduler 12 项、PromotionCalculator 前 11 项，以及 UIWorkflowSupport 2 项。
 
 隔离测试复制实际领域与调度器源码，移除模型的 SwiftData 宏和容器部分，以临时 UserNotifications 接口替身编译，并提取页面中的纯函数；Linux XCTest 的同步 MainActor 测试在副本中转为 async，断言保持不变。它验证计算和假客户端下的最终请求集合，不验证 SwiftData 关系、真实通知系统、SwiftUI 或 UIKit。临时副本位于 `/tmp/cardpilot-swift-check`，生成脚本位于 `/tmp/cardpilot-check.py`，均不进入产品。
 

@@ -170,7 +170,7 @@ struct CardDetailView: View {
     }
 
     private var upcomingCycles: [BillingCycle] {
-        accountDetailCycles(card.account, today: today, includesPreviousMonth: false)
+        accountDetailCycles(card.account, today: today, includesTrackedHistory: false)
             .filter { $0.status != .paid }
             .prefix(2)
             .map { $0 }
@@ -348,7 +348,7 @@ struct AccountDetailView: View {
     }
 
     private var allDetailCycles: [BillingCycle] {
-        accountDetailCycles(account, today: today, includesPreviousMonth: true)
+        accountDetailCycles(account, today: today, includesTrackedHistory: true)
     }
 
     private var recentCycles: [BillingCycle] {
@@ -606,14 +606,18 @@ func applicablePromotionsForCard(
 func accountDetailCycles(
     _ account: CreditCardAccount,
     today: LocalDate,
-    includesPreviousMonth: Bool,
+    includesTrackedHistory: Bool,
     timeZone: TimeZone = CardPilotUI.homeTimeZone
 ) -> [BillingCycle] {
-    let startOffset = includesPreviousMonth ? -1 : 0
-    let generatedKeys = (startOffset...2).map { today.addingMonths($0, timeZone: timeZone).monthKey }
+    let generatedStart = includesTrackedHistory
+        ? account.trackingStartCycleKey
+        : max(account.trackingStartCycleKey, today.monthKey)
+    let generatedEnd = today.addingMonths(2, timeZone: timeZone).monthKey
+    let generatedKeys = LocalDate.monthKeys(from: generatedStart, through: generatedEnd)
     let savedKeys = account.billingCycles.map(\.cycleKey)
+    let savedKeySet = Set(savedKeys)
     return Set(generatedKeys + savedKeys)
-        .filter { $0 >= account.trackingStartCycleKey }
+        .filter { $0 >= account.trackingStartCycleKey || savedKeySet.contains($0) }
         .compactMap { cycleKey in
             try? BillingCalculator.calculate(
                 account: account,

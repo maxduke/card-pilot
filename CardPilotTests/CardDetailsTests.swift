@@ -92,7 +92,7 @@ final class CardDetailsTests: XCTestCase {
         let cycles = accountDetailCycles(
             account,
             today: try LocalDate(rawValue: 20260910),
-            includesPreviousMonth: true,
+            includesTrackedHistory: true,
             timeZone: utc
         )
 
@@ -100,5 +100,62 @@ final class CardDetailsTests: XCTestCase {
         XCTAssertEqual(cycles.first { $0.cycleKey == 202607 }?.status, .paid)
         XCTAssertEqual(cycles.first { $0.cycleKey == 202608 }?.status, .overdue)
         XCTAssertEqual(cycles.first { $0.cycleKey == 202609 }?.status, .pending)
+    }
+
+    func testAccountDetailCyclesKeepsExplicitHistoryBeforeTrackingStart() throws {
+        let account = CreditCardAccount(
+            bank: Bank(name: "测试银行"),
+            trackingStartCycleKey: 202609
+        )
+        account.billingRuleVersions = [BillingRuleVersion(
+            account: account,
+            statementDay: 5,
+            repaymentKind: .fixedDay,
+            repaymentValue: 20
+        )]
+        account.billingCycles = [BillingCycleRecord(
+            account: account,
+            cycleKey: 202608
+        )]
+
+        let cycles = accountDetailCycles(
+            account,
+            today: try LocalDate(rawValue: 20260910),
+            includesTrackedHistory: false,
+            timeZone: utc
+        )
+
+        XCTAssertEqual(cycles.first?.cycleKey, 202608)
+        XCTAssertEqual(cycles.first?.status, .overdue)
+    }
+
+    func testAccountDetailCyclesIncludesAllDerivedOverdueTrackedMonths() throws {
+        let account = CreditCardAccount(
+            bank: Bank(name: "测试银行"),
+            trackingStartCycleKey: 202606
+        )
+        account.billingRuleVersions = [BillingRuleVersion(
+            account: account,
+            statementDay: 5,
+            repaymentKind: .fixedDay,
+            repaymentValue: 20
+        )]
+        let today = try LocalDate(rawValue: 20260910)
+
+        let fullHistory = accountDetailCycles(
+            account,
+            today: today,
+            includesTrackedHistory: true,
+            timeZone: utc
+        )
+        let cardSummary = accountDetailCycles(
+            account,
+            today: today,
+            includesTrackedHistory: false,
+            timeZone: utc
+        )
+
+        XCTAssertTrue(fullHistory.contains { $0.cycleKey == 202606 && $0.status == .overdue })
+        XCTAssertFalse(cardSummary.contains { $0.cycleKey == 202606 })
     }
 }
