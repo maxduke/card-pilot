@@ -63,3 +63,34 @@ enum CardAccountBillingSummaryCalculator {
         lhs.repaymentDate == rhs.repaymentDate ? lhs.cycleKey < rhs.cycleKey : lhs.repaymentDate < rhs.repaymentDate
     }
 }
+
+func accountBillingSummary(
+    _ account: CreditCardAccount,
+    today: LocalDate = CardPilotUI.localDate(from: Date()),
+    timeZone: TimeZone = CardPilotUI.homeTimeZone
+) -> CardAccountBillingSummary {
+    let overrides = account.billingCycles.reduce(into: [Int: BillingCycleOverride]()) { result, record in
+        guard result[record.cycleKey] == nil else { return }
+        result[record.cycleKey] = BillingCycleOverride(
+            statementDate: record.statementDateOverride.flatMap { try? LocalDate(rawValue: $0) },
+            repaymentDate: record.repaymentDateOverride.flatMap { try? LocalDate(rawValue: $0) },
+            repaidAt: record.repaidAt
+        )
+    }
+    return CardAccountBillingSummaryCalculator.calculate(
+        status: account.status,
+        closedOn: account.closedOn.flatMap { try? LocalDate(rawValue: $0) },
+        trackingStartCycleKey: account.trackingStartCycleKey,
+        rules: account.billingRuleVersions.map {
+            BillingRuleInput(
+                effectiveCycleKey: $0.effectiveCycleKey,
+                statementDay: $0.statementDay,
+                repaymentKind: $0.repaymentKind,
+                repaymentValue: $0.repaymentValue
+            )
+        },
+        overrides: overrides,
+        today: today,
+        timeZone: timeZone
+    )
+}
