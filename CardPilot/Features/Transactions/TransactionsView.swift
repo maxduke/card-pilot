@@ -1,6 +1,92 @@
 import SwiftData
 import SwiftUI
 
+extension Notification.Name {
+    static let transactionDidSave = Notification.Name("CardPilot.transactionDidSave")
+}
+
+struct TransactionSaveFeedback: Equatable {
+    let message: String
+
+    static func make(
+        kind: TransactionKind,
+        amount: Decimal,
+        currencyCode: String,
+        allocationCount: Int,
+        isNew: Bool
+    ) -> TransactionSaveFeedback {
+        let amountText = CardPilotUI.amountText(amount, currencyCode: currencyCode)
+        let action: String
+        if isNew {
+            action = kind == .refund ? "已记录退款 \(amountText)" : "已记录 \(amountText)"
+        } else {
+            action = kind == .refund ? "退款已更新 · \(amountText)" : "交易已更新 · \(amountText)"
+        }
+        let allocationText = allocationCount == 0 ? "未计入活动" : "计入 \(allocationCount) 个活动"
+        return TransactionSaveFeedback(message: "\(action) · \(allocationText)")
+    }
+}
+
+private struct TransactionSaveFeedbackModifier: ViewModifier {
+    let producesHaptic: Bool
+    @State private var message: String?
+    @State private var revision = 0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if let message {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { self.message = nil }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(message)
+                                .font(.footnote.weight(.medium))
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(.quaternary, lineWidth: 0.5)
+                        }
+                        .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .accessibilityLabel(message)
+                    .accessibilityHint("轻点关闭")
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .transactionDidSave)) { notification in
+                guard let savedMessage = notification.userInfo?["message"] as? String else { return }
+                revision += 1
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    message = savedMessage
+                }
+            }
+            .task(id: revision) {
+                guard message != nil else { return }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.2)) { message = nil }
+            }
+            .sensoryFeedback(.success, trigger: producesHaptic ? revision : 0)
+    }
+}
+
+extension View {
+    func transactionSaveFeedbackOverlay(producesHaptic: Bool = false) -> some View {
+        modifier(TransactionSaveFeedbackModifier(producesHaptic: producesHaptic))
+    }
+}
+
 struct TransactionsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
@@ -336,7 +422,7 @@ func groupedTransactionsByDate(_ transactions: [Transaction]) -> [(date: Int, tr
         .sorted { $0.date > $1.date }
 }
 
-private struct TransactionRow: View {
+struct TransactionRow: View {
     let transaction: Transaction
 
     var body: some View {
@@ -437,7 +523,7 @@ private func transactionAccessibilityLabel(_ transaction: Transaction) -> String
     return label
 }
 
-private struct TransactionDetailView: View {
+struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     let transaction: Transaction
@@ -542,6 +628,7 @@ private struct TransactionDetailView: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .transactionSaveFeedbackOverlay()
     }
 
     private func detailTag(_ title: String, color: Color) -> some View {
@@ -686,24 +773,32 @@ struct TransactionEditorView: View {
 
     private static let noOriginalTransactionID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
-    init(transaction: Transaction?, cards: [Card], promotions: [Promotion], transactions: [Transaction], initialPromotion: Promotion? = nil) {
+    init(
+        transaction: Transaction?,
+        cards: [Card],
+        promotions: [Promotion],
+        transactions: [Transaction],
+        initialPromotion: Promotion? = nil,
+        initialCard: Card? = nil
+    ) {
         self.transaction = transaction
         self.cards = cards
         self.promotions = promotions
         self.transactions = transactions
         let savedCardID = UserDefaults.standard.string(forKey: "cardPilot.lastUsedCardID")
-        let initialCard = transaction?.card
+        let resolvedCard = transaction?.card
+            ?? initialCard
             ?? initialPromotion?.eligibleCards.first(where: { $0.status == .active })
             ?? cards.first(where: { $0.status == .active && $0.id.uuidString == savedCardID })
             ?? cards.first(where: { $0.status == .active })
             ?? cards.first
-        _cardID = State(initialValue: initialCard?.id ?? UUID())
+        _cardID = State(initialValue: resolvedCard?.id ?? UUID())
         _kind = State(initialValue: transaction?.kind ?? .purchase)
         _transactionDate = State(initialValue: transaction.flatMap { try? LocalDate(rawValue: $0.transactionOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _postingDate = State(initialValue: transaction.flatMap { $0.postingOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
         _hasPostingDate = State(initialValue: transaction?.postingOn != nil)
         _amountText = State(initialValue: transaction.map { CardPilotUI.editableAmountText($0.amount) } ?? "")
-        _currencyCode = State(initialValue: transaction?.currencyCode ?? initialCard?.account.limitCurrencyCode ?? "CNY")
+        _currencyCode = State(initialValue: transaction?.currencyCode ?? resolvedCard?.account.limitCurrencyCode ?? "CNY")
         _merchant = State(initialValue: transaction?.merchant ?? "")
         _category = State(initialValue: transaction?.category ?? "")
         _notes = State(initialValue: transaction?.notes ?? "")
@@ -718,7 +813,7 @@ struct TransactionEditorView: View {
         }
         _selectedPromotionIDs = State(initialValue: initialIDs)
         _allocationAmounts = State(initialValue: initialAmounts)
-        _showingInactiveCards = State(initialValue: transaction?.card.status == .inactive || cards.allSatisfy { $0.status == .inactive })
+        _showingInactiveCards = State(initialValue: resolvedCard?.status == .inactive || cards.allSatisfy { $0.status == .inactive })
         _showingOtherFields = State(initialValue: transaction != nil)
     }
 
@@ -1539,6 +1634,18 @@ struct TransactionEditorView: View {
             }
             try modelContext.save()
             lastUsedCardID = card.id.uuidString
+            let feedback = TransactionSaveFeedback.make(
+                kind: kind,
+                amount: amount,
+                currencyCode: normalizedCurrency,
+                allocationCount: selectedPromotions.count,
+                isNew: transaction == nil
+            )
+            NotificationCenter.default.post(
+                name: .transactionDidSave,
+                object: nil,
+                userInfo: ["message": feedback.message]
+            )
             dismiss()
         } catch {
             modelContext.rollback()

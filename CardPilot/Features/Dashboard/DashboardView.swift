@@ -33,6 +33,9 @@ struct DashboardView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("通知提示：\(notificationWarning)，打开设置")
                     }
+                    if actionCounts.total > 0 {
+                        DashboardActionOverview(counts: actionCounts)
+                    }
                     if billingItems.isEmpty && unfinishedPromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
                         if accounts.isEmpty {
                             ContentUnavailableView {
@@ -70,9 +73,17 @@ struct DashboardView: View {
                                             .foregroundStyle(.orange)
                                         Text(promotion.title)
                                         Spacer()
-                                        Text("报名截止 \(CardPilotUI.dateText(promotion.enrollmentDeadline))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                        if let deadlineValue = promotion.enrollmentDeadline,
+                                           let deadline = try? LocalDate(rawValue: deadlineValue) {
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text("\(CardPilotUI.relativeDateText(deadline, today: today))截止")
+                                                    .font(.subheadline.weight(.semibold))
+                                                Text(CardPilotUI.shortDateText(deadline, relativeTo: today))
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .monospacedDigit()
+                                        }
                                     }
                                     .padding(.vertical, 10)
                                     .accessibilityElement(children: .combine)
@@ -166,6 +177,14 @@ struct DashboardView: View {
         return billingItems.filter {
             $0.kind == .repayment && ($0.status == .overdue || $0.date <= limit)
         }
+    }
+
+    private var actionCounts: DashboardActionCounts {
+        dashboardActionCounts(
+            billingItems: actionBillingItems,
+            enrollmentPromotions: enrollmentClosingSoonPromotions,
+            today: today
+        )
     }
 
     private var accountsWithBillingItems: [CreditCardAccount] {
@@ -426,6 +445,81 @@ struct DashboardBillingItem: Identifiable {
 
     var id: String { "\(account.id.uuidString)-\(cycleKey)-\(kind.title)" }
     var priority: Int { status == .overdue && kind == .repayment ? 0 : 1 }
+}
+
+struct DashboardActionCounts: Equatable {
+    let overdue: Int
+    let today: Int
+    let nextSevenDays: Int
+
+    var total: Int { overdue + today + nextSevenDays }
+}
+
+func dashboardActionCounts(
+    billingItems: [DashboardBillingItem],
+    enrollmentPromotions: [Promotion],
+    today: LocalDate
+) -> DashboardActionCounts {
+    let limit = today.addingDays(7)
+    let overdue = billingItems.filter { $0.status == .overdue && $0.date < today }.count
+    let dueToday = billingItems.filter { $0.status != .overdue && $0.date == today }.count
+    let upcomingBilling = billingItems.filter {
+        $0.status != .overdue && today < $0.date && $0.date <= limit
+    }.count
+    let enrollmentDates = enrollmentPromotions.compactMap {
+        $0.enrollmentDeadline.flatMap { try? LocalDate(rawValue: $0) }
+    }
+    let enrollmentToday = enrollmentDates.filter { $0 == today }.count
+    let enrollmentUpcoming = enrollmentDates.filter { today < $0 && $0 <= limit }.count
+    return DashboardActionCounts(
+        overdue: overdue,
+        today: dueToday + enrollmentToday,
+        nextSevenDays: upcomingBilling + enrollmentUpcoming
+    )
+}
+
+private struct DashboardActionOverview: View {
+    let counts: DashboardActionCounts
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("近期事项")
+                .font(.headline)
+            HStack(spacing: 0) {
+                if counts.overdue > 0 {
+                    metric(count: counts.overdue, title: "逾期", color: .red)
+                    Divider().frame(height: 34)
+                }
+                metric(count: counts.today, title: "今天", color: counts.today > 0 ? .orange : .secondary)
+                Divider().frame(height: 34)
+                metric(count: counts.nextSevenDays, title: "未来 7 天", color: .secondary)
+            }
+            .padding(.vertical, 12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private func metric(count: Int, title: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(count)")
+                .font(.title3.bold().monospacedDigit())
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var accessibilityText: String {
+        var parts: [String] = []
+        if counts.overdue > 0 { parts.append("逾期 \(counts.overdue) 项") }
+        parts.append("今天 \(counts.today) 项")
+        parts.append("未来 7 天 \(counts.nextSevenDays) 项")
+        return parts.joined(separator: "，")
+    }
 }
 
 private struct DashboardSection<Content: View>: View {
