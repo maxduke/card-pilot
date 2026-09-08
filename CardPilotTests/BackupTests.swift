@@ -11,7 +11,9 @@ final class BackupTests: XCTestCase {
         let source = try fixture()
         let archive = BackupArchive(records: try BackupRecords.capture(source.mainContext))
         let encoded = try archive.encoded()
-        XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("12345678901234567890.123456789"))
+        // Assert against saved values: SwiftData's Decimal storage can normalize
+        // the original in-memory literal before the backup ever reads it.
+        XCTAssertEqual(try BackupArchive.decode(encoded).records, archive.records)
         let decoded = try BackupArchive.decode(encoded)
         XCTAssertEqual(decoded, archive)
         let restored = try decoded.records.validatedContainer()
@@ -25,6 +27,21 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(refund.originalTransaction?.refunds.map(\.id), [refund.id])
         XCTAssertEqual(refund.allocations.count, 1)
         XCTAssertEqual(try context.fetch(FetchDescriptor<Promotion>()).filter { $0.archivedAt != nil }.count, 1)
+    }
+
+    func testSavedFixtureSatisfiesDomainConstraints() throws {
+        let container = try fixture()
+        let context = container.mainContext
+        try context.fetch(FetchDescriptor<Bank>()).forEach { try $0.validate() }
+        try context.fetch(FetchDescriptor<CardNetwork>()).forEach { try $0.validate() }
+        try context.fetch(FetchDescriptor<CreditCardAccount>()).forEach {
+            try $0.validate()
+            try $0.validateBillingConfiguration()
+        }
+        try context.fetch(FetchDescriptor<Card>()).forEach { try $0.validate() }
+        try context.fetch(FetchDescriptor<Promotion>()).forEach { try $0.validate() }
+        try context.fetch(FetchDescriptor<Transaction>()).forEach { try $0.validate() }
+        try context.fetch(FetchDescriptor<PromotionAllocation>()).forEach { try $0.validate() }
     }
 
     func testRestoreReplacesSameIDsAndSurvivesRelaunchWithUndoBackup() async throws {

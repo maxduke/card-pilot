@@ -474,6 +474,14 @@ extension BackupRecords {
             context.insert(model)
             allocationsByID[record.id] = model
         }
+        // SwiftData does not consistently materialize inverse collections during
+        // insertion. Domain validation reads these collections before the save.
+        let rulesByAccount = Dictionary(grouping: billingRules, by: \.account)
+        let cyclesByAccount = Dictionary(grouping: billingCycles, by: \.account)
+        for (id, account) in accountsByID {
+            account.billingRuleVersions = (rulesByAccount[id] ?? []).compactMap { billingRulesByID[$0.id] }
+            account.billingCycles = (cyclesByAccount[id] ?? []).compactMap { billingCyclesByID[$0.id] }
+        }
         do {
             try banksByID.values.forEach { try $0.validate() }
             try networksByID.values.forEach { try $0.validate() }

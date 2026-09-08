@@ -6,6 +6,7 @@ struct StorageRecoveryView: View {
     @EnvironmentObject private var store: BackupStore
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var lock = AppLockController(enabled: UserDefaults.standard.bool(forKey: "cardPilot.appLockEnabled"))
+    @AppStorage("cardPilot.appLockEnabled") private var appLockEnabled = false
     @State private var isAuthenticating = false
     @State private var attempt = 0
 
@@ -27,14 +28,21 @@ struct StorageRecoveryView: View {
         .allowsHitTesting(!lock.isLocked)
         .accessibilityHidden(lock.isLocked)
         .background(AppLockShieldWindow(lock: lock, isAuthenticating: isAuthenticating, unlock: authenticate))
-        .onAppear(perform: authenticate)
+        .onAppear {
+            refreshLockPolicy()
+            authenticate()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
             if !isAuthenticating { relock() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { authenticate() }
+            if phase == .active { refreshLockPolicy(); authenticate() }
             else if RootView.shouldRelock(when: phase, isAuthenticating: isAuthenticating) { relock() }
         }
+    }
+
+    private func refreshLockPolicy() {
+        if lock.disableIfAuthenticationUnavailable() { appLockEnabled = false }
     }
 
     private func relock() {

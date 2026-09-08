@@ -8,18 +8,29 @@ final class AppLockController: ObservableObject {
     @Published private(set) var isLocked: Bool
     private var authenticationGeneration = 0
     private let authenticateDeviceOwner: () async -> Bool
+    private let authenticationAvailable: () -> Bool
 
     init(
         enabled: Bool = false,
+        authenticationAvailable: @escaping () -> Bool = { LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) },
         authenticateDeviceOwner: @escaping () async -> Bool = AppLockController.authenticateDeviceOwner
     ) {
         isEnabled = enabled
         isLocked = enabled
         self.authenticateDeviceOwner = authenticateDeviceOwner
+        self.authenticationAvailable = authenticationAvailable
     }
 
     func canUseDeviceAuthentication() -> Bool {
-        LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
+        authenticationAvailable()
+    }
+
+    /// Returns true when the caller must clear a persisted, now-unusable lock preference.
+    @discardableResult
+    func disableIfAuthenticationUnavailable() -> Bool {
+        guard isEnabled, !canUseDeviceAuthentication() else { return false }
+        setEnabled(false)
+        return true
     }
 
     @discardableResult
