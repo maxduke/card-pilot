@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 /// Version 1 is independent of the SwiftData schema. Never encode model objects directly.
-struct BackupArchive: Codable, Equatable {
+struct BackupArchive: Codable, Equatable, Sendable {
     var format = "CardPilotBackup"
     var version = 1
     var exportedAt = Date()
@@ -37,11 +37,13 @@ struct BackupArchive: Codable, Equatable {
 }
 
 enum BackupError: LocalizedError {
+    case operationInProgress
     case invalidFile, unsupportedVersion, tooLarge, duplicateID, invalidReference
     case invalidDecimal, conflict, invalidData, verificationFailed, storageFailure, unsavedChanges
 
     var errorDescription: String? {
         switch self {
+        case .operationInProgress: return "正在处理另一项备份操作，请稍后重试。"
         case .invalidFile: return "这不是完整的 CardPilot 备份，或文件已经损坏。"
         case .unsupportedVersion: return "此备份版本暂不支持，请使用兼容的 CardPilot 版本。"
         case .tooLarge: return "备份超过 50 MB 或 100,000 条记录的处理上限。"
@@ -58,7 +60,7 @@ enum BackupError: LocalizedError {
 }
 
 /// Decimal strings must be lossless canonical base-10 values, never JSON floating-point numbers.
-struct BackupDecimal: Codable, Equatable {
+struct BackupDecimal: Codable, Equatable, Sendable {
     let value: Decimal
 
     init(_ value: Decimal) { self.value = value }
@@ -80,7 +82,7 @@ struct BackupDecimal: Codable, Equatable {
     }
 }
 
-struct BackupRecords: Codable, Equatable {
+struct BackupRecords: Codable, Equatable, Sendable {
     var banks: [BankRecord] = []
     var networks: [CardNetworkRecord] = []
     var accounts: [CreditCardAccountRecord] = []
@@ -92,7 +94,7 @@ struct BackupRecords: Codable, Equatable {
     var allocations: [PromotionAllocationRecord] = []
     var count: Int { banks.count + networks.count + accounts.count + cards.count + billingRules.count + billingCycles.count + promotions.count + transactions.count + allocations.count }
 
-    struct BankRecord: Codable, Equatable {
+    struct BankRecord: Codable, Equatable, Sendable {
         var id: UUID
         var presetCode: String?
         var name: String
@@ -100,14 +102,14 @@ struct BackupRecords: Codable, Equatable {
         var archivedAt: Date?
     }
 
-    struct CardNetworkRecord: Codable, Equatable {
+    struct CardNetworkRecord: Codable, Equatable, Sendable {
         var id: UUID
         var code: String
         var displayName: String
         var isBuiltIn: Bool
     }
 
-    struct CreditCardAccountRecord: Codable, Equatable {
+    struct CreditCardAccountRecord: Codable, Equatable, Sendable {
         var id: UUID
         var trackingStartCycleKey: Int
         var creditLimit: BackupDecimal?
@@ -118,7 +120,7 @@ struct BackupRecords: Codable, Equatable {
         var bank: UUID
     }
 
-    struct CardRecord: Codable, Equatable {
+    struct CardRecord: Codable, Equatable, Sendable {
         var id: UUID
         var productName: String
         var nickname: String
@@ -129,7 +131,7 @@ struct BackupRecords: Codable, Equatable {
         var networks: [UUID]
     }
 
-    struct BillingRuleVersionRecord: Codable, Equatable {
+    struct BillingRuleVersionRecord: Codable, Equatable, Sendable {
         var id: UUID
         var effectiveCycleKey: Int?
         var statementDay: Int
@@ -138,7 +140,7 @@ struct BackupRecords: Codable, Equatable {
         var account: UUID
     }
 
-    struct BillingCycleRecordRecord: Codable, Equatable {
+    struct BillingCycleRecordRecord: Codable, Equatable, Sendable {
         var id: UUID
         var cycleKey: Int
         var statementDateOverride: Int?
@@ -147,7 +149,7 @@ struct BackupRecords: Codable, Equatable {
         var account: UUID
     }
 
-    struct PromotionRecord: Codable, Equatable {
+    struct PromotionRecord: Codable, Equatable, Sendable {
         var id: UUID
         var seriesID: UUID?
         var seriesIndex: Int?
@@ -174,7 +176,7 @@ struct BackupRecords: Codable, Equatable {
         var eligibleCards: [UUID]
     }
 
-    struct TransactionRecord: Codable, Equatable {
+    struct TransactionRecord: Codable, Equatable, Sendable {
         var id: UUID
         var kindRaw: String
         var transactionOn: Int
@@ -189,7 +191,7 @@ struct BackupRecords: Codable, Equatable {
         var originalTransaction: UUID?
     }
 
-    struct PromotionAllocationRecord: Codable, Equatable {
+    struct PromotionAllocationRecord: Codable, Equatable, Sendable {
         var id: UUID
         var qualifyingAmount: BackupDecimal
         var currencyCode: String
@@ -199,7 +201,6 @@ struct BackupRecords: Codable, Equatable {
 
 }
 
-@MainActor
 extension BackupRecords {
     static func capture(_ context: ModelContext) throws -> BackupRecords {
         guard !context.hasChanges else { throw BackupError.unsavedChanges }
@@ -513,9 +514,10 @@ extension BackupRecords {
 
     func validatedContainer() throws -> ModelContainer {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
-        container.mainContext.autosaveEnabled = false
-        try insertIntoEmptyStore(container.mainContext)
-        try container.mainContext.save()
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        try insertIntoEmptyStore(context)
+        try context.save()
         return container
     }
 

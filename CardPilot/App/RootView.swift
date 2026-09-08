@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct RootView: View {
+    @EnvironmentObject private var backupStore: BackupStore
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \CreditCardAccount.id) private var accounts: [CreditCardAccount]
     @Query(sort: \Card.id) private var cards: [Card]
@@ -68,6 +69,7 @@ struct RootView: View {
                 .tabItem { Label("交易", systemImage: "list.bullet.rectangle") }
                 .tag(Tab.transactions)
         }
+        .disabled(backupStore.isBusy)
         .privacySensitive()
         .allowsHitTesting(!appLock.isLocked)
         .accessibilityHidden(appLock.isLocked)
@@ -87,6 +89,7 @@ struct RootView: View {
             handlePendingQuickActions()
         }
         .onChange(of: showingCardOnboarding) { _, showing in if !showing { handlePendingQuickActions() } }
+        .onChange(of: backupStore.isBusy) { _, busy in if !busy { handlePendingQuickActions() } }
         .onChange(of: quickActionRouter.pendingActions) { _, _ in handlePendingQuickActions() }
         .onChange(of: appLock.isLocked) { _, locked in
             if !locked { handlePendingQuickActions() }
@@ -165,7 +168,7 @@ struct RootView: View {
 
     private func handlePendingQuickActions() {
         // Ordinary unlocks must never dismiss an editor. Defer shortcuts while a root sheet is open.
-        guard !appLock.isLocked, !quickActionRouter.pendingActions.isEmpty,
+        guard !backupStore.isBusy, !appLock.isLocked, !quickActionRouter.pendingActions.isEmpty,
               !showingSettings, !showingTransactionEditor, !showingCardOnboarding else { return }
         if let action = quickActionRouter.takeNext() {
             switch action {

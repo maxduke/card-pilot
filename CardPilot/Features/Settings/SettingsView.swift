@@ -4,6 +4,7 @@ import UIKit
 import UserNotifications
 
 struct SettingsView: View {
+    @EnvironmentObject private var backupStore: BackupStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appLock: AppLockController
@@ -27,100 +28,19 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Toggle("账单日提醒", isOn: $statementRemindersEnabled)
-                    NavigationLink {
-                        ReminderOffsetsEditor(title: "账单日提醒", storedValue: $storedStatementOffsets)
-                    } label: {
-                        LabeledContent("提醒提前", value: reminderSummary(storedStatementOffsets))
-                    }
-                    .accessibilityHint("编辑账单日前的提醒天数")
-                    .disabled(!statementRemindersEnabled)
-                } header: {
-                    Text("账单日提醒")
-                } footer: {
-                    Text("选择需要的提醒节点，设置会立即生效。")
-                }
-
-                Section {
-                    Toggle("还款日提醒", isOn: $repaymentRemindersEnabled)
-                    NavigationLink {
-                        ReminderOffsetsEditor(title: "还款日提醒", storedValue: $storedRepaymentOffsets)
-                    } label: {
-                        LabeledContent("提醒提前", value: reminderSummary(storedRepaymentOffsets))
-                    }
-                    .accessibilityHint("编辑还款日前的提醒天数")
-                    .disabled(!repaymentRemindersEnabled)
-                } header: {
-                    Text("还款日提醒")
-                } footer: {
-                    Text("0 天表示当天提醒。")
-                }
-
-                Section {
-                    DatePicker(
-                        "提醒时刻",
-                        selection: reminderTimeBinding,
-                        displayedComponents: .hourAndMinute
-                    )
-                    .environment(\.timeZone, reminderTimeZone)
-                    .accessibilityValue(storedReminderTime)
-
-                    Button {
-                        showingTimeZonePicker = true
-                    } label: {
-                        LabeledContent("固定时区", value: timeZoneSummary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("选择固定的提醒时区")
-
-                    LabeledContent("通知权限", value: notificationStatusText)
-                    notificationAction
-                } header: {
-                    Text("提醒设置")
-                } footer: {
-                    Text("提醒始终按照固定时区触发，不会随设备旅行自动切换。")
-                }
-
-                Section {
-                    LabeledContent("已安排", value: "\(scheduledReminderCount) 条提醒")
-                    if nextReminderDate > 0 {
-                        LabeledContent("下一次提醒", value: reminderDateText(nextReminderDate))
-                    }
-                    if firstOmittedReminderDate > 0 {
-                        LabeledContent("最早未安排", value: reminderDateText(firstOmittedReminderDate))
-                            .foregroundStyle(.orange)
-                    }
-                    if !notificationWarning.isEmpty {
-                        Text(notificationWarning).font(.footnote).foregroundStyle(.secondary)
-                    }
-                    Button("刷新提醒", systemImage: "arrow.clockwise") {
-                        notificationAuthorizationRevision &+= 1
-                    }
-                } header: {
-                    Text("提醒计划")
-                } footer: {
-                    Text("应用会在打开时补充后续提醒。减少提前提醒节点可以安排更长时间的计划。活动报名和结束日期目前仅显示在首页。")
-                }
-
-                Section("数据备份") {
-                    NavigationLink("完整备份与恢复", systemImage: "externaldrive") {
-                        BackupView()
-                    }
-                }
-
-                Section("安全与隐私") {
-                    Toggle("使用生物识别或设备密码锁定", isOn: appLockBinding)
-                    Label("CardPilot 不需要完整卡号或 CVV。", systemImage: "lock.shield")
-                    Text("数据保存在本机。请只记录末四位，不要在备注中主动保存敏感认证信息。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                statementSection
+                repaymentSection
+                reminderSection
+                scheduleSection
+                backupSection
+                privacySection
             }
+            .disabled(backupStore.isBusy)
+            .interactiveDismissDisabled(backupStore.isBusy)
             .navigationTitle("设置")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
+                    Button("完成") { dismiss() }.disabled(backupStore.isBusy)
                 }
             }
             .task { await refreshNotificationStatus() }
@@ -135,6 +55,110 @@ struct SettingsView: View {
             } message: {
                 Text(errorMessage ?? "未知错误")
             }
+        }
+    }
+
+    private var statementSection: some View {
+        Section {
+            Toggle("账单日提醒", isOn: $statementRemindersEnabled)
+            NavigationLink {
+                ReminderOffsetsEditor(title: "账单日提醒", storedValue: $storedStatementOffsets)
+            } label: {
+                LabeledContent("提醒提前", value: reminderSummary(storedStatementOffsets))
+            }
+            .accessibilityHint("编辑账单日前的提醒天数")
+            .disabled(!statementRemindersEnabled)
+        } header: {
+            Text("账单日提醒")
+        } footer: {
+            Text("选择需要的提醒节点，设置会立即生效。")
+        }
+    }
+
+    private var repaymentSection: some View {
+        Section {
+            Toggle("还款日提醒", isOn: $repaymentRemindersEnabled)
+            NavigationLink {
+                ReminderOffsetsEditor(title: "还款日提醒", storedValue: $storedRepaymentOffsets)
+            } label: {
+                LabeledContent("提醒提前", value: reminderSummary(storedRepaymentOffsets))
+            }
+            .accessibilityHint("编辑还款日前的提醒天数")
+            .disabled(!repaymentRemindersEnabled)
+        } header: {
+            Text("还款日提醒")
+        } footer: {
+            Text("0 天表示当天提醒。")
+        }
+    }
+
+    private var reminderSection: some View {
+        Section {
+            DatePicker(
+                "提醒时刻",
+                selection: reminderTimeBinding,
+                displayedComponents: .hourAndMinute
+            )
+            .environment(\.timeZone, reminderTimeZone)
+            .accessibilityValue(storedReminderTime)
+
+            Button {
+                showingTimeZonePicker = true
+            } label: {
+                LabeledContent("固定时区", value: timeZoneSummary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("选择固定的提醒时区")
+
+            LabeledContent("通知权限", value: notificationStatusText)
+            notificationAction
+        } header: {
+            Text("提醒设置")
+        } footer: {
+            Text("提醒始终按照固定时区触发，不会随设备旅行自动切换。")
+        }
+    }
+
+    private var scheduleSection: some View {
+        Section {
+            LabeledContent("已安排", value: "\(scheduledReminderCount) 条提醒")
+            if nextReminderDate > 0 {
+                LabeledContent("下一次提醒", value: reminderDateText(nextReminderDate))
+            }
+            if firstOmittedReminderDate > 0 {
+                LabeledContent("最早未安排", value: reminderDateText(firstOmittedReminderDate))
+                    .foregroundStyle(.orange)
+            }
+            if !notificationWarning.isEmpty {
+                Text(notificationWarning).font(.footnote).foregroundStyle(.secondary)
+            }
+            Button("刷新提醒", systemImage: "arrow.clockwise") {
+                notificationAuthorizationRevision &+= 1
+            }
+        } header: {
+            Text("提醒计划")
+        } footer: {
+            Text("应用会在打开时补充后续提醒。减少提前提醒节点可以安排更长时间的计划。活动报名和结束日期目前仅显示在首页。")
+        }
+    }
+
+    private var backupSection: some View {
+        Section("数据备份") {
+            NavigationLink {
+                BackupView()
+            } label: {
+                Label("完整备份与恢复", systemImage: "externaldrive")
+            }
+        }
+    }
+
+    private var privacySection: some View {
+        Section("安全与隐私") {
+            Toggle("使用生物识别或设备密码锁定", isOn: appLockBinding)
+            Label("CardPilot 不需要完整卡号或 CVV。", systemImage: "lock.shield")
+            Text("数据保存在本机。请只记录末四位，不要在备注中主动保存敏感认证信息。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

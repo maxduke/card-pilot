@@ -37,7 +37,7 @@ struct BackupView: View {
                 if store.container != nil {
                     Button("导出完整备份", systemImage: "square.and.arrow.up") {
                         perform {
-                            document = BackupDocument(data: try store.export().encoded())
+                            document = BackupDocument(data: try await store.exportData())
                             exporting = true
                         }
                     }
@@ -99,20 +99,18 @@ struct BackupView: View {
 
     private func load(_ url: URL) {
         perform {
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let archive = try store.prepare(BackupStore.read(url))
-            let current = try store.container.map { _ in try store.export().records }
+            let archive = try await store.prepareFile(url)
+            let current = store.container == nil ? nil : try await store.export().records
             preview = RestorePreview(archive: archive, current: current)
         }
     }
 
-    private func perform(_ action: @escaping @MainActor () throws -> Void) {
+    private func perform(_ action: @escaping @MainActor () async throws -> Void) {
         busy = true
         Task { @MainActor in
             await Task.yield()
             defer { busy = false }
-            do { try action() }
+            do { try await action() }
             catch { message = (error as? BackupError)?.errorDescription ?? "无法读取或保存备份，请检查文件访问权限和设备空间后重试。" }
         }
     }
@@ -184,7 +182,7 @@ private struct RestorePreviewView: View {
         Task { @MainActor in
             await Task.yield()
             defer { busy = false }
-            do { try store.restore(archive) }
+            do { try await store.restore(archive) }
             catch { errorMessage = (error as? BackupError)?.errorDescription ?? "恢复失败，原存储仍保留。请检查设备空间后重试。" }
         }
     }

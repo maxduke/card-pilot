@@ -10,11 +10,12 @@ final class BackupStore: ObservableObject {
     @Published private(set) var sessionID = UUID()
     @Published private(set) var startupFailed = false
     @Published var restoreCompleted = false
+    @Published private(set) var isBusy = false
 
     private let directory: URL
     private let openLegacy: () throws -> ModelContainer
-    private let save: (ModelContext) throws -> Void
-    private let write: (Data, URL) throws -> Void
+    private let save: @Sendable (ModelContext) throws -> Void
+    private let write: @Sendable (Data, URL) throws -> Void
     private var selectionURL: URL { directory.appendingPathComponent("active-store.json") }
     private var backupsDirectory: URL { directory.appendingPathComponent("Backups", isDirectory: true) }
 
@@ -28,8 +29,8 @@ final class BackupStore: ObservableObject {
     init(
         directory: URL = URL.applicationSupportDirectory.appendingPathComponent("CardPilotRecovery", isDirectory: true),
         openLegacy: @escaping () throws -> ModelContainer = { try CardPilotPersistence.makeContainer() },
-        save: @escaping (ModelContext) throws -> Void = { try $0.save() },
-        write: @escaping (Data, URL) throws -> Void = {
+        save: @escaping @Sendable (ModelContext) throws -> Void = { try $0.save() },
+        write: @escaping @Sendable (Data, URL) throws -> Void = {
             try $0.write(to: $1, options: [.atomic, .completeFileProtection])
         }
     ) {
@@ -41,7 +42,7 @@ final class BackupStore: ObservableObject {
     }
 
     func retryStartup() {
-        guard container == nil else { return }
+        guard container == nil, !isBusy else { return }
         do {
             let opened: ModelContainer
             if FileManager.default.fileExists(atPath: selectionURL.path) {
@@ -68,48 +69,99 @@ final class BackupStore: ObservableObject {
         }
     }
 
-    func export() throws -> BackupArchive {
+    private func beginOperation() throws {
+        guard !isBusy else { throw BackupError.operationInProgress }
+        guard container?.mainContext.hasChanges != true else { throw BackupError.unsavedChanges }
+        isBusy = true
+    }
+
+    func export() async throws -> BackupArchive {
+        try beginOperation()
+        defer { isBusy = false }
         guard let container else { throw BackupError.storageFailure }
-        let records = try BackupRecords.capture(container.mainContext)
+        return try await Task.detached {
+            try Self.captureArchive(container)
+        }.value
+    }
+
+    func exportData() async throws -> Data {
+        try beginOperation()
+        defer { isBusy = false }
+        guard let container else { throw BackupError.storageFailure }
+        return try await Task.detached {
+            try Self.captureArchive(container).encoded()
+        }.value
+    }
+
+    func prepare(_ data: Data) async throws -> BackupArchive {
+        try beginOperation()
+        defer { isBusy = false }
+        return try await Task.detached { try Self.prepareArchive(data) }.value
+    }
+
+    func prepareFile(_ url: URL) async throws -> BackupArchive {
+        try beginOperation()
+        defer { isBusy = false }
+        return try await Task.detached {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            return try Self.prepareArchive(Self.read(url))
+        }.value
+    }
+
+    nonisolated private static func captureArchive(_ container: ModelContainer) throws -> BackupArchive {
+        // Contexts and all fetched models stay inside the worker that creates them.
+        let records = try BackupRecords.capture(ModelContext(container))
         _ = try records.validatedContainer()
         return BackupArchive(records: records)
     }
 
-    func prepare(_ data: Data) throws -> BackupArchive {
+    nonisolated private static func prepareArchive(_ data: Data) throws -> BackupArchive {
         let archive = try BackupArchive.decode(data)
         let validated = try archive.records.validatedContainer()
-        // Canonical ordering makes file order irrelevant when verifying the staged store.
-        return BackupArchive(exportedAt: archive.exportedAt, records: try BackupRecords.capture(validated.mainContext))
+        return BackupArchive(exportedAt: archive.exportedAt, records: try BackupRecords.capture(ModelContext(validated)))
     }
 
-    func restore(_ archive: BackupArchive) throws {
-        // Revalidate at the commit boundary, even when called without the preview UI.
-        let prepared = try prepare(archive.encoded())
-        let before = try container.map { _ in try export().encoded() }
-        do {
-            try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
-            if let before {
-                let backupURL = backupsDirectory.appendingPathComponent("\(UUID().uuidString).json")
-                try write(before, backupURL)
-                guard try Self.read(backupURL) == before else { throw BackupError.verificationFailed }
-            }
-            let id = UUID()
-            let staged = try CardPilotPersistence.makeContainer(at: storeURL(id))
-            staged.mainContext.autosaveEnabled = false
-            try prepared.records.insertIntoEmptyStore(staged.mainContext)
-            try save(staged.mainContext)
-            // Use a fresh context so verification fetches persisted data rather than inserted instances.
-            let readback = try BackupRecords.capture(ModelContext(staged))
-            guard readback == prepared.records else { throw BackupError.verificationFailed }
-            let selection = try JSONEncoder().encode(Selection(storeID: id))
-            // Last fallible operation. Atomic replacement is the durable commit point.
-            try write(selection, selectionURL)
-            container = staged
-            startupFailed = false
-            sessionID = UUID()
-            restoreCompleted = true
-        } catch let error as BackupError { throw error }
-        catch { throw BackupError.storageFailure }
+    func restore(_ archive: BackupArchive) async throws {
+        try beginOperation()
+        defer { isBusy = false }
+        let active = container
+        let directory = directory
+        let backupsDirectory = backupsDirectory
+        let selectionURL = selectionURL
+        let save = save
+        let write = write
+        let staged = try await Task.detached {
+            // Revalidate at the commit boundary, even without the preview UI.
+            let prepared = try Self.prepareArchive(archive.encoded())
+            let before = try active.map { try Self.captureArchive($0).encoded() }
+            do {
+                try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
+                if let before {
+                    let backupURL = backupsDirectory.appendingPathComponent("\(UUID().uuidString).json")
+                    try write(before, backupURL)
+                    guard try Self.read(backupURL) == before else { throw BackupError.verificationFailed }
+                }
+                let id = UUID()
+                let staged = try CardPilotPersistence.makeContainer(at: directory.appendingPathComponent("\(id.uuidString).store"))
+                let context = ModelContext(staged)
+                context.autosaveEnabled = false
+                try prepared.records.insertIntoEmptyStore(context)
+                try save(context)
+                let readback = try BackupRecords.capture(ModelContext(staged))
+                guard readback == prepared.records else { throw BackupError.verificationFailed }
+                let selection = try JSONEncoder().encode(Selection(storeID: id))
+                // Last fallible operation. Atomic replacement is the durable commit point.
+                try write(selection, selectionURL)
+                return staged
+            } catch let error as BackupError { throw error }
+            catch { throw BackupError.storageFailure }
+        }.value
+        staged.mainContext.autosaveEnabled = false
+        container = staged
+        startupFailed = false
+        sessionID = UUID()
+        restoreCompleted = true
     }
 
     func retainedBackups() throws -> [RetainedBackup] {
@@ -121,7 +173,7 @@ final class BackupStore: ObservableObject {
         }.sorted { $0.createdAt > $1.createdAt }
     }
 
-    static func read(_ url: URL) throws -> Data {
+    nonisolated static func read(_ url: URL) throws -> Data {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         let data = try handle.read(upToCount: BackupArchive.maximumFileSize + 1) ?? Data()
