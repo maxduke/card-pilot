@@ -86,7 +86,9 @@ struct CardDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(upcomingCycles, id: \.cycleKey) { cycle in
-                        BillingCycleRow(cycle: cycle, today: today)
+                        NavigationLink {
+                            BillingCycleDetailView(account: card.account, cycleKey: cycle.cycleKey)
+                        } label: { BillingCycleRow(cycle: cycle, today: today) }
                     }
                 }
 
@@ -147,10 +149,10 @@ struct CardDetailView: View {
                 Button("编辑") { showingCardEditor = true }
             }
         }
-        .sheet(isPresented: $showingCardEditor) {
+        .trackedSheet(isPresented: $showingCardEditor) {
             CardEditorView(card: card, accounts: accounts, networks: networks)
         }
-        .sheet(isPresented: $showingTransactionEditor) {
+        .trackedSheet(isPresented: $showingTransactionEditor) {
             TransactionEditorView(
                 transaction: nil,
                 cards: cards,
@@ -232,7 +234,9 @@ struct AccountDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(recentCycles, id: \.cycleKey) { cycle in
-                        BillingCycleRow(cycle: cycle, today: today)
+                        NavigationLink {
+                            BillingCycleDetailView(account: account, cycleKey: cycle.cycleKey)
+                        } label: { BillingCycleRow(cycle: cycle, today: today) }
                     }
                 }
             }
@@ -240,7 +244,9 @@ struct AccountDetailView: View {
             if !paidCycles.isEmpty {
                 Section("已处理账期") {
                     ForEach(paidCycles, id: \.cycleKey) { cycle in
-                        BillingCycleRow(cycle: cycle, today: today)
+                        NavigationLink {
+                            BillingCycleDetailView(account: account, cycleKey: cycle.cycleKey)
+                        } label: { BillingCycleRow(cycle: cycle, today: today) }
                     }
                 }
             }
@@ -312,7 +318,7 @@ struct AccountDetailView: View {
                 Button("编辑") { showingAccountEditor = true }
             }
         }
-        .sheet(isPresented: $showingAccountEditor) {
+        .trackedSheet(isPresented: $showingAccountEditor) {
             AccountEditorView(account: account, banks: banks)
         }
     }
@@ -415,7 +421,7 @@ private struct CardTransactionHistoryView: View {
                     .accessibilityLabel("使用这张卡添加交易")
             }
         }
-        .sheet(isPresented: $showingEditor) {
+        .trackedSheet(isPresented: $showingEditor) {
             TransactionEditorView(
                 transaction: nil,
                 cards: cards,
@@ -424,7 +430,7 @@ private struct CardTransactionHistoryView: View {
                 initialCard: card
             )
         }
-        .sheet(isPresented: Binding(
+        .trackedSheet(isPresented: Binding(
             get: { detailTransaction != nil },
             set: { if !$0 { detailTransaction = nil } }
         )) {

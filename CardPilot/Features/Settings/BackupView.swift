@@ -89,7 +89,7 @@ struct BackupView: View {
             case .failure: message = "备份未导出，请检查目标位置后重试。"
             }
         }
-        .sheet(item: $preview, onDismiss: refreshRetained) { item in
+        .trackedSheet(item: $preview, onDismiss: refreshRetained) { item in
             RestorePreviewView(archive: item.archive, current: item.current)
         }
         .alert("备份与恢复", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {

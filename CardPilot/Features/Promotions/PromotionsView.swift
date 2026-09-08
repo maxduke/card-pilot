@@ -247,7 +247,7 @@ struct PromotionsView: View {
                     showingHistory = true
                 }
             }
-            .sheet(isPresented: $showingEditor) {
+            .trackedSheet(isPresented: $showingEditor) {
                 PromotionEditorView(promotion: editingPromotion, banks: banks, networks: networks, cards: cards)
             }
             .confirmationDialog("确认删除促销？", isPresented: $showingDeleteConfirmation) {
@@ -689,7 +689,7 @@ private struct PromotionEditorView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingOrganizerPicker) {
+            .trackedSheet(isPresented: $showingOrganizerPicker) {
                 OrganizerSelectionView(
                     banks: banks,
                     networks: organizerNetworks,
@@ -697,7 +697,7 @@ private struct PromotionEditorView: View {
                     selectedNetworkIDs: $selectedNetworkIDs
                 )
             }
-            .sheet(isPresented: $showingCardPicker) {
+            .trackedSheet(isPresented: $showingCardPicker) {
                 CardSelectionView(
                     cards: sortedCards,
                     recommendations: recommendedCards,
@@ -1749,13 +1749,13 @@ struct PromotionDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingTransactionEditor) {
+        .trackedSheet(isPresented: $showingTransactionEditor) {
             TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
         }
-        .sheet(isPresented: $showingPromotionEditor) {
+        .trackedSheet(isPresented: $showingPromotionEditor) {
             PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards)
         }
-        .sheet(isPresented: $showingAllocationEditor) {
+        .trackedSheet(isPresented: $showingAllocationEditor) {
             AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
         }
         .confirmationDialog("确认删除分配？", isPresented: $showingAllocationDeleteConfirmation) {

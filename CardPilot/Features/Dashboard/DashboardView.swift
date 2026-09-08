@@ -259,40 +259,21 @@ struct DashboardView: View {
     }
 
     private func markRepaid(_ item: DashboardBillingItem) {
-        let record = item.account.billingCycles.first { $0.cycleKey == item.cycleKey }
-            ?? BillingCycleRecord(account: item.account, cycleKey: item.cycleKey)
-        if !item.account.billingCycles.contains(where: { $0.id == record.id }) {
-            modelContext.insert(record)
-        }
-        record.repaidAt = .now
         do {
-            try record.validate()
-            try item.account.validateBillingConfiguration()
-            try modelContext.save()
+            try BillingCycleActions.save(.repayment(.now), account: item.account, cycleKey: item.cycleKey,
+                                         context: modelContext, today: today)
             recentlyRepaid = item
-        } catch {
-            modelContext.rollback()
-            errorMessage = error.localizedDescription
-        }
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func undoRepayment(_ item: DashboardBillingItem) {
-        guard let record = item.account.billingCycles.first(where: { $0.cycleKey == item.cycleKey }) else {
-            recentlyRepaid = nil
-            return
-        }
-        record.repaidAt = nil
-        if record.statementDateOverride == nil && record.repaymentDateOverride == nil {
-            modelContext.delete(record)
-        }
         do {
-            try modelContext.save()
+            try BillingCycleActions.save(.repayment(nil), account: item.account, cycleKey: item.cycleKey,
+                                         context: modelContext, today: today)
             recentlyRepaid = nil
-        } catch {
-            modelContext.rollback()
-            errorMessage = error.localizedDescription
-        }
+        } catch { errorMessage = error.localizedDescription }
     }
+
 }
 
 func dashboardPromotionsToContinue(
@@ -592,6 +573,10 @@ private struct BillingItemRow: View {
                         .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
                 }
             }
+            NavigationLink("查看账期") {
+                BillingCycleDetailView(account: item.account, cycleKey: item.cycleKey)
+            }
+            .font(.caption)
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)

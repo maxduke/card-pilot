@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
+import UserNotifications
 
 enum CardPilotQuickAction: String, CaseIterable, Hashable, Sendable {
     case addTransaction = "com.maxduke.CardPilot.quickAction.addTransaction"
@@ -61,10 +62,12 @@ final class CardPilotQuickActionRouter: ObservableObject {
 
 @MainActor
 final class CardPilotAppDelegate: NSObject, UIApplicationDelegate {
+    private let notificationDelegate = BillingNotificationDelegate()
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        UNUserNotificationCenter.current().delegate = notificationDelegate
         application.shortcutItems = CardPilotQuickAction.allCases.map(\.shortcutItem)
         return true
     }
@@ -89,6 +92,9 @@ final class CardPilotSceneDelegate: NSObject, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        if let response = connectionOptions.notificationResponse {
+            NotificationRouter.shared.receiveSceneResponse(response)
+        }
         if let shortcutItem = connectionOptions.shortcutItem {
             _ = CardPilotQuickActionRouter.shared.enqueue(shortcutItem)
         }

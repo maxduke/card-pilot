@@ -217,7 +217,7 @@ struct TransactionsView: View {
                     .disabled(cards.isEmpty)
                 }
             }
-            .sheet(isPresented: $isPresentingEditor, onDismiss: { editingTransaction = nil }) {
+            .trackedSheet(isPresented: $isPresentingEditor, onDismiss: { editingTransaction = nil }) {
                 TransactionEditorView(
                     transaction: editingTransaction,
                     cards: cards,
@@ -225,7 +225,7 @@ struct TransactionsView: View {
                     transactions: transactions
                 )
             }
-            .sheet(isPresented: Binding(
+            .trackedSheet(isPresented: Binding(
                 get: { detailTransaction != nil },
                 set: { if !$0 { detailTransaction = nil } }
             )) {
@@ -238,7 +238,7 @@ struct TransactionsView: View {
                     )
                 }
             }
-            .sheet(isPresented: $showingFilterSheet) {
+            .trackedSheet(isPresented: $showingFilterSheet) {
                 TransactionFilterSheet(
                     cards: cards,
                     promotions: promotions,
@@ -618,7 +618,7 @@ struct TransactionDetailView: View {
                     Button("编辑") { showingEditor = true }
                 }
             }
-            .sheet(isPresented: $showingEditor) {
+            .trackedSheet(isPresented: $showingEditor) {
                 TransactionEditorView(
                     transaction: transaction,
                     cards: cards,
@@ -1225,7 +1225,7 @@ struct TransactionEditorView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("当前卡片，\(cardLabel(selectedCard))")
             .accessibilityHint("打开卡片选择")
-            .sheet(isPresented: $showingCardPicker) {
+            .trackedSheet(isPresented: $showingCardPicker) {
                 CardSelectionSheet(
                     cards: selectableCards,
                     selectedCardID: cardID,

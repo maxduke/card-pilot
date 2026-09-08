@@ -21,6 +21,8 @@ struct RootView: View {
 
     @StateObject private var appLock = AppLockController()
     @ObservedObject private var quickActionRouter = CardPilotQuickActionRouter.shared
+    @ObservedObject private var notificationRouter = NotificationRouter.shared
+    @State private var notificationTarget: BillingCycleTarget?
     @State private var selectedTab = Tab.dashboard
     @State private var showingSettings = false
     @State private var showingTransactionEditor = false
@@ -74,11 +76,19 @@ struct RootView: View {
         .allowsHitTesting(!appLock.isLocked)
         .accessibilityHidden(appLock.isLocked)
         .transactionSaveFeedbackOverlay(producesHaptic: true)
-        .sheet(isPresented: $showingSettings, onDismiss: handlePendingQuickActions) {
+        .trackedSheet(isPresented: $showingSettings, onDismiss: handlePendingQuickActions) {
             SettingsView().environmentObject(appLock)
         }
-        .sheet(isPresented: $showingTransactionEditor, onDismiss: handlePendingQuickActions) {
+        .trackedSheet(isPresented: $showingTransactionEditor, onDismiss: handlePendingQuickActions) {
             TransactionEditorView(transaction: nil, cards: cards, promotions: promotions, transactions: transactions)
+        }
+        .trackedSheet(item: $notificationTarget, onDismiss: handlePendingQuickActions) { target in
+            NavigationStack {
+                BillingCycleDestination(target: target)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { notificationTarget = nil }
+                    } }
+            }
         }
         // A separate window also covers presented sheets without destroying their edit state.
         .background(AppLockShieldWindow(lock: appLock, isAuthenticating: isAuthenticating, unlock: authenticate))
@@ -90,6 +100,12 @@ struct RootView: View {
         }
         .onChange(of: showingCardOnboarding) { _, showing in if !showing { handlePendingQuickActions() } }
         .onChange(of: backupStore.isBusy) { _, busy in if !busy { handlePendingQuickActions() } }
+        .onChange(of: notificationRouter.pendingTarget) { _, _ in handlePendingQuickActions() }
+        .task(id: notificationRouter.presentations) {
+            // Let SwiftUI finish the previous sheet's dismissal before presenting another.
+            await Task.yield()
+            handlePendingQuickActions()
+        }
         .onChange(of: quickActionRouter.pendingActions) { _, _ in handlePendingQuickActions() }
         .onChange(of: appLock.isLocked) { _, locked in
             if !locked { handlePendingQuickActions() }
@@ -104,6 +120,7 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 authenticate()
+                handlePendingQuickActions()
                 Task { await rebuildNotifications() }
             } else if Self.shouldRelock(when: phase, isAuthenticating: isAuthenticating) {
                 relock()
@@ -168,8 +185,13 @@ struct RootView: View {
 
     private func handlePendingQuickActions() {
         // Ordinary unlocks must never dismiss an editor. Defer shortcuts while a root sheet is open.
-        guard !backupStore.isBusy, !appLock.isLocked, !quickActionRouter.pendingActions.isEmpty,
+        guard scenePhase == .active, !backupStore.isBusy, !appLock.isLocked,
+              notificationTarget == nil, notificationRouter.presentations.isEmpty,
               !showingSettings, !showingTransactionEditor, !showingCardOnboarding else { return }
+        if let target = notificationRouter.takeTarget(isActive: true, isLocked: false, isBusy: false) {
+            notificationTarget = target
+            return
+        }
         if let action = quickActionRouter.takeNext() {
             switch action {
             case .addTransaction: addTransaction()
