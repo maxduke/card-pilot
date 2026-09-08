@@ -21,7 +21,8 @@ enum BillingCycleActions {
     }
 
     static func save(_ change: Change, account: CreditCardAccount, cycleKey: Int, context: ModelContext,
-                     today: LocalDate, timeZone: TimeZone = CardPilotUI.homeTimeZone) throws {
+                     today: LocalDate, timeZone: TimeZone = CardPilotUI.homeTimeZone,
+                     persist: (ModelContext) throws -> Void = { try $0.save() }) throws {
         _ = try resolve(.init(accountID: account.id, cycleKey: cycleKey), accounts: [account], today: today, timeZone: timeZone)
         // Query before writing as well as validating the inverse relationship's uniqueness.
         let accountID = account.id
@@ -30,26 +31,54 @@ enum BillingCycleActions {
         }))
         guard matches.count <= 1 else { throw ModelValidationError.duplicateBillingCycle }
         let existing = matches.first
+        let previousStatement = existing?.statementDateOverride
+        let previousRepayment = existing?.repaymentDateOverride
+        let previousRepaidAt = existing?.repaidAt
+        var statement = previousStatement
+        var repayment = previousRepayment
+        var repaidAt = previousRepaidAt
+        switch change {
+        case .repayment(let date): repaidAt = date
+        case .dates(let newStatement, let newRepayment):
+            statement = newStatement
+            repayment = newRepayment
+        }
+
+        // Reject invalid input as values, before creating a SwiftData object or touching
+        // its inverse. rollback() alone can leave a newly inserted record in that array.
+        _ = try BillingCalculator.calculate(
+            accountStatus: account.status,
+            closedOn: try account.closedOn.map { try LocalDate(rawValue: $0) },
+            cycleKey: cycleKey,
+            rules: account.billingRuleVersions.map {
+                BillingRuleInput(effectiveCycleKey: $0.effectiveCycleKey, statementDay: $0.statementDay,
+                                 repaymentKind: $0.repaymentKind, repaymentValue: $0.repaymentValue)
+            },
+            override: BillingCycleOverride(statementDate: try statement.map { try LocalDate(rawValue: $0) },
+                                           repaymentDate: try repayment.map { try LocalDate(rawValue: $0) },
+                                           repaidAt: repaidAt),
+            today: today, timeZone: timeZone
+        )
+        guard existing != nil || statement != nil || repayment != nil || repaidAt != nil else { return }
+        let previousCycles = account.billingCycles
         let record = existing ?? BillingCycleRecord(account: account, cycleKey: cycleKey)
         if existing == nil { context.insert(record) }
         do {
-            switch change {
-            case .repayment(let date): record.repaidAt = date
-            case .dates(let statement, let repayment):
-                record.statementDateOverride = statement
-                record.repaymentDateOverride = repayment
-            }
-            try record.validate()
-            _ = try BillingCalculator.calculate(account: account, cycleKey: cycleKey, record: record,
-                                                today: today, timeZone: timeZone)
-            if record.repaidAt == nil && record.statementDateOverride == nil && record.repaymentDateOverride == nil {
-                context.delete(record)
-            }
-            try context.save()
+            record.statementDateOverride = statement
+            record.repaymentDateOverride = repayment
+            record.repaidAt = repaidAt
+            if repaidAt == nil && statement == nil && repayment == nil { context.delete(record) }
+            try persist(context)
             let defaults = UserDefaults.standard
             defaults.set(defaults.integer(forKey: "cardPilot.notificationRevision") &+ 1,
                          forKey: "cardPilot.notificationRevision")
         } catch {
+            // Restore both sides before rollback, including the failed-insert path.
+            record.statementDateOverride = previousStatement
+            record.repaymentDateOverride = previousRepayment
+            record.repaidAt = previousRepaidAt
+            record.account = existing == nil ? nil : account
+            account.billingCycles = previousCycles
             context.rollback()
             throw error
         }

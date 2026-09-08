@@ -131,6 +131,7 @@ final class NotificationBillingTests: XCTestCase {
         try BillingCycleActions.save(.repayment(nil), account: account, cycleKey: 202609,
                                      context: context, today: today, timeZone: utc)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<BillingCycleRecord>()), 0)
+        XCTAssertTrue(account.billingCycles.isEmpty)
         try BillingCycleActions.save(.repayment(.now), account: account, cycleKey: 202609,
                                      context: context, today: today, timeZone: utc)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<BillingCycleRecord>()), 1)
@@ -157,13 +158,14 @@ final class NotificationBillingTests: XCTestCase {
         XCTAssertEqual(account.billingCycles.first?.repaidAt, completed)
     }
 
-    func testInvalidDatesRollBackNewAndExistingRecord() throws {
+    func testInvalidDatesDoNotMutateNewOrExistingRecord() throws {
         let container = try fixture()
         let context = container.mainContext
         let account = try XCTUnwrap(context.fetch(FetchDescriptor<CreditCardAccount>()).first)
         XCTAssertThrowsError(try BillingCycleActions.save(.dates(statement: 20260910, repayment: 20260909),
             account: account, cycleKey: 202609, context: context, today: today, timeZone: utc))
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<BillingCycleRecord>()), 0)
+        XCTAssertTrue(account.billingCycles.isEmpty)
         try BillingCycleActions.save(.repayment(.now), account: account, cycleKey: 202609,
                                      context: context, today: today, timeZone: utc)
         let completed = account.billingCycles.first?.repaidAt
@@ -174,6 +176,38 @@ final class NotificationBillingTests: XCTestCase {
         XCTAssertEqual(record.repaidAt, completed)
         XCTAssertNil(record.statementDateOverride)
         XCTAssertNil(record.repaymentDateOverride)
+    }
+
+    func testPersistenceFailureRestoresRelationshipAndAllowsRetry() throws {
+        enum Failure: Error { case diskFull }
+        let container = try fixture()
+        let context = container.mainContext
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<CreditCardAccount>()).first)
+        let defaults = UserDefaults.standard
+        let revision = defaults.integer(forKey: "cardPilot.notificationRevision")
+        XCTAssertThrowsError(try BillingCycleActions.save(.repayment(.now), account: account, cycleKey: 202609,
+            context: context, today: today, timeZone: utc, persist: { _ in throw Failure.diskFull }))
+        XCTAssertTrue(account.billingCycles.isEmpty)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<BillingCycleRecord>()), 0)
+        XCTAssertEqual(defaults.integer(forKey: "cardPilot.notificationRevision"), revision)
+        try BillingCycleActions.save(.repayment(.now), account: account, cycleKey: 202609,
+                                     context: context, today: today, timeZone: utc)
+        let completed = try XCTUnwrap(account.billingCycles.first?.repaidAt)
+        XCTAssertThrowsError(try BillingCycleActions.save(.dates(statement: 20260908, repayment: nil), account: account,
+            cycleKey: 202609, context: context, today: today, timeZone: utc, persist: { _ in throw Failure.diskFull }))
+        XCTAssertEqual(account.billingCycles.first?.repaidAt, completed)
+        XCTAssertNil(account.billingCycles.first?.statementDateOverride)
+        // Also cover a failed sparse-record deletion, then an ordinary retry.
+        XCTAssertThrowsError(try BillingCycleActions.save(.repayment(nil), account: account, cycleKey: 202609,
+            context: context, today: today, timeZone: utc, persist: { _ in throw Failure.diskFull }))
+        XCTAssertEqual(account.billingCycles.count, 1)
+        XCTAssertEqual(account.billingCycles.first?.repaidAt, completed)
+        let reader = ModelContext(container)
+        XCTAssertEqual(try reader.fetch(FetchDescriptor<BillingCycleRecord>()).first?.repaidAt, completed)
+        try BillingCycleActions.save(.repayment(nil), account: account, cycleKey: 202609,
+                                     context: context, today: today, timeZone: utc)
+        XCTAssertTrue(account.billingCycles.isEmpty)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<BillingCycleRecord>()), 0)
     }
 
     func testDuplicateCycleRejectedBeforeMutation() throws {
