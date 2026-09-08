@@ -92,6 +92,9 @@ final class CardPilotSceneDelegate: NSObject, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        if let response = connectionOptions.notificationResponse {
+            NotificationRouter.shared.receiveSceneResponse(response)
+        }
         if let shortcutItem = connectionOptions.shortcutItem {
             _ = CardPilotQuickActionRouter.shared.enqueue(shortcutItem)
         }

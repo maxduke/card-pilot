@@ -27,7 +27,35 @@ final class NotificationRouter: ObservableObject {
     @Published private(set) var pendingTarget: BillingCycleTarget?
     @Published private(set) var presentations: Set<UUID> = []
 
+    enum ResponseSource: Hashable { case notificationCenter, sceneConnection }
+    private struct ResponseIdentity: Equatable {
+        let requestID: String
+        let deliveredAt: Date
+    }
+    private var lastResponse: ResponseIdentity?
+    private var responseSources: Set<ResponseSource> = []
+
     func receive(_ target: BillingCycleTarget) { pendingTarget = target }
+
+    func receive(_ target: BillingCycleTarget, requestID: String, deliveredAt: Date, source: ResponseSource) {
+        let identity = ResponseIdentity(requestID: requestID, deliveredAt: deliveredAt)
+        if lastResponse == identity, !responseSources.contains(source) {
+            // A cold launch can provide the same response through both UIKit and UN.
+            responseSources.insert(source)
+            return
+        }
+        if lastResponse != identity { responseSources = [] }
+        lastResponse = identity
+        responseSources.insert(source)
+        receive(target)
+    }
+
+    func receiveSceneResponse(_ response: UNNotificationResponse) {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let target = BillingCycleTarget(userInfo: response.notification.request.content.userInfo) else { return }
+        receive(target, requestID: response.notification.request.identifier,
+                deliveredAt: response.notification.date, source: .sceneConnection)
+    }
     func presentationOpened(_ id: UUID) { presentations.insert(id) }
     func presentationClosed(_ id: UUID) { presentations.remove(id) }
 
@@ -50,8 +78,11 @@ final class BillingNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
             completionHandler()
             return
         }
+        let requestID = response.notification.request.identifier
+        let deliveredAt = response.notification.date
         Task { @MainActor in
-            NotificationRouter.shared.receive(target)
+            NotificationRouter.shared.receive(target, requestID: requestID, deliveredAt: deliveredAt,
+                                              source: .notificationCenter)
             completionHandler()
         }
     }

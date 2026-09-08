@@ -43,6 +43,23 @@ final class NotificationBillingTests: XCTestCase {
         XCTAssertEqual(router.takeTarget(isActive: true, isLocked: lock.isLocked, isBusy: false), target)
     }
 
+    func testColdLaunchSourcesCoalesceButLaterNotificationClicksStillOpen() {
+        let target = BillingCycleTarget(accountID: UUID(), cycleKey: 202609)
+        for firstSource: NotificationRouter.ResponseSource in [.sceneConnection, .notificationCenter] {
+            let router = NotificationRouter()
+            let secondSource: NotificationRouter.ResponseSource = firstSource == .sceneConnection ? .notificationCenter : .sceneConnection
+            let date = Date(timeIntervalSince1970: 1_780_000_000)
+            router.receive(target, requestID: "reminder", deliveredAt: date, source: firstSource)
+            XCTAssertEqual(router.takeTarget(isActive: true, isLocked: false, isBusy: false), target)
+            router.receive(target, requestID: "reminder", deliveredAt: date, source: secondSource)
+            XCTAssertNil(router.pendingTarget)
+            router.receive(target, requestID: "reminder", deliveredAt: date, source: .notificationCenter)
+            XCTAssertEqual(router.takeTarget(isActive: true, isLocked: false, isBusy: false), target)
+            router.receive(target, requestID: "reminder", deliveredAt: date.addingTimeInterval(60), source: .notificationCenter)
+            XCTAssertEqual(router.pendingTarget, target)
+        }
+    }
+
     func testNestedPresentationsAndRestoreDeferLatestNotificationWithoutLosingIt() {
         let router = NotificationRouter()
         let editor = UUID(), picker = UUID()
