@@ -10,10 +10,21 @@ final class AppLockController: ObservableObject {
     private let authenticateDeviceOwner: () async -> Bool
     private let authenticationAvailable: () -> Bool
 
-    init(
+    convenience init(
         enabled: Bool = false,
-        authenticationAvailable: @escaping () -> Bool = { LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) },
         authenticateDeviceOwner: @escaping () async -> Bool = AppLockController.authenticateDeviceOwner
+    ) {
+        self.init(
+            enabled: enabled,
+            authenticationAvailable: { LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) },
+            authenticateDeviceOwner: authenticateDeviceOwner
+        )
+    }
+
+    init(
+        enabled: Bool,
+        authenticationAvailable: @escaping () -> Bool,
+        authenticateDeviceOwner: @escaping () async -> Bool
     ) {
         isEnabled = enabled
         isLocked = enabled

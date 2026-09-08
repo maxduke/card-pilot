@@ -29,6 +29,24 @@ final class BackupTests: XCTestCase {
         XCTAssertEqual(try context.fetch(FetchDescriptor<Promotion>()).filter { $0.archivedAt != nil }.count, 1)
     }
 
+    func testGeneratedHistoryBudgetRejectsAncientAndAggregateExpansion() throws {
+        var records = BackupRecords()
+        let account = BackupRecords.CreditCardAccountRecord(
+            id: UUID(), trackingStartCycleKey: 101, limitCurrencyCode: "CNY",
+            statusRaw: "active", notes: "", bank: UUID()
+        )
+        records.accounts = [account]
+        XCTAssertThrowsError(try records.validateGeneratedHistory(through: 202612))
+        records.accounts[0].trackingStartCycleKey = 202401
+        XCTAssertNoThrow(try records.validateGeneratedHistory(through: 202612))
+        records.accounts = (0..<500).map { _ in
+            var copy = records.accounts[0]
+            copy.id = UUID()
+            return copy
+        }
+        XCTAssertThrowsError(try records.validateGeneratedHistory(through: 202612))
+    }
+
     func testSavedFixtureSatisfiesDomainConstraints() throws {
         let container = try fixture()
         let context = container.mainContext

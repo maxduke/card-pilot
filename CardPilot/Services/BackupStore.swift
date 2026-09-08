@@ -118,8 +118,11 @@ final class BackupStore: ObservableObject {
 
     nonisolated private static func prepareArchive(_ data: Data) throws -> BackupArchive {
         let archive = try BackupArchive.decode(data)
-        let validated = try archive.records.validatedContainer()
-        return BackupArchive(exportedAt: archive.exportedAt, records: try BackupRecords.capture(ModelContext(validated)))
+        let canonical = archive.records.canonicalized()
+        let validated = try canonical.validatedContainer()
+        // Validation must not silently normalize amounts or other imported fields.
+        guard try BackupRecords.capture(ModelContext(validated)) == canonical else { throw BackupError.verificationFailed }
+        return BackupArchive(exportedAt: archive.exportedAt, records: canonical)
     }
 
     func restore(_ archive: BackupArchive) async throws {

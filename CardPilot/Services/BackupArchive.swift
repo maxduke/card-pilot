@@ -37,12 +37,16 @@ struct BackupArchive: Codable, Equatable, Sendable {
 }
 
 enum BackupError: LocalizedError {
+    case generatedHistoryTooLarge
+    case invalidModelData(String)
     case operationInProgress
     case invalidFile, unsupportedVersion, tooLarge, duplicateID, invalidReference
     case invalidDecimal, conflict, invalidData, verificationFailed, storageFailure, unsavedChanges
 
     var errorDescription: String? {
         switch self {
+        case .generatedHistoryTooLarge: return "备份会生成过多账期，超出可安全处理的范围。当前数据未被替换。"
+        case .invalidModelData(let category): return "备份中的\(category)不符合数据约束。"
         case .operationInProgress: return "正在处理另一项备份操作，请稍后重试。"
         case .invalidFile: return "这不是完整的 CardPilot 备份，或文件已经损坏。"
         case .unsupportedVersion: return "此备份版本暂不支持，请使用兼容的 CardPilot 版本。"
@@ -93,6 +97,55 @@ struct BackupRecords: Codable, Equatable, Sendable {
     var transactions: [TransactionRecord] = []
     var allocations: [PromotionAllocationRecord] = []
     var count: Int { banks.count + networks.count + accounts.count + cards.count + billingRules.count + billingCycles.count + promotions.count + transactions.count + allocations.count }
+
+    func canonicalized() -> BackupRecords {
+        var result = self
+        result.banks.sort { $0.id.uuidString < $1.id.uuidString }
+        result.networks.sort { $0.id.uuidString < $1.id.uuidString }
+        result.accounts.sort { $0.id.uuidString < $1.id.uuidString }
+        result.cards = cards.map { record in
+            var record = record
+            record.networks.sort { $0.uuidString < $1.uuidString }
+            return record
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+        result.billingRules.sort { $0.id.uuidString < $1.id.uuidString }
+        result.billingCycles.sort { $0.id.uuidString < $1.id.uuidString }
+        result.promotions = promotions.map { record in
+            var record = record
+            record.organizingBanks.sort { $0.uuidString < $1.uuidString }
+            record.organizingNetworks.sort { $0.uuidString < $1.uuidString }
+            record.eligibleCards.sort { $0.uuidString < $1.uuidString }
+            return record
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+        result.transactions.sort { $0.id.uuidString < $1.id.uuidString }
+        result.allocations.sort { $0.id.uuidString < $1.id.uuidString }
+        return result
+    }
+
+    static let maximumGeneratedBillingCycles = 20_000
+
+    /// Bound derived work as well as file size. Dashboard history and notification
+    /// lookback must not expand a small archive into millions of account-months.
+    func validateGeneratedHistory(through lastMonthKey: Int) throws {
+        func monthIndex(_ key: Int) throws -> Int {
+            guard LocalDate.isValidMonthKey(key) else { throw BackupError.invalidData }
+            return key / 100 * 12 + key % 100 - 1
+        }
+        let lastMonth = try monthIndex(lastMonthKey)
+        var lookbackByAccount: [UUID: Int] = [:]
+        for rule in billingRules where rule.repaymentKindRaw == RepaymentRuleKind.daysAfterStatement.rawValue {
+            guard (1...36_600).contains(rule.repaymentValue) else { throw BackupError.invalidData }
+            let months = (rule.repaymentValue + 27) / 28
+            lookbackByAccount[rule.account] = max(lookbackByAccount[rule.account] ?? 1, months)
+        }
+        var generated = 0
+        for account in accounts {
+            let firstMonth = try monthIndex(account.trackingStartCycleKey)
+            // Reserve the maximum device reminder horizon too (365 days).
+            generated += max(0, lastMonth - firstMonth + 1) + (lookbackByAccount[account.id] ?? 1) + 15
+            guard generated <= Self.maximumGeneratedBillingCycles else { throw BackupError.generatedHistoryTooLarge }
+        }
+    }
 
     struct BankRecord: Codable, Equatable, Sendable {
         var id: UUID
@@ -482,39 +535,45 @@ extension BackupRecords {
             account.billingRuleVersions = (rulesByAccount[id] ?? []).compactMap { billingRulesByID[$0.id] }
             account.billingCycles = (cyclesByAccount[id] ?? []).compactMap { billingCyclesByID[$0.id] }
         }
-        do {
-            try banksByID.values.forEach { try $0.validate() }
-            try networksByID.values.forEach { try $0.validate() }
-            try accountsByID.values.forEach { try $0.validate() }
-            try cardsByID.values.forEach { try $0.validate() }
-            try billingRulesByID.values.forEach { try $0.validate() }
-            try billingCyclesByID.values.forEach { try $0.validate() }
-            try promotionsByID.values.forEach { try $0.validate() }
-            try transactionsByID.values.forEach { try $0.validate() }
-            try allocationsByID.values.forEach { try $0.validate() }
-            try accountsByID.values.forEach { try $0.validateBillingConfiguration() }
-        } catch { throw BackupError.invalidData }
+        func validate(_ category: String, _ action: () throws -> Void) throws {
+            do { try action() }
+            catch { throw BackupError.invalidModelData(category) }
+        }
+        try validate("银行") { try banksByID.values.forEach { try $0.validate() } }
+        try validate("卡组织") { try networksByID.values.forEach { try $0.validate() } }
+        try validate("账户") { try accountsByID.values.forEach { try $0.validate() } }
+        try validate("卡片") { try cardsByID.values.forEach { try $0.validate() } }
+        try validate("账务规则") { try billingRulesByID.values.forEach { try $0.validate() } }
+        try validate("账期") { try billingCyclesByID.values.forEach { try $0.validate() } }
+        try validate("促销") { try promotionsByID.values.forEach { try $0.validate() } }
+        try validate("交易") { try transactionsByID.values.forEach { try $0.validate() } }
+        try validate("促销分配") { try allocationsByID.values.forEach { try $0.validate() } }
+        try validate("账户账务配置") { try accountsByID.values.forEach { try $0.validateBillingConfiguration() } }
         // Explicit historical cycles may be far outside the current dashboard window.
         // Reject dates that would require calendar arithmetic beyond LocalDate's supported years.
         let utc = TimeZone(secondsFromGMT: 0)!
-        for record in billingCyclesByID.values {
-            guard let account = record.account,
-                  let rule = account.billingRuleVersions.filter({ ($0.effectiveCycleKey ?? 0) <= record.cycleKey })
-                    .max(by: { ($0.effectiveCycleKey ?? 0) < ($1.effectiveCycleKey ?? 0) }) else {
-                throw BackupError.invalidData
-            }
-            let month = try LocalDate.firstDay(ofMonthKey: record.cycleKey)
-            let statement = try record.statementDateOverride.map { try LocalDate(rawValue: $0) }
-                ?? LocalDate(year: month.year, month: month.month, day: min(rule.statementDay, LocalDate.daysInMonth(year: month.year, month: month.month, timeZone: utc)))
-            if rule.repaymentKind == .fixedDay {
-                let day = min(rule.repaymentValue, LocalDate.daysInMonth(year: statement.year, month: statement.month, timeZone: utc))
-                if day <= statement.day, statement.addingMonthsIfPossible(1, timeZone: utc) == nil {
-                    throw BackupError.invalidData
+        let sortedRules = rulesByAccount.mapValues { $0.sorted { ($0.effectiveCycleKey ?? 0) < ($1.effectiveCycleKey ?? 0) } }
+        for (accountID, cycles) in cyclesByAccount {
+            guard let rules = sortedRules[accountID], !rules.isEmpty else { throw BackupError.invalidData }
+            var ruleIndex = 0
+            for record in cycles.sorted(by: { $0.cycleKey < $1.cycleKey }) {
+                while ruleIndex + 1 < rules.count, (rules[ruleIndex + 1].effectiveCycleKey ?? 0) <= record.cycleKey {
+                    ruleIndex += 1
                 }
-            } else {
-                guard let date = LocalDate.calendar(timeZone: utc).date(byAdding: .day, value: rule.repaymentValue, to: statement.date(in: utc)),
-                      (try? LocalDate(rawValue: LocalDate(date: date, timeZone: utc).rawValue)) != nil else {
-                    throw BackupError.invalidData
+                let rule = rules[ruleIndex]
+                let month = try LocalDate.firstDay(ofMonthKey: record.cycleKey)
+                let statement = try record.statementDateOverride.map { try LocalDate(rawValue: $0) }
+                    ?? LocalDate(year: month.year, month: month.month, day: min(rule.statementDay, LocalDate.daysInMonth(year: month.year, month: month.month, timeZone: utc)))
+                if rule.repaymentKindRaw == RepaymentRuleKind.fixedDay.rawValue {
+                    let day = min(rule.repaymentValue, LocalDate.daysInMonth(year: statement.year, month: statement.month, timeZone: utc))
+                    if day <= statement.day, statement.addingMonthsIfPossible(1, timeZone: utc) == nil {
+                        throw BackupError.invalidData
+                    }
+                } else {
+                    guard let date = LocalDate.calendar(timeZone: utc).date(byAdding: .day, value: rule.repaymentValue, to: statement.date(in: utc)),
+                          (try? LocalDate(rawValue: LocalDate(date: date, timeZone: utc).rawValue)) != nil else {
+                        throw BackupError.invalidData
+                    }
                 }
             }
         }
@@ -595,6 +654,9 @@ extension BackupRecords {
         guard promotions.allSatisfy({ $0.seriesIndex.map { (0..<120_000).contains($0) } ?? true }) else {
             throw BackupError.invalidData
         }
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let lastVisibleMonth = LocalDate(date: .now, timeZone: utc).addingMonths(3, timeZone: utc).monthKey
+        try validateGeneratedHistory(through: lastVisibleMonth)
         for network in networks where !network.isBuiltIn {
             guard !CardNetwork.builtInDefinitions.contains(where: { $0.code == network.code || $0.id == network.id }) else {
                 throw BackupError.conflict
