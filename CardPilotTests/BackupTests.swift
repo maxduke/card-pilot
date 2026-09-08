@@ -47,6 +47,19 @@ final class BackupTests: XCTestCase {
         XCTAssertThrowsError(try records.validateGeneratedHistory(through: 202612))
     }
 
+    func testSavedUnpaidCyclesCannotBypassHistoryBudget() throws {
+        var records = BackupRecords()
+        let owner = UUID()
+        records.billingCycles = (0...BackupRecords.maximumGeneratedBillingCycles).map { index in
+            BackupRecords.BillingCycleRecordRecord(
+                id: UUID(), cycleKey: (index / 12 + 1) * 100 + index % 12 + 1, account: owner
+            )
+        }
+        XCTAssertThrowsError(try records.validateGeneratedHistory(through: 202612))
+        records.billingCycles.removeLast()
+        XCTAssertNoThrow(try records.validateGeneratedHistory(through: 202612))
+    }
+
     func testSavedFixtureSatisfiesDomainConstraints() throws {
         let container = try fixture()
         let context = container.mainContext

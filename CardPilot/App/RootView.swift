@@ -200,6 +200,7 @@ struct RootView: View {
                 maxReminderOffset: maxReminderOffset
             )
                 .map { today.addingMonths($0, timeZone: timeZone).monthKey }
+            let recordsByCycle = Dictionary(account.billingCycles.map { ($0.cycleKey, $0) }, uniquingKeysWith: { first, _ in first })
             let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
             let cycleKeys = Self.reminderCycleKeys(
                 generated: upcomingCycleKeys,
@@ -207,7 +208,7 @@ struct RootView: View {
                 trackingStartCycleKey: account.trackingStartCycleKey
             )
             return cycleKeys.compactMap { cycleKey in
-                let record = account.billingCycles.first { $0.cycleKey == cycleKey }
+                let record = recordsByCycle[cycleKey]
                 guard let cycle = try? BillingCalculator.calculate(
                     account: account,
                     cycleKey: cycleKey,

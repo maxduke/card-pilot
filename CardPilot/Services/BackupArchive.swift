@@ -138,7 +138,8 @@ struct BackupRecords: Codable, Equatable, Sendable {
             let months = (rule.repaymentValue + 27) / 28
             lookbackByAccount[rule.account] = max(lookbackByAccount[rule.account] ?? 1, months)
         }
-        var generated = 0
+        var generated = billingCycles.filter { $0.repaidAt == nil }.count
+        guard generated <= Self.maximumGeneratedBillingCycles else { throw BackupError.generatedHistoryTooLarge }
         for account in accounts {
             let firstMonth = try monthIndex(account.trackingStartCycleKey)
             // Reserve the maximum device reminder horizon too (365 days).
@@ -527,6 +528,17 @@ extension BackupRecords {
             context.insert(model)
             allocationsByID[record.id] = model
         }
+        // Establish many-to-many relationships after every object is registered.
+        // Inserting later related objects can otherwise replace a transient inverse.
+        for record in cards {
+            cardsByID[record.id]?.networks = try record.networks.map { try reference($0, in: networksByID) }
+        }
+        for record in promotions {
+            let model = try reference(record.id, in: promotionsByID)
+            model.organizingBanks = try record.organizingBanks.map { try reference($0, in: banksByID) }
+            model.organizingNetworks = try record.organizingNetworks.map { try reference($0, in: networksByID) }
+            model.eligibleCards = try record.eligibleCards.map { try reference($0, in: cardsByID) }
+        }
         // SwiftData does not consistently materialize inverse collections during
         // insertion. Domain validation reads these collections before the save.
         let rulesByAccount = Dictionary(grouping: billingRules, by: \.account)
@@ -537,7 +549,16 @@ extension BackupRecords {
         }
         func validate(_ category: String, _ action: () throws -> Void) throws {
             do { try action() }
-            catch { throw BackupError.invalidModelData(category) }
+            catch {
+                // These descriptions contain no imported values; keep failures actionable.
+                switch error as? ModelValidationError {
+                case .invalidNetworkCombination: throw BackupError.invalidModelData(category + "（卡组织组合）")
+                case .invalidLastFour: throw BackupError.invalidModelData(category + "（末四位）")
+                case .invalidAccountStatus: throw BackupError.invalidModelData(category + "（状态）")
+                case .blankName: throw BackupError.invalidModelData(category + "（名称）")
+                default: throw BackupError.invalidModelData(category)
+                }
+            }
         }
         try validate("银行") { try banksByID.values.forEach { try $0.validate() } }
         try validate("卡组织") { try networksByID.values.forEach { try $0.validate() } }
