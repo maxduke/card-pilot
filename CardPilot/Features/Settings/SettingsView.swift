@@ -24,6 +24,8 @@ struct SettingsView: View {
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var showingTimeZonePicker = false
     @State private var errorMessage: String?
+    @State private var sendingTestReminder = false
+    @State private var testReminderFeedback: String?
 
     var body: some View {
         NavigationStack {
@@ -47,7 +49,7 @@ struct SettingsView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await refreshNotificationStatus() } }
             }
-            .sheet(isPresented: $showingTimeZonePicker) {
+            .trackedSheet(isPresented: $showingTimeZonePicker) {
                 TimeZonePicker(selectedIdentifier: $storedHomeTimeZone)
             }
             .alert("无法完成设置", isPresented: errorPresented) {
@@ -112,6 +114,24 @@ struct SettingsView: View {
 
             LabeledContent("通知权限", value: notificationStatusText)
             notificationAction
+            Button("发送测试提醒", systemImage: "bell.badge") {
+                sendingTestReminder = true
+                testReminderFeedback = nil
+                Task {
+                    defer { sendingTestReminder = false }
+                    do {
+                        try await LocalNotificationScheduler.shared.sendTestReminder()
+                        testReminderFeedback = "已安排 5 秒后发送，可切到后台检查。显示与声音受系统设置影响。"
+                    } catch LocalNotificationScheduler.SchedulingError.permissionDenied {
+                        errorMessage = "通知权限未开启，请在系统设置中允许通知后重试。"
+                    } catch {
+                        errorMessage = "测试提醒未能安排，请重试。"
+                    }
+                    await refreshNotificationStatus()
+                }
+            }
+            .disabled(sendingTestReminder)
+            if let testReminderFeedback { Text(testReminderFeedback).font(.footnote).foregroundStyle(.secondary) }
         } header: {
             Text("提醒设置")
         } footer: {

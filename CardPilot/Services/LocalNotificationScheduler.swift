@@ -56,6 +56,7 @@ final class LocalNotificationScheduler {
     nonisolated static let identifierPrefix = "cardpilot."
     // Keep a bounded chronological window; a later request must never hide an earlier omission.
     nonisolated static let requestLimit = 48
+    nonisolated static let testIdentifier = "cardpilot-test.reminder"
 
     private let client: any NotificationClient
     private var revision = 0
@@ -72,6 +73,23 @@ final class LocalNotificationScheduler {
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await client.authorizationStatus()
+    }
+
+    /// A single separate slot survives billing rebuilds and never evicts the 48 billing requests.
+    func sendTestReminder() async throws {
+        let status = await client.authorizationStatus()
+        switch status {
+        case .notDetermined:
+            guard try await client.requestAuthorization() else { throw SchedulingError.permissionDenied }
+        case .authorized, .provisional, .ephemeral: break
+        default: throw SchedulingError.permissionDenied
+        }
+        let content = UNMutableNotificationContent()
+        content.title = "CardPilot 测试提醒"
+        content.body = "提醒已成功送达。实际显示与声音受系统通知、专注模式和静音设置影响。"
+        content.sound = .default
+        try await client.add(UNNotificationRequest(identifier: Self.testIdentifier, content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)))
     }
 
     func rebuild(
@@ -220,6 +238,7 @@ final class LocalNotificationScheduler {
 
     enum SchedulingError: Error, Equatable {
         case invalidTime
+        case permissionDenied
     }
 
     enum ReminderEvent: String, Equatable {

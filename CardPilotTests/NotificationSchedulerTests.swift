@@ -5,6 +5,53 @@ import XCTest
 
 @MainActor
 final class NotificationSchedulerTests: XCTestCase {
+    func testTestReminderSurvivesRebuildAndRepeatedTestsUseOneSlot() async throws {
+        let client = TestNotificationClient()
+        let scheduler = LocalNotificationScheduler(client: client)
+        try await scheduler.sendTestReminder()
+        try await scheduler.sendTestReminder()
+        XCTAssertEqual(client.requests.count, 1)
+        let test = try XCTUnwrap(client.requests[LocalNotificationScheduler.testIdentifier])
+        XCTAssertEqual((test.trigger as? UNTimeIntervalNotificationTrigger)?.timeInterval, 5)
+        XCTAssertFalse((test.trigger as? UNTimeIntervalNotificationTrigger)?.repeats ?? true)
+        XCTAssertTrue(test.content.userInfo.isEmpty)
+        _ = try await scheduler.rebuild(cycles: [], statementOffsets: [], repaymentOffsets: [],
+                                       reminderHour: 9, reminderMinute: 0, timeZone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertNotNil(client.requests[LocalNotificationScheduler.testIdentifier])
+        XCTAssertFalse(LocalNotificationScheduler.owns(LocalNotificationScheduler.testIdentifier))
+    }
+
+    func testTestReminderDeniedDoesNotScheduleAndRequestsPermissionIfUndetermined() async throws {
+        let client = TestNotificationClient()
+        let scheduler = LocalNotificationScheduler(client: client)
+        client.status = .denied
+        do {
+            try await scheduler.sendTestReminder()
+            XCTFail("Denied notifications must not be scheduled")
+        } catch { XCTAssertEqual(error as? LocalNotificationScheduler.SchedulingError, .permissionDenied) }
+        XCTAssertTrue(client.requests.isEmpty)
+        client.status = .notDetermined
+        client.grantsPermission = false
+        do {
+            try await scheduler.sendTestReminder()
+            XCTFail("Declined permission must not schedule")
+        } catch { XCTAssertEqual(error as? LocalNotificationScheduler.SchedulingError, .permissionDenied) }
+        XCTAssertTrue(client.requests.isEmpty)
+        client.grantsPermission = true
+        try await scheduler.sendTestReminder()
+        XCTAssertEqual(client.authorizationRequests, 2)
+        XCTAssertEqual(client.requests.count, 1)
+    }
+
+    func testTestReminderReportsAddFailure() async {
+        let client = TestNotificationClient()
+        client.failAdds = true
+        do {
+            try await LocalNotificationScheduler(client: client).sendTestReminder()
+            XCTFail("Failed add must be reported")
+        } catch { XCTAssertTrue(client.requests.isEmpty) }
+    }
+
     func testPlansAreUniquePerAccountAndOffsetsAreDeduplicated() throws {
         let timeZone = TimeZone(secondsFromGMT: 0)!
         let cycle = BillingCycle(
@@ -289,8 +336,14 @@ private final class TestNotificationClient: NotificationClient {
     var onPausedAdd: (() -> Void)?
     private var continuation: CheckedContinuation<Void, Never>?
 
-    func requestAuthorization() async throws -> Bool { true }
-    func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
+    var status: UNAuthorizationStatus = .authorized
+    var grantsPermission = true
+    var authorizationRequests = 0
+    func requestAuthorization() async throws -> Bool {
+        authorizationRequests += 1
+        return grantsPermission
+    }
+    func authorizationStatus() async -> UNAuthorizationStatus { status }
     func pendingRequests() async -> [UNNotificationRequest] { Array(requests.values) }
     func removeRequests(withIdentifiers identifiers: [String]) {
         for identifier in identifiers { requests.removeValue(forKey: identifier) }

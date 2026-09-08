@@ -86,7 +86,7 @@ struct CurrencyPickerView: View {
             }
         }
         .accessibilityLabel("\(title)：\(selection)")
-        .sheet(isPresented: $showingSheet) {
+        .trackedSheet(isPresented: $showingSheet) {
             CurrencyPickerSheet(selection: $selection, title: title)
         }
     }

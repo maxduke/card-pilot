@@ -142,16 +142,16 @@ struct CardsView: View {
                     .accessibilityLabel("卡片与银行管理")
                 }
             }
-            .sheet(isPresented: $showingBankEditor) {
+            .trackedSheet(isPresented: $showingBankEditor) {
                 BankEditorView(bank: editingBank)
             }
-            .sheet(isPresented: $showingAccountEditor) {
+            .trackedSheet(isPresented: $showingAccountEditor) {
                 AccountEditorView(account: editingAccount, banks: banks)
             }
-            .sheet(isPresented: $showingCardEditor) {
+            .trackedSheet(isPresented: $showingCardEditor) {
                 CardEditorView(card: editingCard, accounts: accounts, networks: networks)
             }
-            .sheet(isPresented: $showingCardOnboarding) {
+            .trackedSheet(isPresented: $showingCardOnboarding) {
                 CardOnboardingView(banks: banks, accounts: accounts, networks: networks)
             }
             .confirmationDialog("确认删除账户？", isPresented: accountDeletePresented) {
