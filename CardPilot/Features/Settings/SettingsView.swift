@@ -103,6 +103,12 @@ struct SettingsView: View {
                     Text("应用会在打开时补充后续提醒。减少提前提醒节点可以安排更长时间的计划。活动报名和结束日期目前仅显示在首页。")
                 }
 
+                Section("数据备份") {
+                    NavigationLink("完整备份与恢复", systemImage: "externaldrive") {
+                        BackupView()
+                    }
+                }
+
                 Section("安全与隐私") {
                     Toggle("使用生物识别或设备密码锁定", isOn: appLockBinding)
                     Label("CardPilot 不需要完整卡号或 CVV。", systemImage: "lock.shield")

@@ -793,6 +793,14 @@ enum CardPilotSchemaV3: VersionedSchema {
 }
 
 enum CardPilotPersistence {
+    static func makeContainer(at url: URL) throws -> ModelContainer {
+        let schema = Schema(versionedSchema: CardPilotSchemaV3.self)
+        let configuration = ModelConfiguration(
+            "CardPilotPrereleaseV3", schema: schema, url: url, cloudKitDatabase: .none
+        )
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
         let schema = Schema(versionedSchema: CardPilotSchemaV3.self)
         let configuration = ModelConfiguration(

@@ -107,31 +107,31 @@ final class CardPilotSceneDelegate: NSObject, UIWindowSceneDelegate {
 struct CardPilotApp: App {
     @UIApplicationDelegateAdaptor(CardPilotAppDelegate.self) private var appDelegate
 
-    private let container: ModelContainer
+    @StateObject private var store = BackupStore()
 
     init() {
         if UserDefaults.standard.string(forKey: "cardPilot.homeTimeZone") == nil {
             UserDefaults.standard.set(TimeZone.current.identifier, forKey: "cardPilot.homeTimeZone")
         }
-        do {
-            let container = try CardPilotPersistence.makeContainer()
-            container.mainContext.autosaveEnabled = false
-            let context = ModelContext(container)
-            let descriptor = FetchDescriptor<CardNetwork>()
-            if try context.fetchCount(descriptor) == 0 {
-                CardNetwork.makeBuiltIns().forEach(context.insert)
-                try context.save()
-            }
-            self.container = container
-        } catch {
-            fatalError("无法创建本地数据存储：\(error)")
-        }
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            Group {
+                if let container = store.container {
+                    RootView()
+                        .modelContainer(container)
+                        .id(store.sessionID)
+                } else {
+                    StorageRecoveryView()
+                }
+            }
+            .environmentObject(store)
+            .alert("恢复完成", isPresented: $store.restoreCompleted) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text("已启用备份数据，页面与提醒将重新计算。原存储文件仍保留。")
+            }
         }
-        .modelContainer(container)
     }
 }

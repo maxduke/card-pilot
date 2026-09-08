@@ -26,7 +26,7 @@ struct RootView: View {
     @State private var showingCardOnboarding = false
     @State private var isAuthenticating = false
     @State private var authenticationAttempt = 0
-    @State private var notificationScheduler = LocalNotificationScheduler()
+    @State private var notificationScheduler = LocalNotificationScheduler.shared
     @State private var notificationRequestRevision = 0
 
     init() {

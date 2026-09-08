@@ -51,6 +51,8 @@ struct SystemNotificationClient: NotificationClient {
 
 @MainActor
 final class LocalNotificationScheduler {
+    // Root views can be replaced after restore; all generations share one serialized writer.
+    static let shared = LocalNotificationScheduler()
     nonisolated static let identifierPrefix = "cardpilot."
     // Keep a bounded chronological window; a later request must never hide an earlier omission.
     nonisolated static let requestLimit = 48
