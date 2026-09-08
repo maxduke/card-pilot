@@ -210,9 +210,10 @@ struct DashboardView: View {
                 from: account.trackingStartCycleKey,
                 through: today.addingMonths(2).monthKey
             )
+            let recordsByCycle = Dictionary(account.billingCycles.map { ($0.cycleKey, $0) }, uniquingKeysWith: { first, _ in first })
             let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
             for cycleKey in Set(nearbyCycleKeys + savedUnpaidCycleKeys) {
-                let record = account.billingCycles.first { $0.cycleKey == cycleKey }
+                let record = recordsByCycle[cycleKey]
                 guard let cycle = try? BillingCalculator.calculate(
                     account: account,
                     cycleKey: cycleKey,
