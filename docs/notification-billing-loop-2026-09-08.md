@@ -19,7 +19,9 @@
 
 `NotificationSchedulerTests` 补充测试提醒权限拒绝、首次申请、请求失败、固定槽位与重建保留。已有通知窗口、交错重建和失败保留测试继续运行。
 
-Linux 本地检查：Swift 6.1 对全部应用与 XCTest 源码的语法解析通过；隔离副本的 65 项 XCTest 通过。隔离副本使用通知 API 替身和普通模型类，仅验证纯计算和调度逻辑，不验证 SwiftUI、UIKit、SwiftData 或真实系统认证。原生构建及完整测试结果以本批 PR 的 iOS CI 为准。
+Linux 本地检查：Swift 6.1 对全部应用与 XCTest 源码的语法解析通过；隔离副本的 65 项 XCTest 通过。隔离副本使用通知 API 替身和普通模型类，仅验证纯计算和调度逻辑，不验证 SwiftUI、UIKit、SwiftData 或真实系统认证。原生构建及完整测试已通过 [iOS CI 34243642901](https://github.com/maxduke/card-pilot/actions/runs/34243642901)，对应功能提交 `0e29e46`；Codex 评审完成，无待处理发现。原生首轮测试捕获的失败插入关系残留已修复，并增加持久化故障下的关系恢复与重试测试。
+
+同一提交的 [未签名 IPA 构建 34289942176](https://github.com/maxduke/card-pilot/actions/runs/34289942176) 已成功，包结构及 SHA-256 校验通过，已提供用户测试。Artifact 于 2026-09-16 07:19（北京时间）到期；生成测试包不表示下方真机步骤已经验收。
 
 ## 真机验收（待执行）
 
