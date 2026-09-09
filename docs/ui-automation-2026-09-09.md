@@ -38,4 +38,4 @@ xcodebuild test -project CardPilot.xcodeproj -scheme CardPilot \
 - 检查建卡与交易键盘、sheet 动画、浅色/深色、大字号及 VoiceOver；UI 测试通过不等同于这些体验验收通过。
 - 完整备份与系统文件面板继续按 `backup-restore-2026-09-08.md` 验收。
 
-四条 UI 用例已通过原生 CI。最终评审指出夹具的内置 Visa 必须使用规范 UUID，已改为 `CardNetwork.makeBuiltIns()` 并新增完整备份校验往返测试；修正提交等待原生 CI 再验证。滚动手势位于列表边缘，并避开键盘与固定按钮栏，防止误触活动开关。
+四条 UI 用例及新增夹具完整备份校验往返测试已通过原生 CI [run 34311465007](https://github.com/maxduke/card-pilot/actions/runs/34311465007)。最终评审指出夹具的内置 Visa 必须使用规范 UUID，已改为 `CardNetwork.makeBuiltIns()` 并新增校验；滚动手势位于列表边缘，并避开键盘与固定按钮栏，防止误触活动开关。
