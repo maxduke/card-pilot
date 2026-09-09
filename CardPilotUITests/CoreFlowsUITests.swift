@@ -151,19 +151,15 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement) {
-        // SwiftUI can report an obscured field as hittable. Also require its full
-        // frame above the fixed footer and wait for layout to settle before tapping.
-        for _ in 0..<6 {
-            var previousFrame: CGRect?
-            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                guard element.exists, element.isHittable else { return false }
-                let frame = element.frame
-                let stable = previousFrame == frame
-                previousFrame = frame
-                let unobscured = element.elementType != .textField || frame.maxY < self.contentBottom
-                return stable && unobscured
-            }, object: nil)
-            if XCTWaiter.wait(for: [ready], timeout: 3) == .completed { return }
+        // SwiftUI can report a field behind the fixed footer as hittable.
+        // Check its geometry as well; keep queries outside a polling predicate
+        // because remote accessibility snapshots may take several seconds on CI.
+        for _ in 0..<8 {
+            if element.exists || element.waitForExistence(timeout: 2) {
+                if element.isHittable {
+                    if element.elementType != .textField || element.frame.maxY < contentBottom { return }
+                }
+            }
             let frame = app.frame
             let startY = min(frame.maxY - 100, contentBottom - 25)
             let endY = max(frame.minY + 160, startY - 240)
@@ -171,6 +167,6 @@ final class CoreFlowsUITests: XCTestCase {
             origin.withOffset(CGVector(dx: frame.width * 0.9, dy: startY - frame.minY))
                 .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.9, dy: endY - frame.minY)))
         }
-        XCTFail("Expected a stable, unobscured element: \(element)")
+        XCTFail("Expected an unobscured element: \(element)")
     }
 }
