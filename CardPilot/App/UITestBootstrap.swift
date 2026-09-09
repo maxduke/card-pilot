@@ -23,10 +23,11 @@ enum UITestBootstrap {
         })
     }
 
-    private static func seed(_ context: ModelContext) throws {
+    static func seed(_ context: ModelContext) throws {
         let today = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!)
         let bank = Bank(name: "UI Test Bank")
-        let network = CardNetwork(code: "visa", displayName: "Visa", isBuiltIn: true)
+        let networks = CardNetwork.makeBuiltIns()
+        let network = networks.first { $0.code == "visa" }!
         let account = CreditCardAccount(bank: bank, trackingStartCycleKey: today.monthKey)
         let rule = BillingRuleVersion(account: account, statementDay: 1, repaymentKind: .daysAfterStatement, repaymentValue: 20)
         let card = Card(account: account, productName: "UI Primary", networks: [network], lastFour: "1234")
@@ -36,7 +37,7 @@ enum UITestBootstrap {
             eligibleCards: [card], qualificationThreshold: Decimal(1000), progressCurrencyCode: "CNY"
         )
         context.insert(bank)
-        context.insert(network)
+        networks.forEach(context.insert)
         context.insert(account)
         context.insert(rule)
         context.insert(card)
