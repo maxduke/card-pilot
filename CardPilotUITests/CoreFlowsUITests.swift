@@ -34,9 +34,8 @@ final class CoreFlowsUITests: XCTestCase {
     func testCreateCardAndReopenDetails() {
         launch("empty")
         tap(app.tabBars.buttons["记一笔"])
-        let search = app.textFields["搜索银行"]
-        enter("招商", into: search)
-        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "bank.")).firstMatch)
+        tap(app.buttons["bank.cn.icbc"])
+        XCTAssertTrue(app.staticTexts["设置账务规则"].waitForExistence(timeout: 10))
         tap(app.buttons["onboarding.advance"])
         enter("UI Created", into: app.textFields["卡产品名称"])
         enter("2468", into: app.textFields["末四位"])
@@ -61,7 +60,7 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(amount)
         XCTAssertEqual(amount.value as? String, "125")
         // Confirm a bank-recognized amount different from the transaction total.
-        amount.tap()
+        tap(amount)
         amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "100")
         tap(app.buttons["saveTransaction"])
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
@@ -140,24 +139,38 @@ final class CoreFlowsUITests: XCTestCase {
         element.tap()
     }
 
+    private var contentBottom: CGFloat {
+        var bottom = app.frame.maxY - 90
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
+        for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance"] {
+            let footer = app.buttons[identifier]
+            if footer.exists { bottom = min(bottom, footer.frame.minY) }
+        }
+        return bottom
+    }
+
     private func reveal(_ element: XCUIElement) {
-        // List rows are lazy; bound scrolling to the visible content, never use fixed sleeps.
+        // SwiftUI can report an obscured field as hittable. Also require its full
+        // frame above the fixed footer and wait for layout to settle before tapping.
         for _ in 0..<6 {
-            if element.exists && element.isHittable { return }
-            if element.waitForExistence(timeout: 1) && element.isHittable { return }
-            // An application-wide swipe starts over the decimal keyboard on smaller
-            // simulators. Keep the gesture above both the keyboard and the fixed save bar.
+            var previousFrame: CGRect?
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                guard element.exists, element.isHittable else { return false }
+                let frame = element.frame
+                let stable = previousFrame == frame
+                previousFrame = frame
+                let unobscured = element.elementType != .textField || frame.maxY < self.contentBottom
+                return stable && unobscured
+            }, object: nil)
+            if XCTWaiter.wait(for: [ready], timeout: 3) == .completed { return }
             let frame = app.frame
-            let keyboard = app.keyboards.firstMatch
-            let saveButton = app.buttons["saveTransaction"]
-            var bottom = keyboard.exists ? keyboard.frame.minY : frame.maxY - 90
-            if saveButton.exists { bottom = min(bottom, saveButton.frame.minY) }
-            let startY = min(frame.maxY - 100, bottom - 25)
+            let startY = min(frame.maxY - 100, contentBottom - 25)
             let endY = max(frame.minY + 160, startY - 240)
             let origin = app.coordinate(withNormalizedOffset: .zero)
             origin.withOffset(CGVector(dx: frame.width * 0.9, dy: startY - frame.minY))
                 .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.9, dy: endY - frame.minY)))
         }
-        XCTFail("Expected a hittable element: \(element)")
+        XCTFail("Expected a stable, unobscured element: \(element)")
     }
 }
