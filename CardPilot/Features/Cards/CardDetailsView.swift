@@ -109,6 +109,7 @@ struct CardDetailView: View {
                     }
                     .padding(.vertical, 5)
                 }
+                .accessibilityIdentifier("card.account")
             }
 
             Section("适用活动") {
@@ -240,6 +241,7 @@ struct AccountDetailView: View {
                         NavigationLink {
                             BillingCycleDetailView(account: account, cycleKey: cycle.cycleKey)
                         } label: { BillingCycleRow(cycle: cycle, today: today) }
+                        .accessibilityIdentifier("billingCycle.\(cycle.cycleKey)")
                     }
                 }
             }
@@ -250,6 +252,7 @@ struct AccountDetailView: View {
                         NavigationLink {
                             BillingCycleDetailView(account: account, cycleKey: cycle.cycleKey)
                         } label: { BillingCycleRow(cycle: cycle, today: today) }
+                        .accessibilityIdentifier("billingCycle.\(cycle.cycleKey)")
                     }
                 }
             }

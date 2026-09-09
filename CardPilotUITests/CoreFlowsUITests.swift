@@ -93,6 +93,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         openCard("UI Shared")
+        tap(app.buttons["card.account"])
         tap(app.buttons[cycleID])
         tap(app.buttons["撤销已还款"])
         XCTAssertTrue(app.buttons["标记已还"].waitForExistence(timeout: 10))
@@ -144,7 +145,16 @@ final class CoreFlowsUITests: XCTestCase {
         for _ in 0..<6 {
             if element.exists && element.isHittable { return }
             if element.waitForExistence(timeout: 1) && element.isHittable { return }
-            app.swipeUp()
+            // An application-wide swipe starts over the decimal keyboard on smaller
+            // simulators. Keep the entire gesture inside the content above it.
+            let frame = app.frame
+            let keyboard = app.keyboards.firstMatch
+            let bottom = keyboard.exists ? keyboard.frame.minY : frame.maxY - 90
+            let startY = min(frame.maxY - 100, bottom - 45)
+            let endY = max(frame.minY + 160, startY - 240)
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            origin.withOffset(CGVector(dx: frame.width * 0.9, dy: startY - frame.minY))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.9, dy: endY - frame.minY)))
         }
         XCTFail("Expected a hittable element: \(element)")
     }
