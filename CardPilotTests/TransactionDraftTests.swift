@@ -58,6 +58,19 @@ final class TransactionDraftTests: XCTestCase {
         }
     }
 
+    func testCommittedDraftCleanupFailureDoesNotBlockNewTransaction() throws {
+        try withStore { store, directory in
+            let input = draft()
+            try store.save(input)
+            let failingCleanup = TransactionDraftStore(databaseURL: directory.appendingPathComponent("first.store"),
+                                                      removeFile: { _ in throw DraftError.unreadable })
+            XCTAssertNil(try failingCleanup.load(isCommitted: { $0 == input.id }))
+            XCTAssertEqual(try store.load(), input, "Failed cleanup leaves the file, but it must not be offered for recovery.")
+            XCTAssertThrowsError(try failingCleanup.clear(), "An explicit discard still reports failure.")
+            XCTAssertEqual(try failingCleanup.load(isCommitted: { _ in false }), input)
+        }
+    }
+
     func testFailedCommitLookupKeepsRecoverableDraft() throws {
         try withStore { store, _ in
             let input = draft()

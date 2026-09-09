@@ -37,10 +37,12 @@ enum DraftError: Error { case unreadable }
 
 struct TransactionDraftStore {
     let url: URL
+    private let removeFile: (URL) throws -> Void
 
     /// The database path survives relaunch, and changes on whole-store backup restoration.
-    init(databaseURL: URL) {
+    init(databaseURL: URL, removeFile: @escaping (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }) {
         url = databaseURL.appendingPathExtension("transaction-draft.json")
+        self.removeFile = removeFile
     }
 
     func load(isCommitted: (UUID) throws -> Bool = { _ in false }) throws -> TransactionDraft? {
@@ -51,7 +53,8 @@ struct TransactionDraftStore {
         let draft = try JSONDecoder().decode(TransactionDraft.self, from: data)
         try draft.validate()
         if try isCommitted(draft.id) {
-            try clear()
+            // The database is authoritative. An obsolete file must not block a new transaction.
+            try? clear()
             return nil
         }
         return draft
@@ -81,7 +84,7 @@ struct TransactionDraftStore {
 
     func clear() throws {
         if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
+            try removeFile(url)
         }
     }
 }
