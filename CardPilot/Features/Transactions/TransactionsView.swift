@@ -465,6 +465,7 @@ struct TransactionRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(transactionAccessibilityLabel(transaction))
         .accessibilityHint("查看交易详情")
+        .accessibilityIdentifier("transaction.\(transaction.merchant)")
     }
 
     private func transactionTag(_ title: String, color: Color) -> some View {
@@ -1267,12 +1268,14 @@ struct TransactionEditorView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
                         if selectedPromotionIDs.contains(promotion.id) {
                             TextField(
                                 "计入金额（\(promotion.progressCurrencyCode)）",
                                 text: amountBinding(promotion.id)
                             )
                             .keyboardType(.decimalPad)
+                            .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             .padding(.leading, 24)
                             if let warning = qualificationWarning(for: promotion) {
                                 Text(warning)

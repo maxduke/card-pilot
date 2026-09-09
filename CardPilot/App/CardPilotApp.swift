@@ -113,9 +113,14 @@ final class CardPilotSceneDelegate: NSObject, UIWindowSceneDelegate {
 struct CardPilotApp: App {
     @UIApplicationDelegateAdaptor(CardPilotAppDelegate.self) private var appDelegate
 
-    @StateObject private var store = BackupStore()
+    @StateObject private var store: BackupStore
 
     init() {
+        #if DEBUG && targetEnvironment(simulator)
+        _store = StateObject(wrappedValue: UITestBootstrap.makeStore() ?? BackupStore())
+        #else
+        _store = StateObject(wrappedValue: BackupStore())
+        #endif
         if UserDefaults.standard.string(forKey: "cardPilot.homeTimeZone") == nil {
             UserDefaults.standard.set(TimeZone.current.identifier, forKey: "cardPilot.homeTimeZone")
         }

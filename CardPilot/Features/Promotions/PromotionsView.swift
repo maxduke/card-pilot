@@ -506,6 +506,7 @@ private struct PromotionProgressSummary: View {
                 )
                 .tint(progress.isComplete ? .green : .accentColor)
                 Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
+                    .accessibilityIdentifier("promotion.progress.\(promotion.title)")
                     .font(compact ? .caption : .body)
                     .foregroundStyle(progress.isComplete ? .green : .primary)
                 Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingToThreshold ?? threshold, currencyCode: promotion.progressCurrencyCode))")

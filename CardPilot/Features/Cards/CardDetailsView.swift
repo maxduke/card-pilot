@@ -66,6 +66,7 @@ struct CardDetailView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("card.addTransaction")
 
                 NavigationLink {
                     CardTransactionHistoryView(card: card)
@@ -78,6 +79,7 @@ struct CardDetailView: View {
                         showsChevron: false
                     )
                 }
+                .accessibilityIdentifier("card.transactions")
             }
 
             Section("账单日程") {
@@ -89,6 +91,7 @@ struct CardDetailView: View {
                         NavigationLink {
                             BillingCycleDetailView(account: card.account, cycleKey: cycle.cycleKey)
                         } label: { BillingCycleRow(cycle: cycle, today: today) }
+                        .accessibilityIdentifier("billingCycle.\(cycle.cycleKey)")
                     }
                 }
 
