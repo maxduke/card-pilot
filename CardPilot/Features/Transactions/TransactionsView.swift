@@ -1283,57 +1283,63 @@ struct TransactionEditorForm: View {
         editorStep = 1
     }
 
-    @ViewBuilder
     private var cardSelector: some View {
-        if selectableCards.isEmpty {
-            Label("请先在“卡片”页添加信用卡", systemImage: "creditcard")
-                .foregroundStyle(.secondary)
-        } else if let selectedCard {
-            Button {
-                showingCardPicker = true
-            } label: {
-                HStack(spacing: 12) {
-                    BankBadge(bank: selectedCard.account.bank)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(selectedCard.nickname.isEmpty ? selectedCard.productName : selectedCard.nickname)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        HStack(spacing: 6) {
-                            Text("•••• \(selectedCard.lastFour)")
-                                .font(.caption.monospaced())
-                            CardNetworksBadges(networks: selectedCard.networks)
+        Group {
+            if selectableCards.isEmpty {
+                Label("请先在“卡片”页添加信用卡", systemImage: "creditcard")
+                    .foregroundStyle(.secondary)
+            } else if let selectedCard {
+                Button {
+                    showingCardPicker = true
+                } label: {
+                    HStack(spacing: 12) {
+                        BankBadge(bank: selectedCard.account.bank)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(selectedCard.nickname.isEmpty ? selectedCard.productName : selectedCard.nickname)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text("•••• \(selectedCard.lastFour)")
+                                    .font(.caption.monospaced())
+                                CardNetworksBadges(networks: selectedCard.networks)
+                            }
+                            .foregroundStyle(.secondary)
                         }
-                        .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(12)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("当前卡片，\(cardLabel(selectedCard))")
-            .accessibilityHint("打开卡片选择")
-            .trackedSheet(isPresented: $showingCardPicker) {
-                CardSelectionSheet(
-                    cards: selectableCards,
-                    selectedCardID: cardID,
-                    lastUsedCardID: lastUsedCardID,
-                    onSelect: { selectedID in
-                        cardID = selectedID
-                        showingCardPicker = false
+                    .padding(12)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
                     }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("当前卡片，\(cardLabel(selectedCard))")
+                .accessibilityHint("打开卡片选择")
+            } else {
+                Button("选择其他卡片", systemImage: "creditcard") {
+                    showingCardPicker = true
+                }
+                .accessibilityHint("草稿中的卡片已不可用，请重新选择")
             }
+        }
+        .trackedSheet(isPresented: $showingCardPicker) {
+            CardSelectionSheet(
+                cards: selectableCards,
+                selectedCardID: cardID,
+                lastUsedCardID: lastUsedCardID,
+                onSelect: { selectedID in
+                    cardID = selectedID
+                    showingCardPicker = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 

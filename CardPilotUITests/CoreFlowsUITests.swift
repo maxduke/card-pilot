@@ -134,6 +134,38 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
     }
 
+    func testDraftWithDeletedCardCanSelectReplacementAndSave() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("50", into: app.textFields["transactionAmount"])
+        enter("UI Replacement", into: app.textFields["商户（可选）"])
+        tap(app.buttons["关闭"])
+        tap(app.buttons["保留草稿并关闭"])
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["卡片"])
+        let card = app.buttons["card.UI Shared"]
+        reveal(card)
+        card.press(forDuration: 1)
+        tap(app.buttons["删除卡片"])
+        tap(app.buttons["永久删除"])
+        tap(app.tabBars.buttons["记一笔"])
+        tap(app.buttons["继续草稿"])
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        tap(app.buttons["选择其他卡片"])
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Primary")).firstMatch)
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "50")
+        XCTAssertEqual(app.textFields["商户（可选）"].value as? String, "UI Replacement")
+        tap(app.buttons["saveTransaction"])
+        tap(app.buttons["saveTransaction"])
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        XCTAssertTrue(app.buttons["transaction.UI Replacement"].waitForExistence(timeout: 10))
+    }
+
     func testRepaymentAndUndoPersistAcrossSharedCards() {
         launch("core")
         openCard("UI Primary")
