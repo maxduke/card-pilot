@@ -63,11 +63,19 @@ struct CardsView: View {
                                             NavigationLink {
                                                 CardDetailView(card: card)
                                             } label: {
-                                                CardRow(card: card) {
+                                                CardRow(card: card)
+                                            }
+                                            .contextMenu {
+                                                Button {
                                                     editingCard = card
                                                     showingCardEditor = true
-                                                } onDelete: {
+                                                } label: {
+                                                    Label("编辑卡片", systemImage: "pencil")
+                                                }
+                                                Button(role: .destructive) {
                                                     requestDeleteCard(card)
+                                                } label: {
+                                                    Label("删除卡片", systemImage: "trash")
                                                 }
                                             }
                                             .accessibilityIdentifier("card.\(card.productName)")
@@ -94,18 +102,18 @@ struct CardsView: View {
                                     .buttonStyle(.borderless)
                                     .accessibilityLabel("编辑银行 \(bank.name)")
                                 }
-                            }
-                            .contextMenu {
-                                Button {
-                                    editingBank = bank
-                                    showingBankEditor = true
-                                } label: {
-                                    Label("编辑银行", systemImage: "pencil")
-                                }
-                                Button(role: .destructive) {
-                                    requestDeleteBank(bank)
-                                } label: {
-                                    Label("删除银行", systemImage: "trash")
+                                .contextMenu {
+                                    Button {
+                                        editingBank = bank
+                                        showingBankEditor = true
+                                    } label: {
+                                        Label("编辑银行", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        requestDeleteBank(bank)
+                                    } label: {
+                                        Label("删除银行", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -1053,8 +1061,6 @@ private struct AccountRow: View {
 
 private struct CardRow: View {
     let card: Card
-    let onEdit: () -> Void
-    let onDelete: () -> Void
 
     var body: some View {
         HStack {
@@ -1086,10 +1092,6 @@ private struct CardRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(cardAccessibilityLabel)
         .accessibilityHint("查看卡片详情")
-        .contextMenu {
-            Button(action: onEdit) { Label("编辑卡片", systemImage: "pencil") }
-            Button(role: .destructive, action: onDelete) { Label("删除卡片", systemImage: "trash") }
-        }
     }
 
     private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
