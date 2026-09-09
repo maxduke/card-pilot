@@ -773,6 +773,7 @@ struct TransactionEditorForm: View {
     @State private var overRefundWarningMessage: String?
 
     let draftStore: TransactionDraftStore
+    let isResumedDraft: Bool
     @Environment(\.scenePhase) private var scenePhase
     @State private var draftID: UUID
     @State private var hasPersistedDraft: Bool
@@ -796,6 +797,7 @@ struct TransactionEditorForm: View {
     ) {
         _hasPersistedDraft = State(initialValue: draft != nil)
         self.draftStore = draftStore
+        self.isResumedDraft = draft != nil
         _draftID = State(initialValue: draft?.id ?? UUID())
         _savedPromotionCurrencies = State(initialValue: draft?.promotionCurrencies ?? [:])
         self.transaction = transaction
@@ -1110,8 +1112,8 @@ struct TransactionEditorForm: View {
         guard transaction == nil, didInitializePromotions, !draftFinished,
               force || hasPersistedDraft || (initialDraftSnapshot != nil && draftSnapshot != initialDraftSnapshot) else { return }
         do {
-            try draftStore.save(draftSnapshot)
-            hasPersistedDraft = true
+            guard let initialDraftSnapshot else { return }
+            hasPersistedDraft = try draftStore.persist(draftSnapshot, initial: initialDraftSnapshot, isResumed: isResumedDraft)
             draftWriteError = false
         } catch { draftWriteError = true }
     }

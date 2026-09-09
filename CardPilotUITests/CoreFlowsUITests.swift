@@ -127,11 +127,18 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["丢弃草稿并新建"])
         XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        let amount = app.textFields["transactionAmount"]
+        enter("75", into: amount)
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         app.terminate()
         app.launch()
         openCard("UI Shared")
         tap(app.buttons["card.transactions"])
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
+        tap(app.tabBars.buttons["记一笔"])
+        XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
     func testDraftWithDeletedCardCanSelectReplacementAndSave() {

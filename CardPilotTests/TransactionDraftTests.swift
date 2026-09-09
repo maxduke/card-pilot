@@ -32,6 +32,22 @@ final class TransactionDraftTests: XCTestCase {
         }
     }
 
+    func testRevertingFreshDraftClearsFileButResumedDraftRemains() throws {
+        try withStore { store, _ in
+            var initial = draft()
+            initial.amountText = ""
+            initial.merchant = ""
+            var changed = initial
+            changed.amountText = "125"
+            XCTAssertTrue(try store.persist(changed, initial: initial, isResumed: false))
+            XCTAssertEqual(try store.load(), changed)
+            XCTAssertFalse(try store.persist(initial, initial: initial, isResumed: false))
+            XCTAssertNil(try store.load())
+            XCTAssertTrue(try store.persist(changed, initial: changed, isResumed: true))
+            XCTAssertEqual(try store.load(), changed)
+        }
+    }
+
     func testCommitBeforeCleanupDoesNotRecoverDuplicate() throws {
         try withStore { store, _ in
             let input = draft()

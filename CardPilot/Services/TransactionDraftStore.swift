@@ -57,6 +57,17 @@ struct TransactionDraftStore {
         return draft
     }
 
+    /// A fresh form returned to its baseline has no draft to recover. A resumed draft remains intentional.
+    @discardableResult
+    func persist(_ draft: TransactionDraft, initial: TransactionDraft, isResumed: Bool) throws -> Bool {
+        if !isResumed && draft == initial {
+            try clear()
+            return false
+        }
+        try save(draft)
+        return true
+    }
+
     func save(_ draft: TransactionDraft) throws {
         try draft.validate()
         let data = try JSONEncoder().encode(draft)
