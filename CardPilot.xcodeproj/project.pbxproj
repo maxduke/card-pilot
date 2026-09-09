@@ -12,11 +12,13 @@
 /* Begin PBXFileReference section */
 		A10000000000000000000001 /* CardPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CardPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000002 /* CardPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CardPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000002 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = CardPilotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000010 /* CardPilot */ = {isa = PBXFileSystemSynchronizedRootGroup; path = CardPilot; sourceTree = "<group>"; };
 		A10000000000000000000011 /* CardPilotTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = CardPilotTests; sourceTree = "<group>"; };
+		B10000000000000000000011 = {isa = PBXFileSystemSynchronizedRootGroup; path = CardPilotUITests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -34,6 +36,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B10000000000000000000021 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -42,6 +45,7 @@
 			children = (
 				A10000000000000000000010 /* CardPilot */,
 				A10000000000000000000011 /* CardPilotTests */,
+                B10000000000000000000011,
 				A10000000000000000000031 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -51,6 +55,7 @@
 			children = (
 				A10000000000000000000001 /* CardPilot.app */,
 				A10000000000000000000002 /* CardPilotTests.xctest */,
+                B10000000000000000000002,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -99,6 +104,18 @@
 			productReference = A10000000000000000000002 /* CardPilotTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+        B10000000000000000000041 = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = B10000000000000000000052;
+            buildPhases = (B10000000000000000000062, B10000000000000000000021, B10000000000000000000063);
+            buildRules = ();
+            dependencies = (A10000000000000000000070);
+            fileSystemSynchronizedGroups = (B10000000000000000000011);
+            name = CardPilotUITests;
+            productName = CardPilotUITests;
+            productReference = B10000000000000000000002;
+            productType = "com.apple.product-type.bundle.ui-testing";
+        };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -125,6 +142,7 @@
 			targets = (
 				A10000000000000000000040 /* CardPilot */,
 				A10000000000000000000041 /* CardPilotTests */,
+                B10000000000000000000041,
 			);
 		};
 /* End PBXProject section */
@@ -144,6 +162,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B10000000000000000000063 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -164,6 +183,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B10000000000000000000062 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -365,6 +385,30 @@
 			};
 			name = Release;
 		};
+        B10000000000000000000102 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                CODE_SIGN_STYLE = Automatic;
+                GENERATE_INFOPLIST_FILE = YES;
+                PRODUCT_BUNDLE_IDENTIFIER = com.maxduke.CardPilotUITests;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SWIFT_VERSION = 5.0;
+                TEST_TARGET_NAME = CardPilot;
+            };
+            name = Debug;
+        };
+        B10000000000000000000103 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                CODE_SIGN_STYLE = Automatic;
+                GENERATE_INFOPLIST_FILE = YES;
+                PRODUCT_BUNDLE_IDENTIFIER = com.maxduke.CardPilotUITests;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SWIFT_VERSION = 5.0;
+                TEST_TARGET_NAME = CardPilot;
+            };
+            name = Release;
+        };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -395,6 +439,12 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+        B10000000000000000000052 = {
+            isa = XCConfigurationList;
+            buildConfigurations = (B10000000000000000000102, B10000000000000000000103);
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
 /* End XCConfigurationList section */
 	};
 	rootObject = A10000000000000000000080 /* Project object */;

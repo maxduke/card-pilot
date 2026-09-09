@@ -12,7 +12,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - name: Build and test
@@ -22,7 +22,17 @@ jobs:
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
+            -resultBundlePath TestResults.xcresult \
+            -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 15 \
-            -maximum-test-execution-time-allowance 30 \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
             CODE_SIGNING_ALLOWED=NO
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: TestResults.xcresult
+          retention-days: 7
+          if-no-files-found: warn

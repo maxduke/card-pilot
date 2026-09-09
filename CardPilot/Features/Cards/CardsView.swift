@@ -70,6 +70,7 @@ struct CardsView: View {
                                                     requestDeleteCard(card)
                                                 }
                                             }
+                                            .accessibilityIdentifier("card.\(card.productName)")
                                             .padding(.leading, 22)
                                         }
                                     }
@@ -552,6 +553,7 @@ private struct CardOnboardingView: View {
                     Button(step == .card ? "完成" : "继续") { advance() }
                         .buttonStyle(.borderedProminent)
                         .disabled(step == .bank && !bankIsReady)
+                        .accessibilityIdentifier("onboarding.advance")
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 10)
@@ -636,6 +638,7 @@ private struct CardOnboardingView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("选择并继续")
+                    .accessibilityIdentifier("bank.\(preset.code)")
                     if preset.id != filteredPresets.last?.id { Divider() }
                 }
             }
