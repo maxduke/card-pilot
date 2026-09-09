@@ -147,8 +147,11 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.tabBars.buttons["卡片"])
         let card = app.buttons["card.UI Shared"]
         reveal(card)
-        card.press(forDuration: 1)
-        tap(app.buttons["删除卡片"])
+        // The row's center is a Spacer. Press the card's visible content where its context menu is attached.
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).press(forDuration: 1)
+        let deleteCard = app.buttons["删除卡片"]
+        XCTAssertTrue(deleteCard.waitForExistence(timeout: 10))
+        deleteCard.tap()
         tap(app.buttons["永久删除"])
         tap(app.tabBars.buttons["记一笔"])
         tap(app.buttons["继续草稿"])
