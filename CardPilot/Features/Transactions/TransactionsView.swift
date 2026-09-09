@@ -734,7 +734,7 @@ private struct TransactionFilterSheet: View {
     }
 }
 
-struct TransactionEditorView: View {
+struct TransactionEditorForm: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let transaction: Transaction?
@@ -772,6 +772,16 @@ struct TransactionEditorView: View {
     @State private var errorMessage: String?
     @State private var overRefundWarningMessage: String?
 
+    let draftStore: TransactionDraftStore
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var draftID: UUID
+    @State private var hasPersistedDraft: Bool
+    @State private var draftFinished = false
+    @State private var draftWriteError = false
+    @State private var showingDraftClose = false
+    @State private var initialDraftSnapshot: TransactionDraft?
+    @State private var savedPromotionCurrencies: [UUID: String]
+
     private static let noOriginalTransactionID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
     init(
@@ -780,8 +790,14 @@ struct TransactionEditorView: View {
         promotions: [Promotion],
         transactions: [Transaction],
         initialPromotion: Promotion? = nil,
-        initialCard: Card? = nil
+        initialCard: Card? = nil,
+        draft: TransactionDraft? = nil,
+        draftStore: TransactionDraftStore
     ) {
+        _hasPersistedDraft = State(initialValue: draft != nil)
+        self.draftStore = draftStore
+        _draftID = State(initialValue: draft?.id ?? UUID())
+        _savedPromotionCurrencies = State(initialValue: draft?.promotionCurrencies ?? [:])
         self.transaction = transaction
         self.cards = cards
         self.promotions = promotions
@@ -816,6 +832,29 @@ struct TransactionEditorView: View {
         _allocationAmounts = State(initialValue: initialAmounts)
         _showingInactiveCards = State(initialValue: resolvedCard?.status == .inactive || cards.allSatisfy { $0.status == .inactive })
         _showingOtherFields = State(initialValue: transaction != nil)
+        if let draft {
+            _cardID = State(initialValue: draft.cardID)
+            _kind = State(initialValue: draft.kind)
+            _transactionDate = State(initialValue: (try? LocalDate(rawValue: draft.transactionOn).date(in: CardPilotUI.homeTimeZone)) ?? Date())
+            _postingDate = State(initialValue: (try? LocalDate(rawValue: draft.postingOn).date(in: CardPilotUI.homeTimeZone)) ?? Date())
+            _hasPostingDate = State(initialValue: draft.hasPostingDate)
+            _amountText = State(initialValue: draft.amountText)
+            _currencyCode = State(initialValue: draft.currencyCode)
+            _merchant = State(initialValue: draft.merchant)
+            _category = State(initialValue: draft.category)
+            _notes = State(initialValue: draft.notes)
+            _status = State(initialValue: draft.status)
+            _originalTransactionID = State(initialValue: draft.originalTransactionID)
+            _selectedPromotionIDs = State(initialValue: draft.selectedPromotionIDs)
+            _allocationAmounts = State(initialValue: draft.allocationAmounts)
+            _automaticallySelectedPromotionIDs = State(initialValue: draft.automaticallySelectedPromotionIDs)
+            _manuallyDeselectedPromotionIDs = State(initialValue: draft.manuallyDeselectedPromotionIDs)
+            _manuallyEditedAllocationIDs = State(initialValue: draft.manuallyEditedAllocationIDs)
+            _editorStep = State(initialValue: draft.editorStep)
+            _showingInactiveCards = State(initialValue: draft.showingInactiveCards)
+            _showingOtherFields = State(initialValue: draft.showingOtherFields)
+            _didInitializePromotions = State(initialValue: true)
+        }
     }
 
     private var selectedCard: Card? { cards.first { $0.id == cardID } }
@@ -932,6 +971,12 @@ struct TransactionEditorView: View {
                     } else {
                         promotionConfirmationSections
                     }
+                    if draftWriteError {
+                        Section {
+                            Text("草稿未能保存到设备，请保持此页面并重试。")
+                            Button("重试保存草稿") { persistDraft(force: true) }
+                        }
+                    }
                     if let errorMessage {
                         InlineErrorView(message: errorMessage)
                     }
@@ -973,7 +1018,14 @@ struct TransactionEditorView: View {
                 }
                 .background(.bar)
             }
-            .onAppear(perform: initializePromotions)
+            .onAppear {
+                initializePromotions()
+                if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
+            }
+            .onChange(of: draftSnapshot) { _, _ in persistDraft() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { persistDraft() }
+            }
             .task { if transaction == nil { amountIsFocused = true } }
             .onChange(of: cardID) { _, _ in
                 if transaction == nil, let selectedCard {
@@ -1005,8 +1057,26 @@ struct TransactionEditorView: View {
             .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    EditorCancelButton()
+                    if transaction == nil {
+                        Button("关闭") { showingDraftClose = true }
+                    } else {
+                        EditorCancelButton()
+                    }
                 }
+            }
+            .confirmationDialog("未完成的交易", isPresented: $showingDraftClose, titleVisibility: .visible) {
+                Button("保留草稿并关闭") {
+                    persistDraft(force: true)
+                    if !draftWriteError { dismiss() }
+                }
+                Button("丢弃草稿", role: .destructive) {
+                    do {
+                        try draftStore.clear()
+                        draftFinished = true
+                        dismiss()
+                    } catch { draftWriteError = true }
+                }
+                Button("继续编辑", role: .cancel) {}
             }
             .alert("退款超出可退范围", isPresented: Binding(
                 get: { overRefundWarningMessage != nil },
@@ -1019,6 +1089,31 @@ struct TransactionEditorView: View {
             }
         }
         .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
+    }
+
+    private var draftSnapshot: TransactionDraft {
+        TransactionDraft(id: draftID, cardID: cardID, kind: kind,
+            transactionOn: CardPilotUI.rawDate(transactionDate), postingOn: CardPilotUI.rawDate(postingDate),
+            hasPostingDate: hasPostingDate, amountText: amountText, currencyCode: currencyCode,
+            merchant: merchant, category: category, notes: notes, status: status,
+            originalTransactionID: originalTransactionID, selectedPromotionIDs: selectedPromotionIDs,
+            allocationAmounts: allocationAmounts,
+            promotionCurrencies: Dictionary(uniqueKeysWithValues: promotions.filter { selectedPromotionIDs.contains($0.id) }
+                .map { ($0.id, savedPromotionCurrencies[$0.id] ?? $0.progressCurrencyCode) }),
+            automaticallySelectedPromotionIDs: automaticallySelectedPromotionIDs,
+            manuallyDeselectedPromotionIDs: manuallyDeselectedPromotionIDs,
+            manuallyEditedAllocationIDs: manuallyEditedAllocationIDs, editorStep: editorStep,
+            showingInactiveCards: showingInactiveCards, showingOtherFields: showingOtherFields)
+    }
+
+    private func persistDraft(force: Bool = false) {
+        guard transaction == nil, didInitializePromotions, !draftFinished,
+              force || hasPersistedDraft || (initialDraftSnapshot != nil && draftSnapshot != initialDraftSnapshot) else { return }
+        do {
+            try draftStore.save(draftSnapshot)
+            hasPersistedDraft = true
+            draftWriteError = false
+        } catch { draftWriteError = true }
     }
 
     private var editorStepIndicator: some View {
@@ -1475,6 +1570,36 @@ struct TransactionEditorView: View {
     }
 
     private func save(allowingOverRefund: Bool = false) {
+        guard !draftFinished else { return }
+        if transaction == nil {
+            do {
+                let id = draftID
+                if try modelContext.fetchCount(FetchDescriptor<Transaction>(predicate: #Predicate { $0.id == id })) > 0 {
+                    draftFinished = true
+                    try? draftStore.clear()
+                    dismiss()
+                    return
+                }
+            } catch {
+                errorMessage = "无法检查交易是否已保存，请重试。"
+                return
+            }
+        }
+        guard selectedPromotionIDs.isSubset(of: Set(promotions.map(\.id))) else {
+            errorMessage = "草稿中的活动已不存在，请丢弃草稿后重新填写。"
+            return
+        }
+        for promotion in promotions where selectedPromotionIDs.contains(promotion.id) {
+            if let savedCurrency = savedPromotionCurrencies[promotion.id], savedCurrency != promotion.progressCurrencyCode {
+                errorMessage = "活动币种已改变，请丢弃草稿后重新确认计入金额。"
+                return
+            }
+        }
+        if kind == .refund, originalTransactionID != Self.noOriginalTransactionID,
+           !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
+            errorMessage = "关联的原消费已不可用，请重新选择原消费。"
+            return
+        }
         guard let card = selectedCard else { errorMessage = "请选择卡片。"; return }
         guard let amount = CardPilotUI.decimal(amountText), amount > .zero else {
             errorMessage = "金额应为大于 0 的数字。"
@@ -1586,6 +1711,7 @@ struct TransactionEditorView: View {
             }
         }
         let target = transaction ?? Transaction(
+            id: draftID,
             card: card,
             kind: kind,
             transactionOn: CardPilotUI.rawDate(transactionDate),
@@ -1636,6 +1762,11 @@ struct TransactionEditorView: View {
                 }
             }
             try modelContext.save()
+            if transaction == nil {
+                draftFinished = true
+                // If cleanup fails, the saved UUID makes the draft obsolete on next open.
+                try? draftStore.clear()
+            }
             lastUsedCardID = card.id.uuidString
             let feedback = TransactionSaveFeedback.make(
                 kind: kind,
