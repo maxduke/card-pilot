@@ -252,18 +252,25 @@ final class CoreFlowsUITests: XCTestCase {
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
         for _ in 0..<8 {
+            var targetIsAbove = false
             if element.exists || element.waitForExistence(timeout: 2) {
                 if element.isHittable {
                     if element.elementType != .textField || element.frame.maxY < contentBottom { return }
                 }
+                // After dismissing an editor, a previously visible row can be above
+                // the viewport. Always swiping up would move it farther out of reach.
+                let targetFrame = element.frame
+                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < app.frame.minY + 110
             }
             let frame = app.frame
             let startY = min(frame.maxY - 100, contentBottom - 25)
             let endY = max(frame.minY + 160, startY - 240)
             // Use the list gutter so a drag never begins on a promotion switch.
             let origin = app.coordinate(withNormalizedOffset: .zero)
-            origin.withOffset(CGVector(dx: frame.width * 0.03, dy: startY - frame.minY))
-                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.03, dy: endY - frame.minY)))
+            let dragStartY = targetIsAbove ? endY : startY
+            let dragEndY = targetIsAbove ? startY : endY
+            origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragStartY - frame.minY))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragEndY - frame.minY)))
         }
         XCTFail("Expected an unobscured element: \(element)")
     }
