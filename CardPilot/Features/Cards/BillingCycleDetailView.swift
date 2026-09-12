@@ -91,12 +91,13 @@ enum BillingCycleActions {
 }
 
 struct BillingCycleDestination: View {
+    @Environment(\.currentDay) private var currentDay
     let target: BillingCycleTarget
     @Query private var accounts: [CreditCardAccount]
 
     var body: some View {
         if let (account, _) = try? BillingCycleActions.resolve(target, accounts: accounts,
-                                                             today: CardPilotUI.localDate(from: .now)) {
+                                                             today: currentDay.today) {
             BillingCycleDetailView(account: account, cycleKey: target.cycleKey)
         } else {
             ContentUnavailableView("无法打开账期", systemImage: "calendar.badge.exclamationmark",
@@ -112,7 +113,8 @@ struct BillingCycleDetailView: View {
     @State private var showingDates = false
     @State private var errorMessage: String?
     @State private var feedback: String?
-    private var today: LocalDate { CardPilotUI.localDate(from: .now) }
+    @Environment(\.currentDay) private var currentDay
+    private var today: LocalDate { currentDay.today }
     private var cycle: BillingCycle? {
         try? BillingCalculator.calculate(account: account, cycleKey: cycleKey,
             record: account.billingCycles.first { $0.cycleKey == cycleKey }, today: today, timeZone: CardPilotUI.homeTimeZone)

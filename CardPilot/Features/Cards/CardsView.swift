@@ -421,6 +421,7 @@ private struct NetworkChoiceTile: View {
 }
 
 private struct CardOnboardingView: View {
+    @Environment(\.currentDay) private var currentDay
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -593,9 +594,9 @@ private struct CardOnboardingView: View {
         try? BillingCalculator.calculate(
             accountStatus: .active,
             closedOn: nil,
-            cycleKey: CardPilotUI.localDate(from: .now).monthKey,
+            cycleKey: currentDay.today.monthKey,
             rules: [BillingRuleInput(effectiveCycleKey: nil, statementDay: statementDay, repaymentKind: repaymentKind, repaymentValue: repaymentValue)],
-            today: CardPilotUI.localDate(from: .now),
+            today: currentDay.today,
             timeZone: CardPilotUI.homeTimeZone
         )
     }
@@ -1006,6 +1007,7 @@ private struct CardOnboardingView: View {
 }
 
 private struct AccountRow: View {
+    @Environment(\.currentDay) private var currentDay
     let account: CreditCardAccount
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -1055,7 +1057,7 @@ private struct AccountRow: View {
     }
 
     private var billingSummary: CardAccountBillingSummary {
-        accountBillingSummary(account)
+        accountBillingSummary(account, today: currentDay.today)
     }
 }
 
@@ -1094,7 +1096,8 @@ private struct CardRow: View {
         .accessibilityHint("查看卡片详情")
     }
 
-    private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
+    @Environment(\.currentDay) private var currentDay
+    private var today: LocalDate { currentDay.today }
 
     private var billingSummary: CardAccountBillingSummary {
         accountBillingSummary(card.account, today: today)
@@ -1175,6 +1178,7 @@ private struct BankEditorView: View {
 }
 
 struct AccountEditorView: View {
+    @Environment(\.currentDay) private var currentDay
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let account: CreditCardAccount?
@@ -1499,7 +1503,7 @@ struct AccountEditorView: View {
     }
 
     private var latestScheduledRuleText: String? {
-        let currentMonthKey = CardPilotUI.localDate(from: Date()).monthKey
+        let currentMonthKey = currentDay.today.monthKey
         guard let effectiveCycleKey = account?.billingRuleVersions.compactMap(\.effectiveCycleKey).max(),
               effectiveCycleKey > currentMonthKey else { return nil }
         return "表单当前显示已排定于 \(CardPilotUI.monthKeyText(effectiveCycleKey)) 起生效的规则。"
@@ -1508,13 +1512,14 @@ struct AccountEditorView: View {
 }
 
 private struct MonthKeyPicker: View {
+    @Environment(\.currentDay) private var currentDay
     // ponytail: a focused rolling window keeps the menu usable; switch to an unbounded month sheet if long-range edits become common.
     let title: String
     @Binding var selection: String
     let offsets: ClosedRange<Int>
 
     private var monthKeys: [Int] {
-        let today = CardPilotUI.localDate(from: Date())
+        let today = currentDay.today
         var keys = Set(offsets.map { today.addingMonths($0, timeZone: CardPilotUI.homeTimeZone).monthKey })
         if let selected = Int(selection), LocalDate.isValidMonthKey(selected) { keys.insert(selected) }
         return keys.sorted()

@@ -13,7 +13,8 @@ struct CardDetailView: View {
     @State private var showingCardEditor = false
     @State private var showingTransactionEditor = false
 
-    private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
+    @Environment(\.currentDay) private var currentDay
+    private var today: LocalDate { currentDay.today }
 
     var body: some View {
         List {
@@ -199,7 +200,8 @@ struct AccountDetailView: View {
     @Query(sort: \Bank.name) private var banks: [Bank]
     @State private var showingAccountEditor = false
 
-    private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
+    @Environment(\.currentDay) private var currentDay
+    private var today: LocalDate { currentDay.today }
     private var currentCycleKey: Int { today.monthKey }
 
     var body: some View {

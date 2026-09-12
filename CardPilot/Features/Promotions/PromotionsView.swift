@@ -146,6 +146,7 @@ enum PromotionPresentation {
 }
 
 struct PromotionsView: View {
+    @Environment(\.currentDay) private var currentDay
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Query(sort: \Bank.name) private var banks: [Bank]
@@ -278,7 +279,7 @@ struct PromotionsView: View {
     private var groups: [PromotionSeriesGroup] {
         PromotionPresentation.groups(
             from: promotions,
-            today: CardPilotUI.rawDate(Date()),
+            today: currentDay.today.rawValue,
             includeArchived: showingArchived,
             searchText: searchText
         )
@@ -1500,6 +1501,7 @@ private struct PromotionCardSelectionRow: View {
 }
 
 struct PromotionDetailView: View {
+    @Environment(\.currentDay) private var currentDay
     @Environment(\.modelContext) private var modelContext
     let promotion: Promotion
     @Query(sort: \Bank.name) private var banks: [Bank]
@@ -1928,7 +1930,7 @@ struct PromotionDetailView: View {
     }
 
     private var presentationStatusText: String {
-        switch PromotionPresentation.status(of: displayedPromotion, today: CardPilotUI.rawDate(Date())) {
+        switch PromotionPresentation.status(of: displayedPromotion, today: currentDay.today.rawValue) {
         case .active: return "进行中"
         case .upcoming: return "即将开始"
         case .history: return displayedPromotion.archivedAt == nil ? "已结束" : "已归档"
@@ -1941,7 +1943,7 @@ struct PromotionDetailView: View {
     }
 
     private func periodStatusText(_ period: Promotion) -> String {
-        switch PromotionPresentation.status(of: period, today: CardPilotUI.rawDate(Date())) {
+        switch PromotionPresentation.status(of: period, today: currentDay.today.rawValue) {
         case .active: return "进行中"
         case .upcoming: return "即将开始"
         case .history: return period.archivedAt == nil ? "已结束" : "已归档"
