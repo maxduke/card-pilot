@@ -22,6 +22,8 @@ struct RootView: View {
     @StateObject private var appLock = AppLockController()
     @ObservedObject private var quickActionRouter = CardPilotQuickActionRouter.shared
     @ObservedObject private var notificationRouter = NotificationRouter.shared
+    @State private var dayClock = DayClock(timeZone: CardPilotUI.homeTimeZone)
+    @State private var timeChangeRevision = 0
     @State private var notificationTarget: BillingCycleTarget?
     @State private var selectedTab = Tab.dashboard
     @State private var showingSettings = false
@@ -92,8 +94,10 @@ struct RootView: View {
         }
         // A separate window also covers presented sheets without destroying their edit state.
         .background(AppLockShieldWindow(lock: appLock, isAuthenticating: isAuthenticating, unlock: authenticate))
-        .environment(\.timeZone, TimeZone(identifier: homeTimeZone) ?? .current)
+        .environment(\.currentDay, dayClock.day)
+        .environment(\.timeZone, dayClock.day.timeZone)
         .onAppear {
+            refreshDay()
             if !appLock.setEnabled(appLockEnabled) { appLockEnabled = false }
             authenticate()
             handlePendingQuickActions()
@@ -121,12 +125,28 @@ struct RootView: View {
             if phase == .active {
                 authenticate()
                 handlePendingQuickActions()
-                Task { await rebuildNotifications() }
+                refreshDay()
             } else if Self.shouldRelock(when: phase, isAuthenticating: isAuthenticating) {
                 relock()
             }
         }
+        .onChange(of: homeTimeZone) { _, _ in refreshDay() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            refreshDay()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            refreshDay()
+        }
+        .task(id: "\(scenePhase == .active)|\(homeTimeZone)|\(timeChangeRevision)") {
+            guard scenePhase == .active else { return }
+            await dayClock.run(timeZone: TimeZone(identifier: homeTimeZone) ?? .current)
+        }
         .task(id: notificationConfigurationKey) { await rebuildNotifications() }
+    }
+
+    private func refreshDay() {
+        dayClock.refresh(timeZone: TimeZone(identifier: homeTimeZone) ?? .current)
+        timeChangeRevision += 1
     }
 
     private var tabSelection: Binding<Tab> {
@@ -168,7 +188,7 @@ struct RootView: View {
             }.sorted().joined(separator: ",")
             return "\(account.id)-\(CardPilotUI.accountName(account))-\(account.statusRaw)-\(account.closedOn ?? 0)-\(rules)-\(cycles)"
         }.joined(separator: "|")
-        return "\(statementRemindersEnabled)|\(repaymentRemindersEnabled)|\(statementOffsets)|\(repaymentOffsets)|\(reminderTime)|\(homeTimeZone)|\(notificationRevision)|\(accountKey)"
+        return "\(statementRemindersEnabled)|\(repaymentRemindersEnabled)|\(statementOffsets)|\(repaymentOffsets)|\(reminderTime)|\(homeTimeZone)|\(notificationRevision)|\(dayClock.day.today.rawValue)|\(timeChangeRevision)|\(accountKey)"
     }
 
     private func authenticate() {

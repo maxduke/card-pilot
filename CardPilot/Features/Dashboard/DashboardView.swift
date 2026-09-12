@@ -11,7 +11,8 @@ struct DashboardView: View {
     @State private var recentlyRepaid: DashboardBillingItem?
     @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
 
-    private var today: LocalDate { CardPilotUI.localDate(from: Date()) }
+    @Environment(\.currentDay) private var currentDay
+    private var today: LocalDate { currentDay.today }
 
     var body: some View {
         NavigationStack {
@@ -527,6 +528,7 @@ private struct DashboardSection<Content: View>: View {
 }
 
 private struct BillingItemRow: View {
+    @Environment(\.currentDay) private var currentDay
     let item: DashboardBillingItem
     let showsBank: Bool
     let markRepaid: () -> Void
@@ -548,9 +550,9 @@ private struct BillingItemRow: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 3) {
-                    Text(CardPilotUI.relativeDateText(item.date, today: CardPilotUI.localDate(from: .now)))
+                    Text(CardPilotUI.relativeDateText(item.date, today: currentDay.today))
                         .font(.subheadline.weight(.semibold))
-                    Text(CardPilotUI.shortDateText(item.date, relativeTo: CardPilotUI.localDate(from: .now)))
+                    Text(CardPilotUI.shortDateText(item.date, relativeTo: currentDay.today))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
