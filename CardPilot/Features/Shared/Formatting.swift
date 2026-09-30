@@ -442,6 +442,14 @@ enum CardPilotUI {
         AmountInput.text(amount, locale: locale)
     }
 
+    static func editableAmountText(_ amount: Decimal, format: AmountInput.Format) -> String {
+        AmountInput.text(amount, format: format)
+    }
+
+    static func decimal(_ text: String, format: AmountInput.Format) -> Decimal? {
+        AmountInput.decimal(text, format: format)
+    }
+
     static func decimal(_ text: String, locale: Locale = .current) -> Decimal? {
         AmountInput.decimal(text, locale: locale)
     }

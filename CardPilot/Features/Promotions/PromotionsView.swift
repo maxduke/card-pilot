@@ -1294,6 +1294,15 @@ private struct PromotionEditorView: View {
             notes: notes,
             archivedAt: archived ? Date() : nil
         )
+        if promotion == nil {
+            do {
+                try PromotionCreationActions.save([target], context: modelContext)
+                dismiss()
+            } catch {
+                errorMessage = "促销未保存：\(error.localizedDescription)"
+            }
+            return
+        }
         let targets = seriesTargets(for: target)
         guard !targets.contains(where: { !$0.allocations.isEmpty && $0.progressCurrencyCode != normalizedCurrency }) else {
             errorMessage = "系列中已有促销分配的周期不能修改进度币种。"
@@ -1301,8 +1310,7 @@ private struct PromotionEditorView: View {
         }
         let previousValues = targets.map(PromotionEditSnapshot.init)
         let previousRelationships = PromotionRelationshipSnapshot(
-            promotions: targets, banks: selectedBanks, networks: selectedNetworks, cards: selectedCards,
-            excluding: promotion == nil ? Set([target.id]) : []
+            promotions: targets, banks: selectedBanks, networks: selectedNetworks, cards: selectedCards
         )
         for candidate in targets {
             let state = PromotionSeriesCalculator.editedPeriodState(
@@ -1340,16 +1348,10 @@ private struct PromotionEditorView: View {
                 }
                 try candidate.validate()
             }
-            if promotion == nil { modelContext.insert(target) }
             try modelContext.save()
             dismiss()
         } catch {
             for (candidate, snapshot) in zip(targets, previousValues) { snapshot.restore(candidate) }
-            if promotion == nil {
-                target.organizingBanks = []
-                target.organizingNetworks = []
-                target.eligibleCards = []
-            }
             previousRelationships.restore()
             modelContext.rollback()
             errorMessage = "促销未保存：\(error.localizedDescription)"
@@ -2199,10 +2201,6 @@ enum PromotionAllocationActions {
         guard !transaction.allocations.contains(where: {
             $0.id != allocation?.id && $0.promotion.id == promotion.id
         }) else { throw ModelValidationError.duplicatePromotionAllocation }
-        let previousTransactions = transaction.allocations
-        let previousPromotions = promotion.allocations
-        let previousAmount = allocation?.qualifyingAmount
-        let previousCurrency = allocation?.currencyCode
         let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion,
                                                         qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)
         do {
@@ -2212,10 +2210,8 @@ enum PromotionAllocationActions {
             if allocation == nil { context.insert(target) }
             try persist(context)
         } catch {
-            if let previousAmount { target.qualifyingAmount = previousAmount }
-            if let previousCurrency { target.currencyCode = previousCurrency }
-            transaction.allocations = previousTransactions
-            promotion.allocations = previousPromotions
+            // Let SwiftData restore required relationships; assigning inverse arrays
+            // here would attempt to nullify transaction/promotion and trap.
             context.rollback()
             throw error
         }
@@ -2244,14 +2240,10 @@ private struct AllocationEditorView: View {
         _amountText = State(initialValue: allocation.map { CardPilotUI.editableAmountText($0.qualifyingAmount) } ?? "")
     }
 
-    private var orderedTransactions: [Transaction] {
-        PromotionAllocationSelection.availableTransactions(transactions, for: promotion, editing: allocation)
-    }
-
-    private var filteredTransactions: [Transaction] {
+    private func filteredTransactions(in availableTransactions: [Transaction]) -> [Transaction] {
         let query = transactionSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return orderedTransactions }
-        return orderedTransactions.filter { transaction in
+        guard !query.isEmpty else { return availableTransactions }
+        return availableTransactions.filter { transaction in
             transactionLabel(transaction).localizedCaseInsensitiveContains(query)
                 || transaction.card.account.bank.name.localizedCaseInsensitiveContains(query)
                 || transaction.card.productName.localizedCaseInsensitiveContains(query)
@@ -2269,8 +2261,10 @@ private struct AllocationEditorView: View {
     }
 
     var body: some View {
+        let availableTransactions = PromotionAllocationSelection.availableTransactions(transactions, for: promotion, editing: allocation)
+        let matches = filteredTransactions(in: availableTransactions)
         NavigationStack {
-            editorForm
+            editorForm(availableTransactions: availableTransactions, matches: matches)
             .onAppear {
                 guard !didInitialize else { return }
                 setInitialAmount()
@@ -2301,16 +2295,16 @@ private struct AllocationEditorView: View {
         .protectEdits(snapshot: editSnapshot, isReady: didInitialize)
     }
 
-    private var editorForm: some View {
+    private func editorForm(availableTransactions: [Transaction], matches: [Transaction]) -> some View {
         Form {
-            transactionSection
+            transactionSection(availableTransactions: availableTransactions, matches: matches)
             if let errorMessage {
                 InlineErrorView(message: errorMessage)
             }
         }
     }
 
-    private var transactionSection: some View {
+    private func transactionSection(availableTransactions: [Transaction], matches: [Transaction]) -> some View {
         Section("交易") {
             if transactions.isEmpty {
                 Text("请先添加交易。")
@@ -2319,7 +2313,7 @@ private struct AllocationEditorView: View {
                 if let selectedTransaction {
                     selectedTransactionRow(selectedTransaction)
                 } else {
-                    Text(orderedTransactions.isEmpty
+                    Text(availableTransactions.isEmpty
                          ? "已有交易均已计入本活动。请返回编辑现有分配，或记录新交易。"
                          : "没有可自动推荐的交易，请按活动条款手动选择。")
                         .font(.footnote)
@@ -2329,11 +2323,11 @@ private struct AllocationEditorView: View {
                     DisclosureGroup(isExpanded: $showingTransactionChoices) {
                         TextField("搜索商户、日期、卡片或末四位", text: $transactionSearchText)
                             .textInputAutocapitalization(.never)
-                        if filteredTransactions.isEmpty {
+                        if matches.isEmpty {
                             Text("没有匹配的交易。")
                                 .foregroundStyle(.secondary)
                         } else {
-                            ForEach(filteredTransactions, id: \.id) { transaction in
+                            ForEach(matches, id: \.id) { transaction in
                                 Button {
                                     transactionID = transaction.id
                                     showingTransactionChoices = false
@@ -2344,7 +2338,7 @@ private struct AllocationEditorView: View {
                             }
                         }
                     } label: {
-                        Label("\(selectedTransaction == nil ? "选择交易" : "更换交易")（\(filteredTransactions.count) 笔）", systemImage: "magnifyingglass")
+                        Label("\(selectedTransaction == nil ? "选择交易" : "更换交易")（\(matches.count) 笔）", systemImage: "magnifyingglass")
                     }
                 }
                 if allocation != nil {
@@ -2395,7 +2389,8 @@ private struct AllocationEditorView: View {
     }
 
     private func transactionRow(_ transaction: Transaction) -> some View {
-        HStack(spacing: 10) {
+        let recommended = PromotionCalculator.includes(transaction, in: promotion)
+        return HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
                     .font(.subheadline)
@@ -2409,9 +2404,9 @@ private struct AllocationEditorView: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))
                     .font(.caption.monospacedDigit())
-                Text(PromotionCalculator.includes(transaction, in: promotion) ? "推荐" : "手动")
+                Text(recommended ? "推荐" : "手动")
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(PromotionCalculator.includes(transaction, in: promotion) ? Color.accentColor : Color.orange)
+                    .foregroundStyle(recommended ? Color.accentColor : Color.orange)
             }
             if transaction.id == transactionID {
                 Image(systemName: "checkmark")

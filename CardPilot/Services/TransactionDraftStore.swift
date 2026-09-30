@@ -4,8 +4,8 @@ import Foundation
 struct TransactionDraft: Codable, Equatable {
     var version = 2
     var id = UUID()
-    /// Version 1 always used a dot decimal separator, regardless of the device region.
-    var amountLocaleIdentifier: String? = Locale.current.identifier
+    /// Snapshot separators and group sizes, not just the region identifier.
+    var amountFormat: AmountInput.Format? = .init()
     var cardID: UUID
     var kind: TransactionKind
     var transactionOn: Int
@@ -28,18 +28,13 @@ struct TransactionDraft: Codable, Equatable {
     var showingInactiveCards: Bool
     var showingOtherFields: Bool
 
-    var amountLocale: Locale {
-        Locale(identifier: version == 1 ? "en_US_POSIX" : (amountLocaleIdentifier ?? "en_US_POSIX"))
+    var inputFormat: AmountInput.Format {
+        version == 1 ? .legacy : (amountFormat ?? .legacy)
     }
 
     func validate() throws {
         guard (1...2).contains(version), (0...1).contains(editorStep) else { throw DraftError.unreadable }
-        if version == 2 {
-            guard let amountLocaleIdentifier,
-                  !amountLocaleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw DraftError.unreadable
-            }
-        }
+        if version == 2, amountFormat?.isValid != true { throw DraftError.unreadable }
         _ = try LocalDate(rawValue: transactionOn)
         _ = try LocalDate(rawValue: postingOn)
     }

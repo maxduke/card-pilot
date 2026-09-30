@@ -184,6 +184,11 @@ final class TransactionsTests: XCTestCase {
         XCTAssertEqual(transaction.amount, 100)
         XCTAssertEqual(transaction.allocations.first?.qualifyingAmount, 1000,
                        "A warning must not silently rewrite a manually confirmed allocation.")
+        try TransactionEditActions.save(values: values, transaction: transaction, newID: UUID(),
+            card: card, original: nil, allocations: [], context: context)
+        XCTAssertTrue(transaction.allocations.isEmpty)
+        XCTAssertTrue(promotion.allocations.isEmpty)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<PromotionAllocation>()), 0)
     }
 
     private func makeCard() -> Card {

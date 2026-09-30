@@ -60,6 +60,41 @@ final class PromotionPersistenceTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
+    func testStandaloneCreationFailurePreservesRelationshipsAndFreshRetrySucceeds() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        context.autosaveEnabled = false
+        let (bank, network, card) = try makeCard(in: context)
+        let existing = Promotion(title: "保留活动", startOn: 20260101, endOn: 20260131,
+                                 organizingBanks: [bank], organizingNetworks: [network], eligibleCards: [card],
+                                 progressCurrencyCode: "CNY")
+        try PromotionCreationActions.save([existing], context: context)
+        let id = UUID()
+        func standalone() -> Promotion {
+            Promotion(id: id, title: "独立活动", startOn: 20260101, endOn: 20260131,
+                      organizingBanks: [bank], organizingNetworks: [network], eligibleCards: [card],
+                      enrollmentStatus: .enrolled, enrolledOn: 20260105, progressCurrencyCode: "CNY")
+        }
+        XCTAssertThrowsError(try PromotionCreationActions.save([standalone()], context: context,
+            persist: { _ in throw SaveError.failed }))
+        XCTAssertEqual(bank.organizedPromotions.map(\.id), [existing.id])
+        XCTAssertEqual(network.organizedPromotions.map(\.id), [existing.id])
+        XCTAssertEqual(card.eligiblePromotions.map(\.id), [existing.id])
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Promotion>()), 1)
+        XCTAssertFalse(context.hasChanges)
+
+        try PromotionCreationActions.save([standalone()], context: context)
+        let reader = ModelContext(container)
+        let saved = try XCTUnwrap(reader.fetch(FetchDescriptor<Promotion>()).first { $0.id == id })
+        XCTAssertNil(saved.seriesID)
+        XCTAssertNil(saved.seriesIndex)
+        XCTAssertEqual(saved.enrollmentStatus, .enrolled)
+        XCTAssertEqual(saved.enrolledOn, 20260105)
+        XCTAssertEqual(saved.organizingBanks.map(\.id), [bank.id])
+        XCTAssertEqual(saved.eligibleCards.map(\.id), [card.id])
+        XCTAssertEqual(try reader.fetchCount(FetchDescriptor<Promotion>()), 2)
+    }
+
     func testAllocationFailureRestoresProgressAndAllowsRetry() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         let context = container.mainContext

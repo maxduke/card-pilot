@@ -447,6 +447,28 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertNil(notRequired.enrollmentDeadline)
     }
 
+    func testAllocationSelectionKeepsRecommendationDateMerchantAndUUIDOrder() {
+        let account = CreditCardAccount(bank: Bank(name: "银行"))
+        let card = Card(account: account, productName: "卡", networks: [CardNetwork.makeBuiltIns()[0]], lastFour: "1234")
+        let promotion = Promotion(title: "活动", startOn: 20260101, endOn: 20260131,
+                                  eligibleCards: [card], progressCurrencyCode: "CNY")
+        func transaction(_ id: Int, _ date: Int, _ merchant: String, status: TransactionStatus = .active) -> Transaction {
+            Transaction(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
+                        card: card, transactionOn: date, amount: 100, currencyCode: "CNY", merchant: merchant,
+                        status: status)
+        }
+        let firstTie = transaction(1, 20260110, "same")
+        let secondTie = transaction(2, 20260110, "same")
+        let earlierMerchant = transaction(3, 20260110, "alpha")
+        let newerCandidate = transaction(4, 20260120, "zeta")
+        let outsidePeriod = transaction(5, 20260201, "A")
+        let reversed = transaction(6, 20260130, "A", status: .reversed)
+        let input = [reversed, secondTie, outsidePeriod, firstTie, newerCandidate, earlierMerchant]
+        let expected = [newerCandidate, earlierMerchant, firstTie, secondTie, outsidePeriod, reversed].map(\.id)
+        XCTAssertEqual(PromotionAllocationSelection.availableTransactions(input, for: promotion).map(\.id), expected)
+        XCTAssertEqual(PromotionAllocationSelection.availableTransactions(Array(input.reversed()), for: promotion).map(\.id), expected)
+    }
+
     func testAllocationSelectionExcludesAllocatedTransactionsAndDoesNotDefaultToManualOnes() {
         let account = CreditCardAccount(bank: Bank(name: "银行"))
         let card = Card(account: account, productName: "卡", networks: [CardNetwork.makeBuiltIns()[0]], lastFour: "1234")

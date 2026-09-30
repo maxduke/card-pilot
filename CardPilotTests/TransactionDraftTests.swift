@@ -100,11 +100,11 @@ final class TransactionDraftTests: XCTestCase {
             input.version = 1
             input.amountText = "1,500.25"
             var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? [String: Any])
-            object.removeValue(forKey: "amountLocaleIdentifier")
+            object.removeValue(forKey: "amountFormat")
             try JSONSerialization.data(withJSONObject: object).write(to: store.url)
             let restored = try XCTUnwrap(store.load())
-            XCTAssertEqual(restored.amountLocale.identifier, "en_US_POSIX")
-            XCTAssertEqual(CardPilotUI.decimal(restored.amountText, locale: restored.amountLocale),
+            XCTAssertEqual(restored.inputFormat.localeIdentifier, "en_US_POSIX")
+            XCTAssertEqual(CardPilotUI.decimal(restored.amountText, format: restored.inputFormat),
                            Decimal(string: "1500.25", locale: Locale(identifier: "en_US_POSIX")))
         }
     }
@@ -112,7 +112,7 @@ final class TransactionDraftTests: XCTestCase {
     func testCommaDecimalDraftRetainsLocaleAndRawAmountsAcrossRelaunch() throws {
         try withStore { store, _ in
             var input = draft()
-            input.amountLocaleIdentifier = "de_DE"
+            input.amountFormat = AmountInput.Format(locale: Locale(identifier: "de_DE"))
             input.amountText = "1,500"
             let promotionID = try XCTUnwrap(input.selectedPromotionIDs.first)
             input.allocationAmounts[promotionID] = "1,250"
@@ -120,11 +120,47 @@ final class TransactionDraftTests: XCTestCase {
             let restored = try XCTUnwrap(store.load())
             XCTAssertEqual(restored.version, 2)
             XCTAssertEqual(restored, input)
-            XCTAssertEqual(restored.amountLocale.identifier, "de_DE")
-            XCTAssertEqual(CardPilotUI.decimal(restored.amountText, locale: restored.amountLocale),
+            XCTAssertEqual(restored.inputFormat.localeIdentifier, "de_DE")
+            XCTAssertEqual(CardPilotUI.decimal(restored.amountText, format: restored.inputFormat),
                            Decimal(string: "1.5", locale: Locale(identifier: "en_US_POSIX")))
-            XCTAssertEqual(CardPilotUI.decimal(try XCTUnwrap(restored.allocationAmounts[promotionID]), locale: restored.amountLocale),
+            XCTAssertEqual(CardPilotUI.decimal(try XCTUnwrap(restored.allocationAmounts[promotionID]), format: restored.inputFormat),
                            Decimal(string: "1.25", locale: Locale(identifier: "en_US_POSIX")))
+        }
+    }
+
+    func testDraftRetainsNumberOverridesNotRepresentedByLocaleIdentifier() throws {
+        try withStore { store, _ in
+            var input = draft()
+            var format = AmountInput.Format(locale: Locale(identifier: "en_US"))
+            format.decimalSeparator = ","
+            format.groupingSeparator = "."
+            format.primaryGroupingSize = 3
+            format.secondaryGroupingSize = 2
+            input.amountFormat = format
+            input.amountText = "1,500"
+            let promotionID = try XCTUnwrap(input.selectedPromotionIDs.first)
+            input.allocationAmounts[promotionID] = "1.23.456,750"
+            try store.save(input)
+            let restored = try XCTUnwrap(store.load())
+            XCTAssertEqual(restored.inputFormat, format)
+            XCTAssertEqual(CardPilotUI.decimal(restored.amountText, format: restored.inputFormat), 1.5)
+            XCTAssertEqual(CardPilotUI.decimal(try XCTUnwrap(restored.allocationAmounts[promotionID]),
+                                              format: restored.inputFormat), 123_456.75)
+            XCTAssertEqual(CardPilotUI.editableAmountText(1.5, format: restored.inputFormat), "1,5")
+        }
+    }
+
+    func testInvalidFormatDoesNotOverwriteRecoverableDraft() throws {
+        try withStore { store, _ in
+            let input = draft()
+            try store.save(input)
+            var invalid = input
+            invalid.amountFormat = nil
+            XCTAssertThrowsError(try store.save(invalid))
+            invalid.amountFormat = AmountInput.Format()
+            invalid.amountFormat?.decimalSeparator = ""
+            XCTAssertThrowsError(try store.save(invalid))
+            XCTAssertEqual(try store.load(), input)
         }
     }
 

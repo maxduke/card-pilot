@@ -923,7 +923,6 @@ private struct CardOnboardingView: View {
             return
         }
         let creatingBank = existingBank == nil
-        let previousBankAccounts = bank.accounts
         let previousArchivedAt = bank.archivedAt
         let previousPresetCode = bank.presetCode
         let account: CreditCardAccount
@@ -946,7 +945,6 @@ private struct CardOnboardingView: View {
             )
             creatingAccount = true
         }
-        let previousCards = account.cards
         let card = Card(
             account: account,
             productName: productName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -993,8 +991,6 @@ private struct CardOnboardingView: View {
         } catch {
             bank.archivedAt = previousArchivedAt
             bank.presetCode = previousPresetCode
-            bank.accounts = previousBankAccounts
-            account.cards = previousCards
             for (network, previousCards) in previousNetworkCards { network.cards = previousCards }
             if creatingAccount {
                 for rule in account.billingRuleVersions { rule.account = nil }
@@ -1454,6 +1450,20 @@ struct AccountEditorView: View {
                 proposedRules.removeAll { $0.effectiveCycleKey == ruleChange.effectiveCycleKey }
                 proposedRules.append(ruleChange)
             }
+            if ruleChange != nil {
+                var proposedOverrides: [Int: BillingCycleOverride] = [:]
+                for record in account?.billingCycles ?? [] {
+                    proposedOverrides[record.cycleKey] = try BillingCycleOverride(
+                        statementDate: record.statementDateOverride.map { try LocalDate(rawValue: $0) },
+                        repaymentDate: record.repaymentDateOverride.map { try LocalDate(rawValue: $0) },
+                        repaidAt: record.repaidAt
+                    )
+                }
+                proposedOverrides.merge(cycleUpdates) { _, changed in changed }
+                try BillingCalculator.validateOverridesAffectedByRuleChange(
+                    ruleChange, rules: proposedRules, overrides: proposedOverrides, today: today, timeZone: timeZone
+                )
+            }
             // Validate values before mutating models or their inverse relationship arrays.
             for (cycleKey, dates) in cycleUpdates {
                 _ = try BillingCalculator.calculate(
@@ -1472,9 +1482,7 @@ struct AccountEditorView: View {
             return
         }
 
-        let previousBankAccounts = bank.accounts
         let previousOwnerBank = account?.bank
-        let previousOwnerAccounts = account?.bank.accounts
         let target = account ?? CreditCardAccount(bank: bank, trackingStartCycleKey: trackingStart)
         let previousValues = (target.creditLimit, target.limitCurrencyCode, target.statusRaw, target.closedOn, target.notes)
         let previousRules = target.billingRuleVersions
@@ -1551,8 +1559,6 @@ struct AccountEditorView: View {
             target.closedOn = previousValues.3
             target.notes = previousValues.4
             if let previousOwnerBank { target.bank = previousOwnerBank }
-            bank.accounts = previousBankAccounts
-            if let previousOwnerBank, let previousOwnerAccounts { previousOwnerBank.accounts = previousOwnerAccounts }
             modelContext.rollback()
             errorMessage = "账户未保存：\(error.localizedDescription)"
         }

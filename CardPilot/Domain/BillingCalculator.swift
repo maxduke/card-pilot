@@ -108,6 +108,26 @@ enum BillingCalculator {
         return requested.hasSameSchedule(as: applicable) ? nil : requested
     }
 
+    /// A rule edit must not make an existing override invalid, even when its fields were untouched.
+    static func validateOverridesAffectedByRuleChange(
+        _ changedRule: BillingRuleInput?,
+        rules: [BillingRuleInput],
+        overrides: [Int: BillingCycleOverride],
+        today: LocalDate,
+        timeZone: TimeZone = .current
+    ) throws {
+        guard let changedRule else { return }
+        for (cycleKey, dates) in overrides {
+            guard applicableRule(from: rules, forCycleKey: cycleKey)?.effectiveCycleKey == changedRule.effectiveCycleKey else {
+                continue
+            }
+            // Closure controls visibility, not date consistency. Preserved post-closure
+            // records must not prevent a status-only close or require changing historical facts.
+            _ = try calculate(accountStatus: .active, closedOn: nil, cycleKey: cycleKey,
+                              rules: rules, override: dates, today: today, timeZone: timeZone)
+        }
+    }
+
     static func calculate(
         accountStatus: CreditCardAccountStatus,
         closedOn: LocalDate?,

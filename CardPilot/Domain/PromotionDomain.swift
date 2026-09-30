@@ -223,15 +223,17 @@ enum PromotionAllocationSelection {
         let allocatedIDs = Set(promotion.allocations.filter { $0.id != allocation?.id }.map(\.transaction.id))
         return transactions
             .filter { !allocatedIDs.contains($0.id) }
+            .map { (transaction: $0, recommended: PromotionCalculator.includes($0, in: promotion)) }
             .sorted { lhs, rhs in
-                let lhsRecommended = PromotionCalculator.includes(lhs, in: promotion)
-                let rhsRecommended = PromotionCalculator.includes(rhs, in: promotion)
-                if lhsRecommended != rhsRecommended { return lhsRecommended }
-                if lhs.transactionOn != rhs.transactionOn { return lhs.transactionOn > rhs.transactionOn }
-                let merchantOrder = lhs.merchant.localizedCaseInsensitiveCompare(rhs.merchant)
+                if lhs.recommended != rhs.recommended { return lhs.recommended }
+                if lhs.transaction.transactionOn != rhs.transaction.transactionOn {
+                    return lhs.transaction.transactionOn > rhs.transaction.transactionOn
+                }
+                let merchantOrder = lhs.transaction.merchant.localizedCaseInsensitiveCompare(rhs.transaction.merchant)
                 if merchantOrder != .orderedSame { return merchantOrder == .orderedAscending }
-                return lhs.id.uuidString < rhs.id.uuidString
+                return lhs.transaction.id.uuidString < rhs.transaction.id.uuidString
             }
+            .map(\.transaction)
     }
 
     static func initialTransaction(
