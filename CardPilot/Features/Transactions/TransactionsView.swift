@@ -2106,7 +2106,16 @@ enum TransactionEditActions {
             }
         }
 
+        let previousValues = transaction.map {
+            TransactionEditValues(kind: $0.kind, transactionOn: $0.transactionOn, postingOn: $0.postingOn,
+                amount: $0.amount, currencyCode: $0.currencyCode, merchant: $0.merchant,
+                category: $0.category, notes: $0.notes, status: $0.status)
+        }
+        let previousCard = transaction?.card
+        let previousOriginal = transaction?.originalTransaction
         let previousAllocations = transaction?.allocations ?? []
+        let allocationValues = previousAllocations.map { ($0, $0.qualifyingAmount, $0.currencyCode) }
+        var insertedAllocations: [PromotionAllocation] = []
         let target = transaction ?? Transaction(id: newID, card: card, kind: values.kind,
             transactionOn: values.transactionOn, postingOn: values.postingOn, amount: values.amount,
             currencyCode: values.currencyCode, merchant: values.merchant, category: values.category,
@@ -2131,6 +2140,7 @@ enum TransactionEditActions {
                 } else {
                     let allocation = PromotionAllocation(transaction: target, promotion: item.promotion,
                         qualifyingAmount: item.amount, currencyCode: item.promotion.progressCurrencyCode)
+                    insertedAllocations.append(allocation)
                     context.insert(allocation)
                     try allocation.validate()
                 }
@@ -2140,8 +2150,23 @@ enum TransactionEditActions {
             try persist(context)
             return target
         } catch {
-            // Required inverse relationships must be restored by SwiftData itself,
-            // not cleared while newly inserted allocations are still live.
+            context.processPendingChanges()
+            // Remove only new objects, children first. Never nullify required inverses
+            // by replacing a parent's array while those children are still live.
+            for allocation in insertedAllocations { context.delete(allocation) }
+            context.processPendingChanges()
+            if transaction == nil {
+                target.originalTransaction = nil
+                context.delete(target)
+            } else {
+                previousValues?.apply(to: target)
+                if let previousCard { target.card = previousCard }
+                target.originalTransaction = previousOriginal
+            }
+            for (allocation, amount, currency) in allocationValues where !allocation.isDeleted {
+                allocation.qualifyingAmount = amount
+                allocation.currencyCode = currency
+            }
             context.processPendingChanges()
             context.rollback()
             throw error

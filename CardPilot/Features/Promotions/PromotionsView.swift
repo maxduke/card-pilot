@@ -2201,6 +2201,8 @@ enum PromotionAllocationActions {
         guard !transaction.allocations.contains(where: {
             $0.id != allocation?.id && $0.promotion.id == promotion.id
         }) else { throw ModelValidationError.duplicatePromotionAllocation }
+        let previousAmount = allocation?.qualifyingAmount
+        let previousCurrency = allocation?.currencyCode
         let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion,
                                                         qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)
         do {
@@ -2212,8 +2214,13 @@ enum PromotionAllocationActions {
             context.processPendingChanges()
             try persist(context)
         } catch {
-            // Let SwiftData restore required relationships; assigning inverse arrays
-            // here would attempt to nullify transaction/promotion and trap.
+            context.processPendingChanges()
+            if allocation == nil {
+                context.delete(target)
+            } else {
+                if let previousAmount { target.qualifyingAmount = previousAmount }
+                if let previousCurrency { target.currencyCode = previousCurrency }
+            }
             context.processPendingChanges()
             context.rollback()
             throw error
