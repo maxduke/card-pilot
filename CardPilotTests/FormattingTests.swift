@@ -11,20 +11,24 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(CardPilotUI.shortDateText(try LocalDate(rawValue: 20270101), relativeTo: today), "2027年01月01日")
     }
     func testDecimalParsesDisplayedChineseGroupingAndOrdinaryDecimals() {
-        XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(8_000)), 8_000)
-        XCTAssertEqual(CardPilotUI.decimal("8000.50"), 8_000.5)
-        XCTAssertEqual(CardPilotUI.decimal("+.5e1"), 5)
+        let locale = Locale(identifier: "zh_CN")
+        XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(8_000, locale: locale), locale: locale), 8_000)
+        XCTAssertEqual(CardPilotUI.decimal("8000.50", locale: locale), 8_000.5)
+        XCTAssertEqual(CardPilotUI.decimal("+.5e1", locale: locale), 5)
     }
 
     func testEditableAmountTextRoundTripsExactDecimal() {
         let amount = Decimal(string: "1.005")!
-        XCTAssertEqual(CardPilotUI.editableAmountText(amount), "1.005")
-        XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.editableAmountText(amount)), amount)
+        for identifier in ["zh_CN", "en_US", "de_DE", "fr_FR", "ar_EG"] {
+            let locale = Locale(identifier: identifier)
+            XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.editableAmountText(amount, locale: locale), locale: locale), amount)
+            XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(8_000.5, locale: locale), locale: locale), 8_000.5)
+        }
     }
 
     func testDecimalRejectsPartialOrMalformedNumbers() {
         for value in ["12abc", "1.2.3", "12,34", "", ".", "+", "1e", "1,000.2.3"] {
-            XCTAssertNil(CardPilotUI.decimal(value), "应拒绝：\(value)")
+            XCTAssertNil(CardPilotUI.decimal(value, locale: Locale(identifier: "zh_CN")), "应拒绝：\(value)")
         }
     }
 

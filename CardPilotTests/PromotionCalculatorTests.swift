@@ -348,7 +348,7 @@ final class PromotionCalculatorTests: XCTestCase {
             progressCurrencyCode: "CNY",
             archivedAt: Date()
         )
-        let periods = Promotion.makeMonthlySeries(from: template, through: 20260428)
+        let periods = Promotion.makeMonthlySeries(startingWith: template, through: 20260428)
         XCTAssertEqual(periods.count, 3)
         XCTAssertEqual(Set(periods.compactMap(\.seriesID)).count, 1)
         XCTAssertEqual(periods.compactMap(\.seriesIndex), [0, 1, 2])
@@ -373,13 +373,130 @@ final class PromotionCalculatorTests: XCTestCase {
             progressCurrencyCode: "CNY"
         )
 
-        let periods = Promotion.makeMonthlySeries(from: template, through: 20260331)
+        let periods = Promotion.makeMonthlySeries(startingWith: template, through: 20260331)
         XCTAssertEqual(periods.map(\.benefitTransactionCap), [10, 10, 10])
         XCTAssertEqual(periods.map(\.perTransactionThreshold), [10, 10, 10])
 
         let copied = try XCTUnwrap(template.copiedToNextMonth())
         XCTAssertEqual(copied.benefitTransactionCap, 10)
         XCTAssertEqual(copied.perTransactionThreshold, 10)
+    }
+
+    func testMonthlySeriesKeepsFirstEnrollmentButRequiresEachLaterPeriodToEnroll() throws {
+        let first = Promotion(title: "月度报名", startOn: 20260101, endOn: 20260131,
+                              enrollmentStatus: .enrolled, enrolledOn: 20260105,
+                              enrollmentDeadline: 20260120, progressCurrencyCode: "CNY")
+        let periods = Promotion.makeMonthlySeries(startingWith: first, through: 20260331)
+
+        XCTAssertTrue(periods[0] === first)
+        XCTAssertEqual(periods.map(\.enrollmentStatus), [.enrolled, .notEnrolled, .notEnrolled])
+        XCTAssertEqual(periods.map(\.enrolledOn), [20260105, nil, nil])
+        XCTAssertEqual(periods.map(\.enrollmentDeadline), [20260120, 20260220, 20260320])
+        try periods.forEach { try $0.validate() }
+
+        let copy = try XCTUnwrap(first.copiedToNextMonth())
+        XCTAssertEqual(copy.enrollmentStatus, .notEnrolled)
+        XCTAssertNil(copy.enrolledOn)
+        XCTAssertEqual(copy.enrollmentDeadline, 20260220)
+        XCTAssertEqual(first.enrollmentStatus, .enrolled)
+        XCTAssertEqual(first.enrolledOn, 20260105)
+    }
+
+    func testSeriesAndCopyKeepNotRequiredEnrollment() throws {
+        let first = Promotion(title: "无需报名", startOn: 20260101, endOn: 20260131,
+                              progressCurrencyCode: "CNY")
+        let periods = Promotion.makeMonthlySeries(startingWith: first, through: 20260331)
+        XCTAssertTrue(periods.allSatisfy { $0.enrollmentStatus == .notRequired && $0.enrolledOn == nil })
+        XCTAssertEqual(try XCTUnwrap(first.copiedToNextMonth()).enrollmentStatus, .notRequired)
+    }
+
+    func testSeriesBulkEditPreservesFutureEnrollmentAndArchiveFacts() {
+        let first = Promotion(title: "月度报名", startOn: 20260101, endOn: 20260131,
+                              enrollmentStatus: .notEnrolled, progressCurrencyCode: "CNY")
+        let periods = Promotion.makeMonthlySeries(startingWith: first, through: 20260331)
+        let future = periods[1]
+        let archivedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        future.enrollmentStatus = .enrolled
+        future.enrolledOn = 20260205
+        future.archivedAt = archivedAt
+
+        let state = PromotionSeriesCalculator.editedPeriodState(
+            for: future, editing: first, enrollmentStatus: .notEnrolled,
+            enrolledOn: nil, enrollmentDeadline: 20260120, archived: false
+        )
+        XCTAssertEqual(state.enrollmentStatus, .enrolled)
+        XCTAssertEqual(state.enrolledOn, 20260205)
+        XCTAssertEqual(state.enrollmentDeadline, 20260220)
+        XCTAssertEqual(state.archivedAt, archivedAt)
+
+        let selectedState = PromotionSeriesCalculator.editedPeriodState(
+            for: first, editing: first, enrollmentStatus: .enrolled,
+            enrolledOn: 20260108, enrollmentDeadline: 20260120, archived: true, now: archivedAt
+        )
+        XCTAssertEqual(selectedState.enrollmentStatus, .enrolled)
+        XCTAssertEqual(selectedState.enrolledOn, 20260108)
+        XCTAssertEqual(selectedState.archivedAt, archivedAt)
+
+        future.enrollmentStatus = .notRequired
+        future.enrolledOn = nil
+        let notRequired = PromotionSeriesCalculator.editedPeriodState(
+            for: future, editing: first, enrollmentStatus: .enrolled,
+            enrolledOn: 20260108, enrollmentDeadline: 20260120, archived: false
+        )
+        XCTAssertEqual(notRequired.enrollmentStatus, .notRequired)
+        XCTAssertNil(notRequired.enrollmentDeadline)
+    }
+
+    func testAllocationSelectionKeepsRecommendationDateMerchantAndUUIDOrder() {
+        let account = CreditCardAccount(bank: Bank(name: "银行"))
+        let card = Card(account: account, productName: "卡", networks: [CardNetwork.makeBuiltIns()[0]], lastFour: "1234")
+        let promotion = Promotion(title: "活动", startOn: 20260101, endOn: 20260131,
+                                  eligibleCards: [card], progressCurrencyCode: "CNY")
+        func transaction(_ id: Int, _ date: Int, _ merchant: String, status: TransactionStatus = .active) -> Transaction {
+            Transaction(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
+                        card: card, transactionOn: date, amount: 100, currencyCode: "CNY", merchant: merchant,
+                        status: status)
+        }
+        let firstTie = transaction(1, 20260110, "same")
+        let secondTie = transaction(2, 20260110, "same")
+        let earlierMerchant = transaction(3, 20260110, "alpha")
+        let newerCandidate = transaction(4, 20260120, "zeta")
+        let outsidePeriod = transaction(5, 20260201, "A")
+        let reversed = transaction(6, 20260130, "A", status: .reversed)
+        let input = [reversed, secondTie, outsidePeriod, firstTie, newerCandidate, earlierMerchant]
+        let expected = [newerCandidate, earlierMerchant, firstTie, secondTie, outsidePeriod, reversed].map(\.id)
+        XCTAssertEqual(PromotionAllocationSelection.availableTransactions(input, for: promotion).map(\.id), expected)
+        XCTAssertEqual(PromotionAllocationSelection.availableTransactions(Array(input.reversed()), for: promotion).map(\.id), expected)
+    }
+
+    func testAllocationSelectionExcludesAllocatedTransactionsAndDoesNotDefaultToManualOnes() {
+        let account = CreditCardAccount(bank: Bank(name: "银行"))
+        let card = Card(account: account, productName: "卡", networks: [CardNetwork.makeBuiltIns()[0]], lastFour: "1234")
+        let promotion = Promotion(title: "活动", startOn: 20260101, endOn: 20260131,
+                                  eligibleCards: [card], progressCurrencyCode: "CNY")
+        func transaction(_ date: Int) -> Transaction {
+            Transaction(card: card, transactionOn: date, amount: 100, currencyCode: "CNY", merchant: "商户")
+        }
+        let allocated = transaction(20260125)
+        let candidate = transaction(20260110)
+        let manual = transaction(20260201)
+        let allocation = PromotionAllocation(transaction: allocated, promotion: promotion,
+                                            qualifyingAmount: 100, currencyCode: "CNY")
+        promotion.allocations = [allocation]
+        allocated.allocations = [allocation]
+        let transactions = [manual, allocated, candidate]
+
+        XCTAssertEqual(PromotionAllocationSelection.availableTransactions(transactions, for: promotion).map(\.id),
+                       [candidate.id, manual.id])
+        XCTAssertEqual(PromotionAllocationSelection.initialTransaction(in: transactions, for: promotion)?.id, candidate.id)
+        XCTAssertNil(PromotionAllocationSelection.initialTransaction(in: [manual, allocated], for: promotion))
+        XCTAssertEqual(PromotionAllocationSelection.availableTransactions([manual, allocated], for: promotion).map(\.id), [manual.id])
+        XCTAssertTrue(PromotionAllocationSelection.availableTransactions([allocated], for: promotion).isEmpty)
+
+        allocated.status = .reversed
+        XCTAssertEqual(PromotionAllocationSelection.initialTransaction(in: transactions, for: promotion, editing: allocation)?.id, allocated.id)
+        XCTAssertTrue(PromotionAllocationSelection.availableTransactions(transactions, for: promotion, editing: allocation)
+            .contains { $0.id == allocated.id })
     }
 
     func testSeriesBulkEditKeepsSelectedHistoricalPeriodButSkipsOtherEndedPeriods() {

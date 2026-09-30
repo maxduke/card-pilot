@@ -623,9 +623,9 @@ func accountDetailCycles(
     includesTrackedHistory: Bool,
     timeZone: TimeZone = CardPilotUI.homeTimeZone
 ) -> [BillingCycle] {
-    let generatedStart = includesTrackedHistory
-        ? account.trackingStartCycleKey
-        : max(account.trackingStartCycleKey, today.monthKey)
+    // Compact card details still need every unpaid tracked cycle, including an older bill
+    // whose repayment falls this month. Only paid history is omitted from that view.
+    let generatedStart = account.trackingStartCycleKey
     let generatedEnd = today.addingMonths(2, timeZone: timeZone).monthKey
     let generatedKeys = LocalDate.monthKeys(from: generatedStart, through: generatedEnd)
     let savedKeys = account.billingCycles.map(\.cycleKey)
@@ -641,14 +641,18 @@ func accountDetailCycles(
                 timeZone: timeZone
             )
         }
+        .filter { includesTrackedHistory || $0.status != .paid }
         .sorted {
             if $0.status == .overdue, $1.status != .overdue { return true }
             if $0.status != .overdue, $1.status == .overdue { return false }
+            if !includesTrackedHistory, $0.repaymentDate != $1.repaymentDate {
+                return $0.repaymentDate < $1.repaymentDate
+            }
             return $0.cycleKey < $1.cycleKey
         }
 }
 
-private extension BillingRuleVersion {
+extension BillingRuleVersion {
     var billingRuleInput: BillingRuleInput {
         BillingRuleInput(
             effectiveCycleKey: effectiveCycleKey,

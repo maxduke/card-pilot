@@ -46,6 +46,9 @@ enum BillingCycleActions {
 
         // Reject invalid input as values, before creating a SwiftData object or touching
         // its inverse. rollback() alone can leave a newly inserted record in that array.
+        let proposedDates = BillingCycleOverride(statementDate: try statement.map { try LocalDate(rawValue: $0) },
+                                                repaymentDate: try repayment.map { try LocalDate(rawValue: $0) },
+                                                repaidAt: repaidAt)
         _ = try BillingCalculator.calculate(
             accountStatus: account.status,
             closedOn: try account.closedOn.map { try LocalDate(rawValue: $0) },
@@ -54,9 +57,7 @@ enum BillingCycleActions {
                 BillingRuleInput(effectiveCycleKey: $0.effectiveCycleKey, statementDay: $0.statementDay,
                                  repaymentKind: $0.repaymentKind, repaymentValue: $0.repaymentValue)
             },
-            override: BillingCycleOverride(statementDate: try statement.map { try LocalDate(rawValue: $0) },
-                                           repaymentDate: try repayment.map { try LocalDate(rawValue: $0) },
-                                           repaidAt: repaidAt),
+            override: proposedDates,
             today: today, timeZone: timeZone
         )
         guard existing != nil || statement != nil || repayment != nil || repaidAt != nil else { return }
@@ -67,7 +68,9 @@ enum BillingCycleActions {
             record.statementDateOverride = statement
             record.repaymentDateOverride = repayment
             record.repaidAt = repaidAt
-            if repaidAt == nil && statement == nil && repayment == nil { context.delete(record) }
+            if !proposedDates.requiresRecord(cycleKey: cycleKey, trackingStartCycleKey: account.trackingStartCycleKey) {
+                context.delete(record)
+            }
             try persist(context)
             let defaults = UserDefaults.standard
             defaults.set(defaults.integer(forKey: "cardPilot.notificationRevision") &+ 1,

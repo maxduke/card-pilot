@@ -122,6 +122,27 @@ final class NotificationBillingTests: XCTestCase {
         XCTAssertEqual(record.account?.id, account.id)
     }
 
+    func testUndoKeepsSavedBillBeforeTrackingStartVisibleAndResolvable() throws {
+        let container = try fixture()
+        let context = container.mainContext
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<CreditCardAccount>()).first)
+        let record = BillingCycleRecord(account: account, cycleKey: 202608, repaidAt: .now)
+        context.insert(record)
+        try context.save()
+        let recordID = record.id
+        try BillingCycleActions.save(.repayment(nil), account: account, cycleKey: 202608,
+                                     context: context, today: today, timeZone: utc)
+        let reader = ModelContext(container)
+        let restored = try XCTUnwrap(reader.fetch(FetchDescriptor<CreditCardAccount>()).first)
+        XCTAssertEqual(restored.billingCycles.map(\.id), [recordID])
+        XCTAssertNil(restored.billingCycles.first?.repaidAt)
+        let target = BillingCycleTarget(accountID: restored.id, cycleKey: 202608)
+        let (_, cycle) = try BillingCycleActions.resolve(target, accounts: [restored], today: today, timeZone: utc)
+        XCTAssertEqual(cycle.status, .overdue)
+        XCTAssertTrue(accountDetailCycles(restored, today: today, includesTrackedHistory: false, timeZone: utc)
+            .contains { $0.cycleKey == 202608 && $0.status == .overdue })
+    }
+
     func testUndoWithoutOverridesRemovesSparseRecordAndRepaidCanBeSavedAgain() throws {
         let container = try fixture()
         let context = container.mainContext

@@ -80,6 +80,45 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(progress.label, "100 CNY / 1,000 CNY")
     }
 
+    func testDraftKeepsCommaDecimalMeaningAfterRegionChange() throws {
+        let localeIndex = try XCTUnwrap(app.launchArguments.firstIndex(of: "-AppleLocale")) + 1
+        app.launchArguments[localeIndex] = "de_DE"
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("1,500", into: app.textFields["transactionAmount"])
+        enter("UI Locale", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "1,5")
+        tap(allocation)
+        allocation.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "1,250")
+        app.terminate()
+
+        app.launchArguments[localeIndex] = "zh_CN"
+        app.launch()
+        tap(app.tabBars.buttons["记一笔"])
+        tap(app.buttons["继续草稿"])
+        let restored = app.textFields["allocation.amount.UI Spend"]
+        reveal(restored)
+        XCTAssertEqual(restored.value as? String, "1,250")
+        tap(app.buttons["返回修改交易"])
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "1,500")
+        tap(app.buttons["saveTransaction"])
+        tap(app.buttons["saveTransaction"])
+
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        let transaction = app.buttons["transaction.UI Locale"]
+        reveal(transaction)
+        XCTAssertTrue(transaction.label.contains("1.5 CNY"))
+        tap(transaction)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Spend", "1.25 CNY")).firstMatch.waitForExistence(timeout: 10))
+    }
+
     func testDraftRestoresManualAllocationAndSavesOnlyOnce() {
         launch("core")
         openCard("UI Primary")
