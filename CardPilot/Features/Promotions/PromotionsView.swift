@@ -2208,10 +2208,13 @@ enum PromotionAllocationActions {
             target.currencyCode = promotion.progressCurrencyCode
             try target.validate()
             if allocation == nil { context.insert(target) }
+            // Register this synchronous edit before either saving or an injected failure.
+            context.processPendingChanges()
             try persist(context)
         } catch {
             // Let SwiftData restore required relationships; assigning inverse arrays
             // here would attempt to nullify transaction/promotion and trap.
+            context.processPendingChanges()
             context.rollback()
             throw error
         }

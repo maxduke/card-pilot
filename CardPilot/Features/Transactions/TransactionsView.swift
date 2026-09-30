@@ -2135,11 +2135,14 @@ enum TransactionEditActions {
                     try allocation.validate()
                 }
             }
+            // Register this synchronous edit before either saving or an injected failure.
+            context.processPendingChanges()
             try persist(context)
             return target
         } catch {
             // Required inverse relationships must be restored by SwiftData itself,
             // not cleared while newly inserted allocations are still live.
+            context.processPendingChanges()
             context.rollback()
             throw error
         }
