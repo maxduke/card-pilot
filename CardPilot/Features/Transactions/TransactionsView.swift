@@ -98,6 +98,7 @@ struct TransactionsView: View {
     @State private var editingTransaction: Transaction?
     @State private var detailTransaction: Transaction?
     @State private var transactionPendingDeletion: Transaction?
+    @State private var transactionPendingReversal: Transaction?
     @State private var errorMessage: String?
     @State private var filterCardID: UUID?
     @State private var filterKind: TransactionKind?
@@ -174,8 +175,12 @@ struct TransactionsView: View {
                                             }
                                             if transaction.status == .active {
                                                 Button {
-                                                    transaction.reverse()
-                                                    save()
+                                                    if transactionHasActiveRefunds(transaction) {
+                                                        transactionPendingReversal = transaction
+                                                    } else {
+                                                        transaction.reverse()
+                                                        save()
+                                                    }
                                                 } label: {
                                                     Label("标记为已冲正", systemImage: "arrow.uturn.backward")
                                                 }
@@ -266,6 +271,19 @@ struct TransactionsView: View {
                 Button("取消", role: .cancel) { transactionPendingDeletion = nil }
             } message: {
                 Text("删除后无法恢复；有关联退款或促销分配的交易仍会受到保护。")
+            }
+            .confirmationDialog("确认冲正原消费？", isPresented: Binding(
+                get: { transactionPendingReversal != nil },
+                set: { if !$0 { transactionPendingReversal = nil } }
+            ), titleVisibility: .visible) {
+                Button("仅冲正原消费", role: .destructive) {
+                    transactionPendingReversal?.reverse()
+                    save()
+                    transactionPendingReversal = nil
+                }
+                Button("取消", role: .cancel) { transactionPendingReversal = nil }
+            } message: {
+                Text("这笔消费有关联的有效退款。冲正后原消费不再计入促销，但退款仍会扣减进度，合计可能为负。请根据银行记录单独核对退款；不会自动冲正退款。")
             }
             .searchable(text: $searchText, prompt: "搜索商户、分类或促销")
         }
@@ -774,6 +792,7 @@ struct TransactionEditorForm: View {
 
     let draftStore: TransactionDraftStore
     let isResumedDraft: Bool
+    @State private var amountLocale: Locale
     @Environment(\.scenePhase) private var scenePhase
     @State private var draftID: UUID
     @State private var hasPersistedDraft: Bool
@@ -795,6 +814,8 @@ struct TransactionEditorForm: View {
         draft: TransactionDraft? = nil,
         draftStore: TransactionDraftStore
     ) {
+        let amountLocale = draft?.amountLocale ?? .current
+        _amountLocale = State(initialValue: amountLocale)
         _hasPersistedDraft = State(initialValue: draft != nil)
         self.draftStore = draftStore
         self.isResumedDraft = draft != nil
@@ -816,7 +837,7 @@ struct TransactionEditorForm: View {
         _transactionDate = State(initialValue: transaction.flatMap { try? LocalDate(rawValue: $0.transactionOn).date(in: CardPilotUI.homeTimeZone) } ?? Date())
         _postingDate = State(initialValue: transaction.flatMap { $0.postingOn.flatMap { try? LocalDate(rawValue: $0).date(in: CardPilotUI.homeTimeZone) } } ?? Date())
         _hasPostingDate = State(initialValue: transaction?.postingOn != nil)
-        _amountText = State(initialValue: transaction.map { CardPilotUI.editableAmountText($0.amount) } ?? "")
+        _amountText = State(initialValue: transaction.map { CardPilotUI.editableAmountText($0.amount, locale: amountLocale) } ?? "")
         _currencyCode = State(initialValue: transaction?.currencyCode ?? resolvedCard?.account.limitCurrencyCode ?? "CNY")
         _merchant = State(initialValue: transaction?.merchant ?? "")
         _category = State(initialValue: transaction?.category ?? "")
@@ -825,7 +846,7 @@ struct TransactionEditorForm: View {
         _originalTransactionID = State(initialValue: transaction?.originalTransaction?.id ?? Self.noOriginalTransactionID)
         let positiveAllocations = (transaction?.allocations ?? []).filter { $0.qualifyingAmount > .zero }
         var initialIDs = Set(positiveAllocations.map { $0.promotion.id })
-        var initialAmounts = Dictionary(uniqueKeysWithValues: positiveAllocations.map { ($0.promotion.id, CardPilotUI.editableAmountText($0.qualifyingAmount)) })
+        var initialAmounts = Dictionary(uniqueKeysWithValues: positiveAllocations.map { ($0.promotion.id, CardPilotUI.editableAmountText($0.qualifyingAmount, locale: amountLocale)) })
         if transaction == nil, let initialPromotion {
             initialIDs.insert(initialPromotion.id)
             initialAmounts[initialPromotion.id] = ""
@@ -904,9 +925,19 @@ struct TransactionEditorForm: View {
     private var currentAutomaticPromotionIDs: Set<UUID> {
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard kind == .purchase,
-              let transactionAmount = CardPilotUI.decimal(amountText),
+              let transactionAmount = CardPilotUI.decimal(amountText, locale: amountLocale),
               transactionAmount > .zero else {
-            return inheritedPromotionIDs
+            guard kind == .refund, let amount = CardPilotUI.decimal(amountText, locale: amountLocale) else {
+                return inheritedPromotionIDs
+            }
+            return Set(promotions.filter { promotion in
+                guard inheritedPromotionIDs.contains(promotion.id) else { return false }
+                let suggestion = suggestedRefundAllocationAmount(
+                    refundAmount: amount, refundCurrencyCode: normalizedCurrency, promotion: promotion,
+                    original: originalTransactions.first { $0.id == originalTransactionID },
+                    excludingTransactionID: transaction?.id)
+                return suggestion.map { $0 > .zero } ?? true
+            }.map(\.id))
         }
         let automaticCandidates = candidatePromotions.filter { promotion in
             PromotionCalculator.shouldAutomaticallySelect(
@@ -924,6 +955,7 @@ struct TransactionEditorForm: View {
     private var visiblePromotionIDs: Set<UUID> {
         Set(candidatePromotions.map(\.id))
             .union(selectedPromotionIDs)
+            .union(inheritedPromotionIDs)
             .union(postingDatePendingPromotions.map(\.id))
             .union(searchedPromotions.map(\.id))
     }
@@ -933,7 +965,8 @@ struct TransactionEditorForm: View {
     }
 
     private var postingDatePendingPromotions: [Promotion] {
-        promotionsAwaitingPostingDate(promotions, cardID: selectedCard?.id, hasPostingDate: hasPostingDate)
+        promotionsAwaitingPostingDate(promotions, cardID: selectedCard?.id,
+                                      hasPostingDate: hasPostingDate, transactionOn: CardPilotUI.rawDate(transactionDate))
     }
 
     private var searchedPromotions: [Promotion] {
@@ -941,7 +974,7 @@ struct TransactionEditorForm: View {
     }
 
     private var isAmountPositive: Bool {
-        guard let amount = CardPilotUI.decimal(amountText) else { return false }
+        guard let amount = CardPilotUI.decimal(amountText, locale: amountLocale) else { return false }
         return amount > .zero
     }
 
@@ -949,8 +982,21 @@ struct TransactionEditorForm: View {
         !candidatePromotions.isEmpty || !selectedPromotionIDs.isEmpty || !postingDatePendingPromotions.isEmpty
     }
 
+    private var invalidPromotionIDs: Set<UUID> {
+        invalidDraftPromotionIDs(selectedIDs: selectedPromotionIDs, savedCurrencies: savedPromotionCurrencies,
+                                 promotions: promotions)
+    }
+
     private var confirmationWarnings: [String] {
         var warnings: [String] = []
+        if !invalidPromotionIDs.isEmpty { warnings.append("活动已失效，请移除后重新确认") }
+        if promotions.contains(where: { promotion in
+            selectedPromotionIDs.contains(promotion.id) && transactionAllocationExceedsAmount(
+                transactionAmount: CardPilotUI.decimal(amountText, locale: amountLocale),
+                transactionCurrencyCode: currencyCode,
+                allocationAmount: CardPilotUI.decimal(allocationAmounts[promotion.id] ?? "", locale: amountLocale),
+                allocationCurrencyCode: promotion.progressCurrencyCode)
+        }) { warnings.append("计入金额大于交易金额，请核对") }
         if selectedPromotionIDs.count > 1 && selectedPromotionsContainNonStacking { warnings.append("活动不可叠加") }
         if !selectedPromotionsOutsideCandidates.isEmpty { warnings.append("卡片或日期需核对") }
         if promotions.contains(where: { selectedPromotionIDs.contains($0.id) && $0.enrollmentStatus == .notEnrolled }) {
@@ -972,6 +1018,12 @@ struct TransactionEditorForm: View {
                         basicTransactionSections
                     } else {
                         promotionConfirmationSections
+                    }
+                    if !invalidPromotionIDs.isEmpty {
+                        Section("草稿活动需要重新确认") {
+                            Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
+                            Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
+                        }
                     }
                     if draftWriteError {
                         Section {
@@ -1030,6 +1082,9 @@ struct TransactionEditorForm: View {
             }
             .task { if transaction == nil { amountIsFocused = true } }
             .onChange(of: cardID) { _, _ in
+                if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
+                    originalTransactionID = Self.noOriginalTransactionID
+                }
                 if transaction == nil, let selectedCard {
                     currencyCode = selectedCard.account.limitCurrencyCode
                     refreshDefaultAllocationAmounts()
@@ -1044,7 +1099,10 @@ struct TransactionEditorForm: View {
                 refreshCandidates()
                 refreshDefaultAllocationAmounts()
             }
-            .onChange(of: originalTransactionID) { _, _ in refreshCandidates() }
+            .onChange(of: originalTransactionID) { _, _ in
+                refreshCandidates()
+                refreshDefaultAllocationAmounts()
+            }
             .onChange(of: transactionDate) { _, _ in refreshCandidates() }
             .onChange(of: postingDate) { _, _ in refreshCandidates() }
             .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
@@ -1094,7 +1152,7 @@ struct TransactionEditorForm: View {
     }
 
     private var draftSnapshot: TransactionDraft {
-        TransactionDraft(id: draftID, cardID: cardID, kind: kind,
+        var snapshot = TransactionDraft(id: draftID, cardID: cardID, kind: kind,
             transactionOn: CardPilotUI.rawDate(transactionDate), postingOn: CardPilotUI.rawDate(postingDate),
             hasPostingDate: hasPostingDate, amountText: amountText, currencyCode: currencyCode,
             merchant: merchant, category: category, notes: notes, status: status,
@@ -1106,6 +1164,20 @@ struct TransactionEditorForm: View {
             manuallyDeselectedPromotionIDs: manuallyDeselectedPromotionIDs,
             manuallyEditedAllocationIDs: manuallyEditedAllocationIDs, editorStep: editorStep,
             showingInactiveCards: showingInactiveCards, showingOtherFields: showingOtherFields)
+        snapshot.amountLocaleIdentifier = amountLocale.identifier
+        return snapshot
+    }
+
+    private func removeInvalidPromotions() {
+        for id in invalidPromotionIDs {
+            selectedPromotionIDs.remove(id)
+            automaticallySelectedPromotionIDs.remove(id)
+            manuallyDeselectedPromotionIDs.insert(id)
+            manuallyEditedAllocationIDs.remove(id)
+            allocationAmounts[id] = nil
+            savedPromotionCurrencies[id] = nil
+        }
+        errorMessage = nil
     }
 
     private func persistDraft(force: Bool = false) {
@@ -1171,7 +1243,8 @@ struct TransactionEditorForm: View {
                 TextField("0.00", text: $amountText)
                     .font(.largeTitle.weight(.semibold))
                     .monospacedDigit()
-                    .keyboardType(.decimalPad)
+                    .keyboardType(amountLocale.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
+                    .environment(\.locale, amountLocale)
                     .focused($amountIsFocused)
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1179,6 +1252,11 @@ struct TransactionEditorForm: View {
                     .accessibilityIdentifier("transactionAmount")
                 CurrencyPickerView(selection: $currencyCode, title: "币种")
                     .fixedSize(horizontal: true, vertical: false)
+            }
+            if amountLocale.decimalSeparator != Locale.current.decimalSeparator {
+                Text("此草稿沿用原地区的金额格式，小数分隔符为“\(amountLocale.decimalSeparator ?? ".")”。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
             if !amountText.isEmpty && !isAmountPositive {
                 Text("请输入大于 0 的金额。")
@@ -1194,6 +1272,11 @@ struct TransactionEditorForm: View {
             }
             .pickerStyle(.segmented)
             .accessibilityLabel("交易类型")
+            if let transaction, transaction.kind != kind, !transaction.allocations.isEmpty {
+                Text("更改消费／退款类型会改变现有促销分配的正负贡献；计入金额仍保留，请在下一步逐项核对。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             if kind == .refund {
                 Picker("原消费", selection: $originalTransactionID) {
                     Text("不关联原消费（可选）").tag(Self.noOriginalTransactionID)
@@ -1229,6 +1312,11 @@ struct TransactionEditorForm: View {
                         Text("已冲正").tag(TransactionStatus.reversed)
                     }
                     .pickerStyle(.segmented)
+                    if status == .reversed, let transaction, transactionHasActiveRefunds(transaction) {
+                        Text("冲正原消费不会冲正关联退款：原消费贡献归零，退款仍扣减促销进度，合计可能为负。请单独核对退款。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -1249,7 +1337,12 @@ struct TransactionEditorForm: View {
     private var promotionConfirmationSections: some View {
         Section("本笔交易") {
             if let selectedCard { Text(cardLabel(selectedCard)).font(.subheadline) }
-            Text(CardPilotUI.amountText(CardPilotUI.decimal(amountText) ?? .zero, currencyCode: currencyCode))
+            if amountLocale.decimalSeparator != Locale.current.decimalSeparator {
+                Text("计入金额沿用草稿格式，小数分隔符为“\(amountLocale.decimalSeparator ?? ".")”。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Text(CardPilotUI.amountText(CardPilotUI.decimal(amountText, locale: amountLocale) ?? .zero, currencyCode: currencyCode))
                 .font(.title2.bold())
                 .monospacedDigit()
             LabeledContent(kind == .refund ? "退款日期" : "消费日期", value: CardPilotUI.dateText(CardPilotUI.rawDate(transactionDate)))
@@ -1377,7 +1470,9 @@ struct TransactionEditorForm: View {
                                 "计入金额（\(promotion.progressCurrencyCode)）",
                                 text: amountBinding(promotion.id)
                             )
-                            .keyboardType(.decimalPad)
+                            .keyboardType(amountLocale.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
+                            .environment(\.locale, amountLocale)
+                            .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             .padding(.leading, 24)
                             if let warning = qualificationWarning(for: promotion) {
@@ -1442,8 +1537,16 @@ struct TransactionEditorForm: View {
     }
 
     private func qualificationWarning(for promotion: Promotion) -> String? {
+        if transactionAllocationExceedsAmount(
+            transactionAmount: CardPilotUI.decimal(amountText, locale: amountLocale),
+            transactionCurrencyCode: currencyCode,
+            allocationAmount: CardPilotUI.decimal(allocationAmounts[promotion.id] ?? "", locale: amountLocale),
+            allocationCurrencyCode: promotion.progressCurrencyCode
+        ) {
+            return "计入金额大于本笔交易金额。已确认的分配不会随交易修改自动更改，请核对银行认可金额；仍可手动保存。"
+        }
         guard kind != .refund,
-              let transactionAmount = CardPilotUI.decimal(amountText),
+              let transactionAmount = CardPilotUI.decimal(amountText, locale: amountLocale),
               transactionAmount > .zero else { return nil }
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard normalizedCurrency == promotion.progressCurrencyCode else {
@@ -1487,6 +1590,12 @@ struct TransactionEditorForm: View {
                     selectedPromotionIDs.remove(id)
                     automaticallySelectedPromotionIDs.remove(id)
                     manuallyDeselectedPromotionIDs.insert(id)
+                    if let savedCurrency = savedPromotionCurrencies[id],
+                       savedCurrency != promotions.first(where: { $0.id == id })?.progressCurrencyCode {
+                        allocationAmounts[id] = nil
+                        manuallyEditedAllocationIDs.remove(id)
+                    }
+                    savedPromotionCurrencies[id] = nil
                 }
             }
         )
@@ -1542,10 +1651,17 @@ struct TransactionEditorForm: View {
     }
 
     private func defaultAmount(for promotion: Promotion) -> String {
-        guard let amount = CardPilotUI.decimal(amountText), amount > .zero else { return "" }
+        guard let amount = CardPilotUI.decimal(amountText, locale: amountLocale), amount > .zero else { return "" }
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard normalizedCurrency == promotion.progressCurrencyCode else { return "" }
-        if kind == .refund { return CardPilotUI.editableAmountText(amount) }
+        if kind == .refund {
+            let suggestion = suggestedRefundAllocationAmount(
+                refundAmount: amount, refundCurrencyCode: normalizedCurrency, promotion: promotion,
+                original: originalTransactions.first { $0.id == originalTransactionID },
+                excludingTransactionID: transaction?.id)
+            guard let suggestion, suggestion > .zero else { return "" }
+            return CardPilotUI.editableAmountText(suggestion, locale: amountLocale)
+        }
         let currentQualifiedAmount = (try? PromotionCalculator.progress(for: promotion))?.qualifiedAmount ?? .zero
         let suggestion = PromotionCalculator.suggestedQualifyingAmount(
             transactionAmount: amount,
@@ -1556,7 +1672,7 @@ struct TransactionEditorForm: View {
             qualifyingCap: promotion.qualifyingCap
         )
         guard let suggestion, suggestion > .zero else { return "" }
-        return CardPilotUI.editableAmountText(suggestion)
+        return CardPilotUI.editableAmountText(suggestion, locale: amountLocale)
     }
 
     private var selectedPromotionsContainNonStacking: Bool {
@@ -1594,12 +1710,12 @@ struct TransactionEditorForm: View {
             }
         }
         guard selectedPromotionIDs.isSubset(of: Set(promotions.map(\.id))) else {
-            errorMessage = "草稿中的活动已不存在，请丢弃草稿后重新填写。"
+            errorMessage = "草稿中的活动已不存在，请先移除失效活动；其余交易内容会保留。"
             return
         }
         for promotion in promotions where selectedPromotionIDs.contains(promotion.id) {
             if let savedCurrency = savedPromotionCurrencies[promotion.id], savedCurrency != promotion.progressCurrencyCode {
-                errorMessage = "活动币种已改变，请丢弃草稿后重新确认计入金额。"
+                errorMessage = "活动币种已改变，请取消选择该活动后重新选择并填写计入金额，或移除失效活动。"
                 return
             }
         }
@@ -1609,7 +1725,7 @@ struct TransactionEditorForm: View {
             return
         }
         guard let card = selectedCard else { errorMessage = "请选择卡片。"; return }
-        guard let amount = CardPilotUI.decimal(amountText), amount > .zero else {
+        guard let amount = CardPilotUI.decimal(amountText, locale: amountLocale), amount > .zero else {
             errorMessage = "金额应为大于 0 的数字。"
             return
         }
@@ -1628,7 +1744,7 @@ struct TransactionEditorForm: View {
         let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
         var parsedAmounts: [UUID: Decimal] = [:]
         for promotion in selectedPromotions {
-            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? ""), amount > .zero else {
+            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? "", locale: amountLocale), amount > .zero else {
                 errorMessage = "活动“\(promotion.title)”的计入金额应为大于 0 的数字。"
                 return
             }
@@ -1718,58 +1834,15 @@ struct TransactionEditorForm: View {
                 return
             }
         }
-        let target = transaction ?? Transaction(
-            id: draftID,
-            card: card,
-            kind: kind,
-            transactionOn: CardPilotUI.rawDate(transactionDate),
-            postingOn: hasPostingDate ? CardPilotUI.rawDate(postingDate) : nil,
-            amount: amount,
-            currencyCode: normalizedCurrency,
-            merchant: merchant,
-            category: category,
-            notes: notes,
-            originalTransaction: original,
-            status: status
-        )
-        target.card = card
-        target.kind = kind
-        target.transactionOn = CardPilotUI.rawDate(transactionDate)
-        target.postingOn = hasPostingDate ? CardPilotUI.rawDate(postingDate) : nil
-        target.amount = amount
-        target.currencyCode = normalizedCurrency
-        target.merchant = merchant
-        target.category = category
-        target.notes = notes
-        target.originalTransaction = original
-        target.status = status
-
         do {
-            try target.validate()
-            let existingAllocations = target.allocations.reduce(into: [UUID: PromotionAllocation]()) {
-                if $0[$1.promotion.id] == nil { $0[$1.promotion.id] = $1 }
-            }
-            if transaction == nil { modelContext.insert(target) }
-            for allocation in target.allocations where !selectedPromotionIDs.contains(allocation.promotion.id) {
-                modelContext.delete(allocation)
-            }
-            for promotion in selectedPromotions {
-                if let allocation = existingAllocations[promotion.id] {
-                    allocation.qualifyingAmount = parsedAmounts[promotion.id] ?? .zero
-                    allocation.currencyCode = promotion.progressCurrencyCode
-                    try allocation.validate()
-                } else {
-                    let allocation = PromotionAllocation(
-                        transaction: target,
-                        promotion: promotion,
-                        qualifyingAmount: parsedAmounts[promotion.id] ?? .zero,
-                        currencyCode: promotion.progressCurrencyCode
-                    )
-                    try allocation.validate()
-                    modelContext.insert(allocation)
-                }
-            }
-            try modelContext.save()
+            try TransactionEditActions.save(
+                values: TransactionEditValues(kind: kind, transactionOn: CardPilotUI.rawDate(transactionDate),
+                    postingOn: hasPostingDate ? CardPilotUI.rawDate(postingDate) : nil,
+                    amount: amount, currencyCode: normalizedCurrency, merchant: merchant,
+                    category: category, notes: notes, status: status),
+                transaction: transaction, newID: draftID, card: card, original: original,
+                allocations: selectedPromotions.map { ($0, parsedAmounts[$0.id] ?? .zero) },
+                context: modelContext)
             if transaction == nil {
                 draftFinished = true
                 // If cleanup fails, the saved UUID makes the draft obsolete on next open.
@@ -1790,7 +1863,6 @@ struct TransactionEditorForm: View {
             )
             dismiss()
         } catch {
-            modelContext.rollback()
             errorMessage = "交易未保存：\(error.localizedDescription)"
         }
     }
@@ -1914,11 +1986,13 @@ private struct CardSelectionSheet: View {
 func promotionsAwaitingPostingDate(
     _ promotions: [Promotion],
     cardID: UUID?,
-    hasPostingDate: Bool
+    hasPostingDate: Bool,
+    transactionOn: Int
 ) -> [Promotion] {
     guard let cardID, !hasPostingDate else { return [] }
     return promotions.filter {
         $0.archivedAt == nil
+            && $0.endOn >= transactionOn
             && $0.qualificationDateBasis == .postingDate
             && $0.eligibleCards.contains(where: { $0.id == cardID })
     }
@@ -1928,4 +2002,172 @@ func promotionsMatchingSearch(_ promotions: [Promotion], searchText: String) -> 
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty else { return [] }
     return promotions.filter { $0.title.localizedCaseInsensitiveContains(query) }
+}
+
+func transactionAllocationExceedsAmount(
+    transactionAmount: Decimal?, transactionCurrencyCode: String,
+    allocationAmount: Decimal?, allocationCurrencyCode: String
+) -> Bool {
+    guard let transactionAmount, transactionAmount > .zero, let allocationAmount,
+          transactionCurrencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == allocationCurrencyCode else {
+        return false
+    }
+    return allocationAmount > transactionAmount
+}
+
+func transactionHasActiveRefunds(_ transaction: Transaction) -> Bool {
+    transaction.kind == .purchase && transaction.refunds.contains { $0.status == .active }
+}
+
+func invalidDraftPromotionIDs(selectedIDs: Set<UUID>, savedCurrencies: [UUID: String],
+                              promotions: [Promotion]) -> Set<UUID> {
+    Set(selectedIDs.filter { id in
+        guard let promotion = promotions.first(where: { $0.id == id }) else { return true }
+        return savedCurrencies[id].map { $0 != promotion.progressCurrencyCode } ?? false
+    })
+}
+
+func suggestedRefundAllocationAmount(
+    refundAmount: Decimal, refundCurrencyCode: String, promotion: Promotion,
+    original: Transaction?, excludingTransactionID: UUID?
+) -> Decimal? {
+    guard refundAmount > .zero, refundCurrencyCode == promotion.progressCurrencyCode else { return nil }
+    guard let original else { return refundAmount }
+    guard original.currencyCode == refundCurrencyCode else { return nil }
+    let originalAmount = original.allocations
+        .filter { $0.promotion.id == promotion.id }
+        .reduce(Decimal.zero) { $0 + $1.qualifyingAmount }
+    let refundedAmount = original.refunds
+        .filter { $0.status == .active && $0.id != excludingTransactionID }
+        .flatMap(\.allocations)
+        .filter { $0.promotion.id == promotion.id }
+        .reduce(Decimal.zero) { $0 + $1.qualifyingAmount }
+    return min(refundAmount, max(.zero, originalAmount - refundedAmount))
+}
+
+struct TransactionEditValues {
+    var kind: TransactionKind
+    var transactionOn: Int
+    var postingOn: Int?
+    var amount: Decimal
+    var currencyCode: String
+    var merchant: String
+    var category: String
+    var notes: String
+    var status: TransactionStatus
+
+    func validate() throws {
+        guard amount > .zero else { throw ModelValidationError.invalidTransactionAmount }
+        guard isValidCurrencyCode(currencyCode) else { throw ModelValidationError.invalidCurrencyCode(currencyCode) }
+        _ = try LocalDate(rawValue: transactionOn)
+        if let postingOn { _ = try LocalDate(rawValue: postingOn) }
+    }
+
+    func apply(to transaction: Transaction) {
+        transaction.kind = kind
+        transaction.transactionOn = transactionOn
+        transaction.postingOn = postingOn
+        transaction.amount = amount
+        transaction.currencyCode = currencyCode
+        transaction.merchant = merchant
+        transaction.category = category
+        transaction.notes = notes
+        transaction.status = status
+    }
+}
+
+extension TransactionEditValues {
+    init(transaction: Transaction) {
+        self.init(kind: transaction.kind, transactionOn: transaction.transactionOn, postingOn: transaction.postingOn,
+                  amount: transaction.amount, currencyCode: transaction.currencyCode, merchant: transaction.merchant,
+                  category: transaction.category, notes: transaction.notes, status: transaction.status)
+    }
+}
+
+@MainActor
+enum TransactionEditActions {
+    @discardableResult
+    static func save(values: TransactionEditValues, transaction: Transaction?, newID: UUID, card: Card,
+                     original: Transaction?, allocations: [(promotion: Promotion, amount: Decimal)],
+                     context: ModelContext, persist: (ModelContext) throws -> Void = { try $0.save() }) throws -> Transaction {
+        // Validate values before managed relationships can insert any new objects.
+        try values.validate()
+        if let original {
+            guard values.kind == .refund, original.kind == .purchase,
+                  original.card.id == card.id, original.id != transaction?.id else {
+                throw ModelValidationError.invalidTransactionRelationship
+            }
+        }
+        if let transaction, !transaction.refunds.isEmpty,
+           values.kind != .purchase || transaction.card.id != card.id {
+            throw ModelValidationError.invalidTransactionRelationship
+        }
+        guard Set(allocations.map { $0.promotion.id }).count == allocations.count else {
+            throw ModelValidationError.duplicatePromotionAllocation
+        }
+        for allocation in allocations {
+            guard allocation.amount > .zero else { throw ModelValidationError.invalidQualifyingAmount }
+            guard isValidCurrencyCode(allocation.promotion.progressCurrencyCode) else {
+                throw ModelValidationError.invalidCurrencyCode(allocation.promotion.progressCurrencyCode)
+            }
+        }
+
+        let previousValues = transaction.map { TransactionEditValues(transaction: $0) }
+        let previousCard = transaction?.card
+        let previousOriginal = transaction?.originalTransaction
+        let previousAllocations = transaction?.allocations ?? []
+        let allocationSnapshots = previousAllocations.map { ($0, $0.qualifyingAmount, $0.currencyCode) }
+        let relatedCards = ([card] + [previousCard].compactMap { $0 }).reduce(into: [UUID: Card]()) { $0[$1.id] = $1 }
+        let cardSnapshots = relatedCards.values.map { ($0, $0.transactions) }
+        let relatedOriginals = [original, previousOriginal].compactMap { $0 }.reduce(into: [UUID: Transaction]()) { $0[$1.id] = $1 }
+        let originalSnapshots = relatedOriginals.values.map { ($0, $0.refunds) }
+        let relatedPromotions = (allocations.map(\.promotion) + previousAllocations.map(\.promotion))
+            .reduce(into: [UUID: Promotion]()) { $0[$1.id] = $1 }
+        let promotionSnapshots = relatedPromotions.values.map { ($0, $0.allocations) }
+        let target = transaction ?? Transaction(id: newID, card: card, kind: values.kind,
+            transactionOn: values.transactionOn, postingOn: values.postingOn, amount: values.amount,
+            currencyCode: values.currencyCode, merchant: values.merchant, category: values.category,
+            notes: values.notes, originalTransaction: original, status: values.status)
+        do {
+            target.card = card
+            target.originalTransaction = original
+            values.apply(to: target)
+            try target.validate()
+            if transaction == nil { context.insert(target) }
+            let selectedIDs = Set(allocations.map { $0.promotion.id })
+            for allocation in previousAllocations where !selectedIDs.contains(allocation.promotion.id) {
+                target.allocations.removeAll { $0.id == allocation.id }
+                allocation.promotion.allocations.removeAll { $0.id == allocation.id }
+                context.delete(allocation)
+            }
+            for item in allocations {
+                if let allocation = previousAllocations.first(where: { $0.promotion.id == item.promotion.id }) {
+                    allocation.qualifyingAmount = item.amount
+                    allocation.currencyCode = item.promotion.progressCurrencyCode
+                    try allocation.validate()
+                } else {
+                    let allocation = PromotionAllocation(transaction: target, promotion: item.promotion,
+                        qualifyingAmount: item.amount, currencyCode: item.promotion.progressCurrencyCode)
+                    context.insert(allocation)
+                    try allocation.validate()
+                }
+            }
+            try persist(context)
+            return target
+        } catch {
+            previousValues?.apply(to: target)
+            if let previousCard { target.card = previousCard }
+            target.originalTransaction = previousOriginal
+            for (allocation, amount, currency) in allocationSnapshots {
+                allocation.qualifyingAmount = amount
+                allocation.currencyCode = currency
+            }
+            target.allocations = previousAllocations
+            for (card, transactions) in cardSnapshots { card.transactions = transactions }
+            for (original, refunds) in originalSnapshots { original.refunds = refunds }
+            for (promotion, allocations) in promotionSnapshots { promotion.allocations = allocations }
+            context.rollback()
+            throw error
+        }
+    }
 }

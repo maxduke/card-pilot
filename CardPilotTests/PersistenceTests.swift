@@ -323,4 +323,37 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNoThrow(try account.validateNewBillingRuleEffectiveCycle(future.effectiveCycleKey, currentMonthKey: 202608))
     }
 
+
+    func testOnboardingTracksAndMarksThePreviewedPreviousMonthBillPaid() throws {
+        let timeZone = TimeZone(secondsFromGMT: 0)!
+        let today = try LocalDate(rawValue: 20260905)
+        let preview = try BillingCalculator.initialCycle(
+            rule: BillingRuleInput(effectiveCycleKey: nil, statementDay: 20,
+                                   repaymentKind: .fixedDay, repaymentValue: 8),
+            today: today, timeZone: timeZone
+        )
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        let bank = Bank(name: "测试银行")
+        let account = CreditCardAccount(bank: bank, trackingStartCycleKey: preview.cycleKey)
+        let rule = BillingRuleVersion(account: account, statementDay: 20,
+                                      repaymentKind: .fixedDay, repaymentValue: 8)
+        let record = BillingCycleRecord(account: account, cycleKey: account.trackingStartCycleKey,
+                                        repaidAt: today.date(in: timeZone))
+        context.insert(bank)
+        context.insert(account)
+        context.insert(rule)
+        context.insert(record)
+        try context.save()
+
+        let readContext = ModelContext(container)
+        let savedAccount = try XCTUnwrap(readContext.fetch(FetchDescriptor<CreditCardAccount>()).first)
+        XCTAssertEqual(savedAccount.trackingStartCycleKey, 202608)
+        XCTAssertEqual(savedAccount.billingCycles.map(\.cycleKey), [202608])
+        XCTAssertNotNil(savedAccount.billingCycles.first?.repaidAt)
+        let cycles = accountDetailCycles(savedAccount, today: today, includesTrackedHistory: false, timeZone: timeZone)
+        XCTAssertEqual(cycles.first?.cycleKey, 202609)
+        XCTAssertEqual(cycles.first?.repaymentDate.rawValue, 20261008)
+    }
+
 }

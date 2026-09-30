@@ -156,6 +156,57 @@ final class CardDetailsTests: XCTestCase {
         )
 
         XCTAssertTrue(fullHistory.contains { $0.cycleKey == 202606 && $0.status == .overdue })
-        XCTAssertFalse(cardSummary.contains { $0.cycleKey == 202606 })
+        XCTAssertTrue(cardSummary.contains { $0.cycleKey == 202606 && $0.status == .overdue })
     }
+
+    func testCardDetailIncludesThePreviousMonthBillNamedByTheSummary() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"), trackingStartCycleKey: 202608)
+        account.billingRuleVersions = [BillingRuleVersion(account: account, statementDay: 20,
+            repaymentKind: .fixedDay, repaymentValue: 8)]
+        let today = try LocalDate(rawValue: 20260905)
+        let cycles = accountDetailCycles(account, today: today, includesTrackedHistory: false, timeZone: utc)
+        let summary = accountBillingSummary(account, today: today, timeZone: utc)
+        XCTAssertEqual(cycles.first?.cycleKey, 202608)
+        XCTAssertEqual(cycles.first?.repaymentDate.rawValue, 20260908)
+        XCTAssertEqual(cycles.first?.repaymentDate, summary.nextRepaymentDate)
+    }
+
+    func testCardDetailOmitsPaidCyclesButKeepsSavedPendingBeforeTrackingStart() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"), trackingStartCycleKey: 202609)
+        account.billingRuleVersions = [BillingRuleVersion(account: account, statementDay: 20,
+            repaymentKind: .fixedDay, repaymentValue: 8)]
+        account.billingCycles = [
+            BillingCycleRecord(account: account, cycleKey: 202608),
+            BillingCycleRecord(account: account, cycleKey: 202609, repaidAt: Date(timeIntervalSince1970: 1))
+        ]
+        let cycles = accountDetailCycles(account, today: try LocalDate(rawValue: 20260905),
+                                         includesTrackedHistory: false, timeZone: utc)
+        XCTAssertEqual(cycles.first?.cycleKey, 202608)
+        XCTAssertFalse(cycles.contains { $0.cycleKey == 202609 })
+        XCTAssertFalse(cycles.contains { $0.cycleKey < 202608 })
+    }
+
+    func testClosedAccountCardDetailKeepsBillDueAfterClosure() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"), trackingStartCycleKey: 202608,
+                                        status: .closed, closedOn: 20260825)
+        account.billingRuleVersions = [BillingRuleVersion(account: account, statementDay: 20,
+            repaymentKind: .fixedDay, repaymentValue: 8)]
+        let cycles = accountDetailCycles(account, today: try LocalDate(rawValue: 20260905),
+                                         includesTrackedHistory: false, timeZone: utc)
+        XCTAssertEqual(cycles.map(\.cycleKey), [202608])
+        XCTAssertEqual(cycles.first?.repaymentDate.rawValue, 20260908)
+    }
+
+    func testCardDetailUsesRepaymentDateOrderForOverriddenCycles() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"), trackingStartCycleKey: 202608)
+        account.billingRuleVersions = [BillingRuleVersion(account: account, statementDay: 20,
+            repaymentKind: .fixedDay, repaymentValue: 8)]
+        account.billingCycles = [BillingCycleRecord(account: account, cycleKey: 202610,
+            statementDateOverride: 20260904, repaymentDateOverride: 20260906)]
+        let today = try LocalDate(rawValue: 20260905)
+        let cycles = accountDetailCycles(account, today: today, includesTrackedHistory: false, timeZone: utc)
+        XCTAssertEqual(cycles.first?.cycleKey, 202610)
+        XCTAssertEqual(cycles.first?.repaymentDate, accountBillingSummary(account, today: today, timeZone: utc).nextRepaymentDate)
+    }
+
 }

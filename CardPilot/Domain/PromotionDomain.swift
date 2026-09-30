@@ -69,6 +69,13 @@ enum PromotionEligibility {
     }
 }
 
+struct PromotionPeriodState: Equatable {
+    let enrollmentStatus: EnrollmentStatus
+    let enrolledOn: Int?
+    let enrollmentDeadline: Int?
+    let archivedAt: Date?
+}
+
 enum PromotionSeriesCalculator {
     /// Builds complete monthly periods from the original date anchors; each period is calculated
     /// from offset 0, so a clamped February date never drifts subsequent periods.
@@ -94,6 +101,28 @@ enum PromotionSeriesCalculator {
     static func shiftedDate(_ rawValue: Int, byMonths months: Int) -> Int? {
         guard let date = try? LocalDate(rawValue: rawValue) else { return nil }
         return date.addingMonthsIfPossible(months)?.rawValue
+    }
+
+    /// Shared rules may change across a series, but enrollment and archiving are period facts.
+    static func editedPeriodState(
+        for period: Promotion,
+        editing selected: Promotion,
+        enrollmentStatus: EnrollmentStatus,
+        enrolledOn: Int?,
+        enrollmentDeadline: Int?,
+        archived: Bool,
+        now: Date = Date()
+    ) -> PromotionPeriodState {
+        let isSelected = period.id == selected.id
+        let status = isSelected ? enrollmentStatus : period.enrollmentStatus
+        let offset = (period.seriesIndex ?? 0) - (selected.seriesIndex ?? 0)
+        let deadline = enrollmentDeadline.flatMap { shiftedDate($0, byMonths: offset) }
+        return PromotionPeriodState(
+            enrollmentStatus: status,
+            enrolledOn: isSelected ? (status == .enrolled ? enrolledOn : nil) : period.enrolledOn,
+            enrollmentDeadline: status == .notRequired ? nil : deadline,
+            archivedAt: isSelected ? (archived ? (period.archivedAt ?? now) : nil) : period.archivedAt
+        )
     }
 
     static func editablePeriods(
@@ -126,8 +155,8 @@ extension Promotion {
             organizingBanks: organizingBanks,
             organizingNetworks: organizingNetworks,
             eligibleCards: eligibleCards,
-            enrollmentStatus: enrollmentStatus,
-            enrolledOn: enrolledOn.flatMap { PromotionSeriesCalculator.shiftedDate($0, byMonths: 1) },
+            enrollmentStatus: enrollmentStatus == .notRequired ? .notRequired : .notEnrolled,
+            enrolledOn: nil,
             enrollmentDeadline: enrollmentDeadline.flatMap { PromotionSeriesCalculator.shiftedDate($0, byMonths: 1) },
             qualificationDateBasis: qualificationDateBasis,
             stackingAllowed: stackingAllowed,
@@ -143,40 +172,75 @@ extension Promotion {
         )
     }
 
-    static func makeMonthlySeries(from template: Promotion, through repeatUntil: Int) -> [Promotion] {
+    /// Consumes the new first period instead of leaving a related, throwaway model in SwiftData.
+    static func makeMonthlySeries(startingWith firstPeriod: Promotion, through repeatUntil: Int) -> [Promotion] {
         let periods = PromotionSeriesCalculator.monthlyPeriods(
-            startOn: template.startOn,
-            endOn: template.endOn,
+            startOn: firstPeriod.startOn,
+            endOn: firstPeriod.endOn,
             through: repeatUntil
         )
         guard !periods.isEmpty else { return [] }
         let seriesID = UUID()
+        firstPeriod.seriesID = seriesID
+        firstPeriod.seriesIndex = 0
         return periods.enumerated().map { index, period in
-            Promotion(
+            if index == 0 { return firstPeriod }
+            return Promotion(
                 seriesID: seriesID,
                 seriesIndex: index,
-                title: template.title,
+                title: firstPeriod.title,
                 startOn: period.startOn,
                 endOn: period.endOn,
-                organizingBanks: template.organizingBanks,
-                organizingNetworks: template.organizingNetworks,
-                eligibleCards: template.eligibleCards,
-                enrollmentStatus: template.enrollmentStatus,
-                enrolledOn: template.enrolledOn.flatMap { PromotionSeriesCalculator.shiftedDate($0, byMonths: index) },
-                enrollmentDeadline: template.enrollmentDeadline.flatMap { PromotionSeriesCalculator.shiftedDate($0, byMonths: index) },
-                qualificationDateBasis: template.qualificationDateBasis,
-                stackingAllowed: template.stackingAllowed,
-                qualificationThreshold: template.qualificationThreshold,
-                qualifyingCap: template.qualifyingCap,
-                perTransactionThreshold: template.perTransactionThreshold,
-                benefitTransactionCap: template.benefitTransactionCap,
-                progressCurrencyCode: template.progressCurrencyCode,
-                rules: template.rules,
-                exclusions: template.exclusions,
-                rewardDescription: template.rewardDescription,
-                notes: template.notes,
-                archivedAt: template.archivedAt
+                organizingBanks: firstPeriod.organizingBanks,
+                organizingNetworks: firstPeriod.organizingNetworks,
+                eligibleCards: firstPeriod.eligibleCards,
+                enrollmentStatus: firstPeriod.enrollmentStatus == .notRequired ? .notRequired : .notEnrolled,
+                enrolledOn: nil,
+                enrollmentDeadline: firstPeriod.enrollmentDeadline.flatMap { PromotionSeriesCalculator.shiftedDate($0, byMonths: index) },
+                qualificationDateBasis: firstPeriod.qualificationDateBasis,
+                stackingAllowed: firstPeriod.stackingAllowed,
+                qualificationThreshold: firstPeriod.qualificationThreshold,
+                qualifyingCap: firstPeriod.qualifyingCap,
+                perTransactionThreshold: firstPeriod.perTransactionThreshold,
+                benefitTransactionCap: firstPeriod.benefitTransactionCap,
+                progressCurrencyCode: firstPeriod.progressCurrencyCode,
+                rules: firstPeriod.rules,
+                exclusions: firstPeriod.exclusions,
+                rewardDescription: firstPeriod.rewardDescription,
+                notes: firstPeriod.notes,
+                archivedAt: firstPeriod.archivedAt
             )
         }
+    }
+}
+
+enum PromotionAllocationSelection {
+    static func availableTransactions(
+        _ transactions: [Transaction],
+        for promotion: Promotion,
+        editing allocation: PromotionAllocation? = nil
+    ) -> [Transaction] {
+        let allocatedIDs = Set(promotion.allocations.filter { $0.id != allocation?.id }.map(\.transaction.id))
+        return transactions
+            .filter { !allocatedIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                let lhsRecommended = PromotionCalculator.includes(lhs, in: promotion)
+                let rhsRecommended = PromotionCalculator.includes(rhs, in: promotion)
+                if lhsRecommended != rhsRecommended { return lhsRecommended }
+                if lhs.transactionOn != rhs.transactionOn { return lhs.transactionOn > rhs.transactionOn }
+                let merchantOrder = lhs.merchant.localizedCaseInsensitiveCompare(rhs.merchant)
+                if merchantOrder != .orderedSame { return merchantOrder == .orderedAscending }
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+    }
+
+    static func initialTransaction(
+        in transactions: [Transaction],
+        for promotion: Promotion,
+        editing allocation: PromotionAllocation? = nil
+    ) -> Transaction? {
+        if let allocation { return allocation.transaction }
+        return availableTransactions(transactions, for: promotion)
+            .first { PromotionCalculator.includes($0, in: promotion) }
     }
 }

@@ -424,9 +424,9 @@ enum CardPilotUI {
         return "\(monthKey / 100)年\(monthKey % 100)月"
     }
 
-    static func amountText(_ amount: Decimal, currencyCode: String? = nil) -> String {
+    static func amountText(_ amount: Decimal, currencyCode: String? = nil, locale: Locale = .current) -> String {
         let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = locale
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
@@ -435,15 +435,15 @@ enum CardPilotUI {
     }
 
     static func editableAmountText(_ amount: Decimal) -> String {
-        NSDecimalNumber(decimal: amount).stringValue
+        editableAmountText(amount, locale: .current)
     }
 
-    static func decimal(_ text: String) -> Decimal? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pattern = #"^[+-]?(?:(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)|(?:[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?))(?:[eE][+-]?[0-9]+)?$"#
-        guard trimmed.range(of: pattern, options: .regularExpression) != nil else { return nil }
-        let normalized = trimmed.replacingOccurrences(of: ",", with: "")
-        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+    static func editableAmountText(_ amount: Decimal, locale: Locale) -> String {
+        AmountInput.text(amount, locale: locale)
+    }
+
+    static func decimal(_ text: String, locale: Locale = .current) -> Decimal? {
+        AmountInput.decimal(text, locale: locale)
     }
 
     static func parseReminderTime(_ value: String) -> ReminderTime? {

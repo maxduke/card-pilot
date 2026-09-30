@@ -6,6 +6,12 @@ struct BillingRuleInput: Equatable {
     let repaymentKind: RepaymentRuleKind
     let repaymentValue: Int
 
+    func hasSameSchedule(as other: BillingRuleInput) -> Bool {
+        statementDay == other.statementDay
+            && repaymentKind == other.repaymentKind
+            && repaymentValue == other.repaymentValue
+    }
+
     func validate() throws {
         guard (1...31).contains(statementDay) else { throw BillingCalculationError.invalidRule }
         switch repaymentKind {
@@ -24,6 +30,11 @@ struct BillingCycleOverride: Equatable {
     let statementDate: LocalDate?
     let repaymentDate: LocalDate?
     let repaidAt: Date?
+
+    func requiresRecord(cycleKey: Int, trackingStartCycleKey: Int) -> Bool {
+        // An earlier cycle needs its identity retained even after repayment is undone.
+        cycleKey < trackingStartCycleKey || statementDate != nil || repaymentDate != nil || repaidAt != nil
+    }
 }
 
 struct BillingCycle: Equatable {
@@ -53,6 +64,50 @@ enum BillingCalculationError: Error, Equatable {
 }
 
 enum BillingCalculator {
+    /// Include an earlier bill that is still due, without inventing pre-onboarding overdue history.
+    static func initialCycle(
+        rule: BillingRuleInput,
+        today: LocalDate,
+        timeZone: TimeZone = .current
+    ) throws -> BillingCycle {
+        try rule.validate()
+        guard rule.effectiveCycleKey == nil else { throw BillingCalculationError.invalidRule }
+        let current = try calculate(accountStatus: .active, closedOn: nil, cycleKey: today.monthKey,
+                                    rules: [rule], today: today, timeZone: timeZone)
+        let availableMonths = (today.year - 1) * 12 + today.month - 1
+        let lookback = min(availableMonths, rule.repaymentKind == .fixedDay ? 1
+            : rule.repaymentValue / 28 + (rule.repaymentValue % 28 == 0 ? 0 : 1))
+        for offset in stride(from: lookback, through: 1, by: -1) {
+            guard let month = today.addingMonthsIfPossible(-offset, timeZone: timeZone) else { continue }
+            let cycle = try calculate(accountStatus: .active, closedOn: nil, cycleKey: month.monthKey,
+                                      rules: [rule], today: today, timeZone: timeZone)
+            if cycle.repaymentDate >= today { return cycle }
+        }
+        return current
+    }
+
+    /// Only explicit rule edits can schedule or correct a future version; unrelated edits are a no-op.
+    static func futureRuleChange(
+        initial: BillingRuleInput,
+        requested: BillingRuleInput,
+        rules: [BillingRuleInput],
+        currentMonthKey: Int
+    ) throws -> BillingRuleInput? {
+        guard initial != requested else { return nil }
+        try requested.validate()
+        guard LocalDate.isValidMonthKey(currentMonthKey),
+              let effectiveCycleKey = requested.effectiveCycleKey else {
+            throw ModelValidationError.invalidCycleKey
+        }
+        guard effectiveCycleKey > currentMonthKey else {
+            throw ModelValidationError.effectiveCycleMustBeFuture
+        }
+        guard let applicable = applicableRule(from: rules, forCycleKey: effectiveCycleKey) else {
+            throw BillingCalculationError.noApplicableRule
+        }
+        return requested.hasSameSchedule(as: applicable) ? nil : requested
+    }
+
     static func calculate(
         accountStatus: CreditCardAccountStatus,
         closedOn: LocalDate?,

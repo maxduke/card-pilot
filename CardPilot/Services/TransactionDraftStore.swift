@@ -2,8 +2,10 @@ import Foundation
 
 /// Unsaved input, separate from business facts. Amount strings retain incomplete user input.
 struct TransactionDraft: Codable, Equatable {
-    var version = 1
+    var version = 2
     var id = UUID()
+    /// Version 1 always used a dot decimal separator, regardless of the device region.
+    var amountLocaleIdentifier: String? = Locale.current.identifier
     var cardID: UUID
     var kind: TransactionKind
     var transactionOn: Int
@@ -26,8 +28,18 @@ struct TransactionDraft: Codable, Equatable {
     var showingInactiveCards: Bool
     var showingOtherFields: Bool
 
+    var amountLocale: Locale {
+        Locale(identifier: version == 1 ? "en_US_POSIX" : (amountLocaleIdentifier ?? "en_US_POSIX"))
+    }
+
     func validate() throws {
-        guard version == 1, (0...1).contains(editorStep) else { throw DraftError.unreadable }
+        guard (1...2).contains(version), (0...1).contains(editorStep) else { throw DraftError.unreadable }
+        if version == 2 {
+            guard let amountLocaleIdentifier,
+                  !amountLocaleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw DraftError.unreadable
+            }
+        }
         _ = try LocalDate(rawValue: transactionOn)
         _ = try LocalDate(rawValue: postingOn)
     }

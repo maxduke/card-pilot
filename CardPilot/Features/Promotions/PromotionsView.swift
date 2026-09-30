@@ -571,6 +571,112 @@ private enum PromotionProgressMode: String, CaseIterable, Hashable {
     }
 }
 
+@MainActor
+private struct PromotionRelationshipSnapshot {
+    private let banks: [(Bank, [Promotion])]
+    private let networks: [(CardNetwork, [Promotion])]
+    private let cards: [(Card, [Promotion])]
+
+    init(promotions: [Promotion], banks: [Bank] = [], networks: [CardNetwork] = [], cards: [Card] = [],
+         excluding excludedIDs: Set<UUID> = []) {
+        var bankIDs = Set<UUID>()
+        var networkIDs = Set<UUID>()
+        var cardIDs = Set<UUID>()
+        self.banks = (banks + promotions.flatMap(\.organizingBanks))
+            .filter { bankIDs.insert($0.id).inserted }
+            .map { ($0, $0.organizedPromotions.filter { !excludedIDs.contains($0.id) }) }
+        self.networks = (networks + promotions.flatMap(\.organizingNetworks))
+            .filter { networkIDs.insert($0.id).inserted }
+            .map { ($0, $0.organizedPromotions.filter { !excludedIDs.contains($0.id) }) }
+        self.cards = (cards + promotions.flatMap(\.eligibleCards))
+            .filter { cardIDs.insert($0.id).inserted }
+            .map { ($0, $0.eligiblePromotions.filter { !excludedIDs.contains($0.id) }) }
+    }
+
+    func restore() {
+        for (bank, promotions) in banks { bank.organizedPromotions = promotions }
+        for (network, promotions) in networks { network.organizedPromotions = promotions }
+        for (card, promotions) in cards { card.eligiblePromotions = promotions }
+    }
+}
+
+@MainActor
+private struct PromotionEditSnapshot {
+    private let restoreValues: (Promotion) -> Void
+
+    init(_ promotion: Promotion) {
+        let title = promotion.title
+        let startOn = promotion.startOn
+        let endOn = promotion.endOn
+        let banks = promotion.organizingBanks
+        let networks = promotion.organizingNetworks
+        let cards = promotion.eligibleCards
+        let status = promotion.enrollmentStatus
+        let enrolledOn = promotion.enrolledOn
+        let deadline = promotion.enrollmentDeadline
+        let basis = promotion.qualificationDateBasis
+        let stacking = promotion.stackingAllowed
+        let threshold = promotion.qualificationThreshold
+        let cap = promotion.qualifyingCap
+        let perTransactionThreshold = promotion.perTransactionThreshold
+        let benefitCap = promotion.benefitTransactionCap
+        let currency = promotion.progressCurrencyCode
+        let rules = promotion.rules
+        let exclusions = promotion.exclusions
+        let reward = promotion.rewardDescription
+        let notes = promotion.notes
+        let archivedAt = promotion.archivedAt
+        restoreValues = { target in
+            target.title = title
+            target.startOn = startOn
+            target.endOn = endOn
+            target.organizingBanks = banks
+            target.organizingNetworks = networks
+            target.eligibleCards = cards
+            target.enrollmentStatus = status
+            target.enrolledOn = enrolledOn
+            target.enrollmentDeadline = deadline
+            target.qualificationDateBasis = basis
+            target.stackingAllowed = stacking
+            target.qualificationThreshold = threshold
+            target.qualifyingCap = cap
+            target.perTransactionThreshold = perTransactionThreshold
+            target.benefitTransactionCap = benefitCap
+            target.progressCurrencyCode = currency
+            target.rules = rules
+            target.exclusions = exclusions
+            target.rewardDescription = reward
+            target.notes = notes
+            target.archivedAt = archivedAt
+        }
+    }
+
+    func restore(_ promotion: Promotion) { restoreValues(promotion) }
+}
+
+@MainActor
+enum PromotionCreationActions {
+    static func save(_ promotions: [Promotion], context: ModelContext,
+                     persist: (ModelContext) throws -> Void = { try $0.save() }) throws {
+        let relationships = PromotionRelationshipSnapshot(promotions: promotions, excluding: Set(promotions.map(\.id)))
+        do {
+            try promotions.forEach { try $0.validate() }
+            promotions.forEach { context.insert($0) }
+            try persist(context)
+        } catch {
+            // Relationships can insert a new model before insert() is called explicitly.
+            for promotion in promotions {
+                promotion.organizingBanks = []
+                promotion.organizingNetworks = []
+                promotion.eligibleCards = []
+            }
+            relationships.restore()
+            context.rollback()
+            throw error
+        }
+    }
+}
+
 private struct PromotionEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -884,6 +990,15 @@ private struct PromotionEditorView: View {
                 LabeledContent("适用卡", value: selectedCardIDs.isEmpty ? "尚未选择" : "\(selectedCardIDs.count) 张")
                 LabeledContent("进度规则", value: progressSummary)
                 LabeledContent("报名", value: enrollmentSummary)
+                if promotion == nil && repeatsMonthly {
+                    Text("后续各期需要分别报名；首期的已报名状态和日期不会复制到后续期。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if seriesEditScope == .thisAndFuture {
+                    Text("规则修改应用到本期及以后；报名状态、报名日期和归档操作只修改本期。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -1146,14 +1261,11 @@ private struct PromotionEditorView: View {
                 notes: notes,
                 archivedAt: archived ? Date() : nil
             )
-            let targets = Promotion.makeMonthlySeries(from: template, through: CardPilotUI.rawDate(repeatUntilDate))
+            let targets = Promotion.makeMonthlySeries(startingWith: template, through: CardPilotUI.rawDate(repeatUntilDate))
             do {
-                try targets.forEach { try $0.validate() }
-                targets.forEach { modelContext.insert($0) }
-                try modelContext.save()
+                try PromotionCreationActions.save(targets, context: modelContext)
                 dismiss()
             } catch {
-                modelContext.rollback()
                 errorMessage = "促销未保存：\(error.localizedDescription)"
             }
             return
@@ -1187,7 +1299,16 @@ private struct PromotionEditorView: View {
             errorMessage = "系列中已有促销分配的周期不能修改进度币种。"
             return
         }
+        let previousValues = targets.map(PromotionEditSnapshot.init)
+        let previousRelationships = PromotionRelationshipSnapshot(
+            promotions: targets, banks: selectedBanks, networks: selectedNetworks, cards: selectedCards,
+            excluding: promotion == nil ? Set([target.id]) : []
+        )
         for candidate in targets {
+            let state = PromotionSeriesCalculator.editedPeriodState(
+                for: candidate, editing: target, enrollmentStatus: status,
+                enrolledOn: enrolledValue, enrollmentDeadline: deadlineValue, archived: archived
+            )
             candidate.title = normalizedTitle
             if candidate.id == target.id || candidate.seriesID == nil {
                 candidate.startOn = startOn
@@ -1196,9 +1317,9 @@ private struct PromotionEditorView: View {
             candidate.organizingBanks = selectedBanks
             candidate.organizingNetworks = selectedNetworks
             candidate.eligibleCards = selectedCards
-            candidate.enrollmentStatus = status
-            candidate.enrolledOn = seriesDateValue(enrolledValue, source: target, target: candidate)
-            candidate.enrollmentDeadline = seriesDateValue(deadlineValue, source: target, target: candidate)
+            candidate.enrollmentStatus = state.enrollmentStatus
+            candidate.enrolledOn = state.enrolledOn
+            candidate.enrollmentDeadline = state.enrollmentDeadline
             candidate.qualificationDateBasis = qualificationDateBasis
             candidate.stackingAllowed = stackingAllowed
             candidate.qualificationThreshold = threshold.value
@@ -1210,7 +1331,7 @@ private struct PromotionEditorView: View {
             candidate.exclusions = exclusions
             candidate.rewardDescription = rewardDescription
             candidate.notes = notes
-            candidate.archivedAt = archived ? (candidate.archivedAt ?? Date()) : nil
+            candidate.archivedAt = state.archivedAt
         }
         do {
             try targets.forEach { candidate in
@@ -1223,6 +1344,13 @@ private struct PromotionEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            for (candidate, snapshot) in zip(targets, previousValues) { snapshot.restore(candidate) }
+            if promotion == nil {
+                target.organizingBanks = []
+                target.organizingNetworks = []
+                target.eligibleCards = []
+            }
+            previousRelationships.restore()
             modelContext.rollback()
             errorMessage = "促销未保存：\(error.localizedDescription)"
         }
@@ -1235,14 +1363,6 @@ private struct PromotionEditorView: View {
             from: target,
             today: CardPilotUI.rawDate(Date())
         )
-    }
-
-    private func seriesDateValue(_ value: Int?, source: Promotion, target: Promotion) -> Int? {
-        guard let value else { return nil }
-        guard seriesEditScope == .thisAndFuture,
-              let sourceIndex = source.seriesIndex,
-              let targetIndex = target.seriesIndex else { return value }
-        return PromotionSeriesCalculator.shiftedDate(value, byMonths: targetIndex - sourceIndex) ?? value
     }
 
     private func parseOptionalAmount(_ text: String, label: String) -> (value: Decimal?, isValid: Bool) {
@@ -1389,7 +1509,7 @@ private struct CardSelectionView: View {
                         }
                     }
                     if selectedCardIDs.isEmpty {
-                        Text("可以不限定适用卡；选择后将只把匹配卡片的交易作为自动候选。")
+                        Text("尚未选择适用卡时，本活动不会出现在自动推荐中，你仍可手动计入交易。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1516,6 +1636,9 @@ struct PromotionDetailView: View {
     @State private var selectedPeriodID: UUID
     @State private var allocationPendingDeletion: PromotionAllocation?
     @State private var showingAllocationDeleteConfirmation = false
+    @State private var showingCopyConfirmation = false
+    @State private var showingCopyCompleted = false
+    @State private var copiedPeriod: PromotionPeriod?
     @State private var errorMessage: String?
 
     init(promotion: Promotion) {
@@ -1744,7 +1867,11 @@ struct PromotionDetailView: View {
             if displayedPromotion.seriesID == nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        copyToNextMonth()
+                        if nextCopyPeriod == nil {
+                            errorMessage = "无法生成下个月的完整日期。"
+                        } else {
+                            showingCopyConfirmation = true
+                        }
                     } label: {
                         Image(systemName: "doc.on.doc")
                     }
@@ -1760,6 +1887,21 @@ struct PromotionDetailView: View {
         }
         .trackedSheet(isPresented: $showingAllocationEditor) {
             AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
+        }
+        .confirmationDialog("复制到下个月？", isPresented: $showingCopyConfirmation, titleVisibility: .visible) {
+            Button("复制活动", action: copyToNextMonth)
+            Button("取消", role: .cancel) {}
+        } message: {
+            if let period = nextCopyPeriod {
+                Text("将新建 \(CardPilotUI.dateRangeText(start: period.startOn, end: period.endOn)) 的独立活动。进度和已报名记录不会复制。")
+            }
+        }
+        .alert("复制完成", isPresented: $showingCopyCompleted) {
+            Button("好", role: .cancel) {}
+        } message: {
+            if let copiedPeriod {
+                Text("已创建 \(CardPilotUI.dateRangeText(start: copiedPeriod.startOn, end: copiedPeriod.endOn)) 的活动，可返回促销列表查看。")
+            }
         }
         .confirmationDialog("确认删除分配？", isPresented: $showingAllocationDeleteConfirmation) {
             Button("删除分配", role: .destructive) {
@@ -1882,11 +2024,18 @@ struct PromotionDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if allocation.transaction.status == .reversed {
+                    Text("已冲正 · 不计入")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 8)
             Text("\(allocation.transaction.kind == .refund ? "−" : "+")\(CardPilotUI.amountText(allocation.qualifyingAmount, currencyCode: allocation.currencyCode))")
                 .font(.subheadline.monospacedDigit())
-                .foregroundStyle(allocation.transaction.kind == .refund ? .orange : .primary)
+                .strikethrough(allocation.transaction.status == .reversed)
+                .foregroundStyle(allocation.transaction.status == .reversed ? Color.secondary
+                                 : allocation.transaction.kind == .refund ? Color.orange : Color.primary)
         }
         .contentShape(Rectangle())
     }
@@ -1894,7 +2043,10 @@ struct PromotionDetailView: View {
     private func allocationAccessibilityText(_ allocation: PromotionAllocation) -> String {
         let merchant = allocation.transaction.merchant.isEmpty ? "未填写商户" : allocation.transaction.merchant
         let sign = allocation.transaction.kind == .refund ? "退款" : "消费"
-        return "\(merchant)，\(sign)，\(CardPilotUI.dateText(allocation.transaction.transactionOn))，\(transactionCardText(allocation.transaction))，计入 \(CardPilotUI.amountText(allocation.qualifyingAmount, currencyCode: allocation.currencyCode))"
+        let contribution = allocation.transaction.status == .reversed
+            ? "已冲正，不计入进度，原分配"
+            : allocation.transaction.kind == .refund ? "减少进度" : "计入"
+        return "\(merchant)，\(sign)，\(CardPilotUI.dateText(allocation.transaction.transactionOn))，\(transactionCardText(allocation.transaction))，\(contribution) \(CardPilotUI.amountText(allocation.qualifyingAmount, currencyCode: allocation.currencyCode))"
     }
 
     private func transactionCardText(_ transaction: Transaction) -> String {
@@ -2006,23 +2158,67 @@ struct PromotionDetailView: View {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
 
+    private var nextCopyPeriod: PromotionPeriod? {
+        guard let start = PromotionSeriesCalculator.shiftedDate(displayedPromotion.startOn, byMonths: 1),
+              let end = PromotionSeriesCalculator.shiftedDate(displayedPromotion.endOn, byMonths: 1) else { return nil }
+        return PromotionPeriod(startOn: start, endOn: end)
+    }
+
     private func copyToNextMonth() {
         guard let copy = displayedPromotion.copiedToNextMonth() else {
             errorMessage = "无法生成下个月的完整日期。"
             return
         }
         do {
-            try copy.validate()
-            modelContext.insert(copy)
-            try modelContext.save()
+            try PromotionCreationActions.save([copy], context: modelContext)
+            copiedPeriod = PromotionPeriod(startOn: copy.startOn, endOn: copy.endOn)
+            showingCopyCompleted = true
         } catch {
-            modelContext.rollback()
             errorMessage = "促销未复制：\(error.localizedDescription)"
         }
     }
 
     private func cardName(_ card: Card) -> String {
         card.nickname.isEmpty ? card.productName : card.nickname
+    }
+}
+
+@MainActor
+enum PromotionAllocationActions {
+    static func save(_ amount: Decimal, transaction: Transaction, promotion: Promotion,
+                     allocation: PromotionAllocation?, context: ModelContext,
+                     persist: (ModelContext) throws -> Void = { try $0.save() }) throws {
+        guard amount > .zero else { throw ModelValidationError.invalidQualifyingAmount }
+        guard isValidCurrencyCode(promotion.progressCurrencyCode) else {
+            throw ModelValidationError.invalidCurrencyCode(promotion.progressCurrencyCode)
+        }
+        if let allocation,
+           allocation.transaction.id != transaction.id || allocation.promotion.id != promotion.id {
+            throw ModelValidationError.invalidTransactionRelationship
+        }
+        guard !transaction.allocations.contains(where: {
+            $0.id != allocation?.id && $0.promotion.id == promotion.id
+        }) else { throw ModelValidationError.duplicatePromotionAllocation }
+        let previousTransactions = transaction.allocations
+        let previousPromotions = promotion.allocations
+        let previousAmount = allocation?.qualifyingAmount
+        let previousCurrency = allocation?.currencyCode
+        let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion,
+                                                        qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)
+        do {
+            target.qualifyingAmount = amount
+            target.currencyCode = promotion.progressCurrencyCode
+            try target.validate()
+            if allocation == nil { context.insert(target) }
+            try persist(context)
+        } catch {
+            if let previousAmount { target.qualifyingAmount = previousAmount }
+            if let previousCurrency { target.currencyCode = previousCurrency }
+            transaction.allocations = previousTransactions
+            promotion.allocations = previousPromotions
+            context.rollback()
+            throw error
+        }
     }
 }
 
@@ -2048,22 +2244,8 @@ private struct AllocationEditorView: View {
         _amountText = State(initialValue: allocation.map { CardPilotUI.editableAmountText($0.qualifyingAmount) } ?? "")
     }
 
-    private var candidateTransactions: [Transaction] {
-        orderedTransactions.filter { transaction in
-            PromotionCalculator.includes(transaction, in: promotion)
-                || allocation?.transaction.id == transaction.id
-        }
-    }
-
     private var orderedTransactions: [Transaction] {
-        transactions.sorted {
-            if $0.transactionOn != $1.transactionOn {
-                return $0.transactionOn > $1.transactionOn
-            }
-            let lhsMerchant = $0.merchant.localizedCaseInsensitiveCompare($1.merchant)
-            if lhsMerchant != .orderedSame { return lhsMerchant == .orderedAscending }
-            return $0.id.uuidString < $1.id.uuidString
-        }
+        PromotionAllocationSelection.availableTransactions(transactions, for: promotion, editing: allocation)
     }
 
     private var filteredTransactions: [Transaction] {
@@ -2090,7 +2272,9 @@ private struct AllocationEditorView: View {
         NavigationStack {
             editorForm
             .onAppear {
+                guard !didInitialize else { return }
                 setInitialAmount()
+                showingTransactionChoices = selectedTransaction == nil
                 didInitialize = true
             }
             .onChange(of: transactionID) { _, _ in setInitialAmountIfBlank() }
@@ -2102,7 +2286,10 @@ private struct AllocationEditorView: View {
             .navigationTitle(allocation == nil ? "添加促销分配" : "编辑促销分配")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
-                ToolbarItem(placement: .confirmationAction) { Button("保存") { save() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { save() }
+                        .disabled(selectedTransaction == nil)
+                }
             }
             .alert("退款分配超出可退范围", isPresented: overRefundWarningPresented) {
                 Button("取消", role: .cancel) {}
@@ -2131,6 +2318,12 @@ private struct AllocationEditorView: View {
             } else {
                 if let selectedTransaction {
                     selectedTransactionRow(selectedTransaction)
+                } else {
+                    Text(orderedTransactions.isEmpty
+                         ? "已有交易均已计入本活动。请返回编辑现有分配，或记录新交易。"
+                         : "没有可自动推荐的交易，请按活动条款手动选择。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 if allocation == nil {
                     DisclosureGroup(isExpanded: $showingTransactionChoices) {
@@ -2151,7 +2344,7 @@ private struct AllocationEditorView: View {
                             }
                         }
                     } label: {
-                        Label("更换交易（\(filteredTransactions.count) 笔）", systemImage: "magnifyingglass")
+                        Label("\(selectedTransaction == nil ? "选择交易" : "更换交易")（\(filteredTransactions.count) 笔）", systemImage: "magnifyingglass")
                     }
                 }
                 if allocation != nil {
@@ -2278,7 +2471,9 @@ private struct AllocationEditorView: View {
     }
 
     private func setInitialAmount() {
-        let transaction = selectedTransaction ?? candidateTransactions.first ?? transactions.first
+        let transaction = selectedTransaction ?? PromotionAllocationSelection.initialTransaction(
+            in: transactions, for: promotion, editing: allocation
+        )
         if selectedTransaction == nil, let transaction {
             transactionID = transaction.id
         }
@@ -2365,18 +2560,11 @@ private struct AllocationEditorView: View {
             overRefundWarningMessage = "该促销的退款分配将超过修改后的原消费分配。"
             return
         }
-        let target = allocation ?? PromotionAllocation(transaction: transaction, promotion: promotion, qualifyingAmount: amount, currencyCode: promotion.progressCurrencyCode)
-        target.transaction = transaction
-        target.promotion = promotion
-        target.qualifyingAmount = amount
-        target.currencyCode = promotion.progressCurrencyCode
         do {
-            try target.validate()
-            if allocation == nil { modelContext.insert(target) }
-            try modelContext.save()
+            try PromotionAllocationActions.save(amount, transaction: transaction, promotion: promotion,
+                                                allocation: allocation, context: modelContext)
             dismiss()
         } catch {
-            modelContext.rollback()
             errorMessage = "分配未保存：\(error.localizedDescription)"
         }
     }
