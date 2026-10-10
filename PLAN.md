@@ -1,8 +1,14 @@
 # CardPilot 首版实施计划
 
-## 当前 UX 第一批（2026-10-10）
+## 当前 UX 第二批（2026-10-10）
 
-按 [最新产品评估](docs/product-ux-review-2026-10-10.md) 开始分批实现。第一批保护换卡时的交易币种、精确金额展示，改善空表单关闭、草稿恢复摘要和首页还款反馈；保持持久化 Schema 与草稿格式。具体行为和验证边界见 [实施记录](docs/ux-input-feedback-2026-10-10.md)。本地隔离验证是补充，交付必须等待新 PR 的原生 `iOS` workflow 完成；真机与 VoiceOver 仍需独立验收。
+第一批 [PR #22](https://github.com/maxduke/card-pilot/pull/22) 已合并到主线 `662fd4d`，合并前当前提交的 [原生 iOS CI](https://github.com/maxduke/card-pilot/actions/runs/38056187342) 通过：199 项单元／集成测试与 11 项 UI 测试，零失败。
+
+第二批实现首次建卡后的提醒引导（O03）：卡片先保存，再提供设置／稍后操作；建卡与设置共用通知与提醒页面，明确权限、提醒开关和已安排计划。保持现有全局排程、通知路由和数据格式，记录见 [实施与验收](docs/ux-reminder-onboarding-2026-10-10.md)。继续按实现、验证、PR、原生 workflow、合并及主线 workflow 验证逐批交付；真实通知与 VoiceOver 仍需独立验收。
+
+## 已完成 UX 第一批（2026-10-10）
+
+按 [最新产品评估](docs/product-ux-review-2026-10-10.md) 开始分批实现。第一批保护换卡时的交易币种、精确金额展示，改善空表单关闭、草稿恢复摘要和首页还款反馈；保持持久化 Schema 与草稿格式。具体行为和验证边界见 [实施记录](docs/ux-input-feedback-2026-10-10.md)。本地隔离验证是补充；PR 原生验证已完成，真机与 VoiceOver 仍需独立验收。
 
 此前 PR #21 已于 2026-09-30 合并；主线 `43795d6` 的 [iOS workflow](https://github.com/maxduke/card-pilot/actions/runs/36731841163) 已通过。下节的草稿／未合并描述属于当时记录，不代表当前远端状态。
 
