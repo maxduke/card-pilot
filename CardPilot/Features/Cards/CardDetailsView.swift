@@ -25,6 +25,7 @@ struct CardDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(cardName)
                                 .font(.title2.bold())
+                                .accessibilityIdentifier("card.detail.title")
                             Text("\(cardNetworkSummary(card.networks)) · •••• \(card.lastFour)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)

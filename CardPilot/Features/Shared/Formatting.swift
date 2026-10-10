@@ -255,7 +255,8 @@ struct BankBadge: View {
                 ZStack {
                     Color.accentColor.opacity(0.12)
                     Text(monogram)
-                        .font(.subheadline.weight(.bold))
+                        // The monogram is a logo in a fixed icon tile, not body text.
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.tint)
                 }
             }
@@ -266,7 +267,9 @@ struct BankBadge: View {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .stroke(.quaternary, lineWidth: 0.5)
             }
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(name)图标")
+            .accessibilityAddTraits(.isImage)
     }
 
     private static let assetNames = [
