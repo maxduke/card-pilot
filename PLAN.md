@@ -1,5 +1,11 @@
 # CardPilot 首版实施计划
 
+## 当前 UX 第一批（2026-10-10）
+
+按 [最新产品评估](docs/product-ux-review-2026-10-10.md) 开始分批实现。第一批保护换卡时的交易币种、精确金额展示，改善空表单关闭、草稿恢复摘要和首页还款反馈；保持持久化 Schema 与草稿格式。具体行为和验证边界见 [实施记录](docs/ux-input-feedback-2026-10-10.md)。本地隔离验证是补充，交付必须等待新 PR 的原生 `iOS` workflow 完成；真机与 VoiceOver 仍需独立验收。
+
+此前 PR #21 已于 2026-09-30 合并；主线 `43795d6` 的 [iOS workflow](https://github.com/maxduke/card-pilot/actions/runs/36731841163) 已通过。下节的草稿／未合并描述属于当时记录，不代表当前远端状态。
+
 ## 当前修复批次（2026-09-29，尚未发布）
 
 综合检查后的 Batch A 已完成实现与审查修复；功能提交 `664d1e3` 通过 [原生 iOS CI](https://github.com/maxduke/card-pilot/actions/runs/36709117235)：197 项单元／集成测试和 8 条 UI 测试全部通过。本地隔离测试 99 项通过。[Draft PR #21](https://github.com/maxduke/card-pilot/pull/21) 保持草稿，未合并或发布；范围、失败修复经过与真机验收边界见 [正确性修复记录](docs/review-batch-a-2026-09-29.md)。新账户覆盖上月仍未到还款日的账期，后续促销期不继承已报名事实，保留手动促销分配、已有账务历史与当前 Schema。自动化通过不代表全部真机体验或无障碍检查通过。

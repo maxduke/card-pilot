@@ -32,6 +32,28 @@ final class FormattingTests: XCTestCase {
         }
     }
 
+    func testDisplayedAmountsPreserveExactValuesAcrossLocales() throws {
+        for identifier in ["zh_CN", "en_US", "de_DE", "fr_FR", "ar_EG", "en_IN"] {
+            let locale = Locale(identifier: identifier)
+            for input in ["0", "0.001", "99.999", "1234.00500000000000001", "1e-50", "12345678901234567890123456789012345678"] {
+                let amount = try XCTUnwrap(Decimal(string: input, locale: Locale(identifier: "en_US_POSIX")))
+                let display = CardPilotUI.amountText(amount, locale: locale)
+                XCTAssertEqual(CardPilotUI.decimal(display, locale: locale), amount, "\(identifier): \(input) displayed as \(display)")
+            }
+        }
+    }
+
+    func testIncompletePromotionShowsANonzeroRemainingAmount() throws {
+        let amount = try XCTUnwrap(Decimal(string: "99.999"))
+        let progress = try PromotionCalculator.progress(
+            qualificationThreshold: 100, currencyCode: "CNY",
+            allocations: [(amount: amount, currencyCode: "CNY", kind: .purchase, status: .active)]
+        )
+        XCTAssertFalse(progress.isComplete)
+        XCTAssertEqual(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: "CNY", locale: Locale(identifier: "zh_CN")), "99.999 CNY")
+        XCTAssertEqual(CardPilotUI.amountText(try XCTUnwrap(progress.remainingToThreshold), currencyCode: "CNY", locale: Locale(identifier: "zh_CN")), "0.001 CNY")
+    }
+
     func testReminderTimeRequiresExactlyTwoAsciiDigitsPerComponent() {
         XCTAssertEqual(CardPilotUI.parseReminderTime("09:30"), .init(hour: 9, minute: 30))
         for value in ["9:30", "09:3", "09:x:30", "09:30:00", "09:300", "090:30", "24:00", "09:60"] {

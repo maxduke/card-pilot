@@ -771,6 +771,7 @@ struct TransactionEditorForm: View {
     @State private var hasPostingDate: Bool
     @State private var amountText: String
     @State private var currencyCode: String
+    @State private var hasSelectedCurrency = false
     @State private var merchant: String
     @State private var category: String
     @State private var notes: String
@@ -1087,7 +1088,11 @@ struct TransactionEditorForm: View {
                 if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
                     originalTransactionID = Self.noOriginalTransactionID
                 }
-                if transaction == nil, let selectedCard {
+                // A card supplies a default only while a fresh form has no amount or explicit currency.
+                // Restored drafts already own their currency, even when the amount is incomplete.
+                if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
+                   amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   let selectedCard {
                     currencyCode = selectedCard.account.limitCurrencyCode
                     refreshDefaultAllocationAmounts()
                 }
@@ -1120,7 +1125,7 @@ struct TransactionEditorForm: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if transaction == nil {
-                        Button("关闭") { showingDraftClose = true }
+                        Button("关闭", action: closeNewTransaction)
                     } else {
                         EditorCancelButton()
                     }
@@ -1149,6 +1154,21 @@ struct TransactionEditorForm: View {
             } message: {
                 Text(overRefundWarningMessage ?? "")
             }
+        }
+        // Keep the picker presenter outside lazy Form rows so scrolling cannot
+        // recreate its presentation registration while the sheet is open.
+        .trackedSheet(isPresented: $showingCardPicker) {
+            CardSelectionSheet(
+                cards: selectableCards,
+                selectedCardID: cardID,
+                lastUsedCardID: lastUsedCardID,
+                onSelect: { selectedID in
+                    cardID = selectedID
+                    showingCardPicker = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
     }
@@ -1192,6 +1212,18 @@ struct TransactionEditorForm: View {
         } catch { draftWriteError = true }
     }
 
+    private func closeNewTransaction() {
+        guard !isResumedDraft, let initialDraftSnapshot, draftSnapshot == initialDraftSnapshot else {
+            showingDraftClose = true
+            return
+        }
+        do {
+            try draftStore.clear()
+            draftFinished = true
+            dismiss()
+        } catch { draftWriteError = true }
+    }
+
     private var editorStepIndicator: some View {
         HStack(spacing: 8) {
             stepIndicatorItem(number: 1, title: "交易信息", isCurrent: editorStep == 0)
@@ -1231,7 +1263,7 @@ struct TransactionEditorForm: View {
             Text("选择卡片")
         } footer: {
             if let selectedCard {
-                Text("账单币种：\(selectedCard.account.limitCurrencyCode)")
+                Text("账户额度币种：\(selectedCard.account.limitCurrencyCode)")
             } else {
                 Text("请选择一张卡片后继续。")
             }
@@ -1252,8 +1284,12 @@ struct TransactionEditorForm: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("交易金额")
                     .accessibilityIdentifier("transactionAmount")
-                CurrencyPickerView(selection: $currencyCode, title: "币种")
+                CurrencyPickerView(selection: Binding(
+                    get: { currencyCode },
+                    set: { currencyCode = $0; hasSelectedCurrency = true }
+                ), title: "币种")
                     .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityIdentifier("transactionCurrency")
             }
             if amountFormat.decimalSeparator != Locale.current.decimalSeparator {
                 Text("此草稿沿用原地区的金额格式，小数分隔符为“\(amountFormat.decimalSeparator)”。")
@@ -1387,6 +1423,7 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             } else if let selectedCard {
                 Button {
+                    amountIsFocused = false
                     showingCardPicker = true
                 } label: {
                     HStack(spacing: 12) {
@@ -1418,25 +1455,14 @@ struct TransactionEditorForm: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("当前卡片，\(cardLabel(selectedCard))")
                 .accessibilityHint("打开卡片选择")
+                .accessibilityIdentifier("transactionCardPicker")
             } else {
                 Button("选择其他卡片", systemImage: "creditcard") {
+                    amountIsFocused = false
                     showingCardPicker = true
                 }
                 .accessibilityHint("草稿中的卡片已不可用，请重新选择")
             }
-        }
-        .trackedSheet(isPresented: $showingCardPicker) {
-            CardSelectionSheet(
-                cards: selectableCards,
-                selectedCardID: cardID,
-                lastUsedCardID: lastUsedCardID,
-                onSelect: { selectedID in
-                    cardID = selectedID
-                    showingCardPicker = false
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
         }
     }
 

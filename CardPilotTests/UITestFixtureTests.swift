@@ -14,8 +14,9 @@ final class UITestFixtureTests: XCTestCase {
         let restored = try records.validatedContainer()
         XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
         let cards = try restored.mainContext.fetch(FetchDescriptor<Card>())
-        XCTAssertEqual(cards.count, 2)
-        XCTAssertEqual(Set(cards.map { $0.account.id }).count, 1)
+        XCTAssertEqual(cards.count, 3)
+        XCTAssertEqual(Set(cards.map { $0.account.id }).count, 2)
+        XCTAssertEqual(cards.first { $0.productName == "UI Foreign" }?.account.limitCurrencyCode, "HKD")
         let promotion = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<Promotion>()).first)
         XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
     }

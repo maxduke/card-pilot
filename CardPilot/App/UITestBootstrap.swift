@@ -32,6 +32,9 @@ enum UITestBootstrap {
         let rule = BillingRuleVersion(account: account, statementDay: 1, repaymentKind: .daysAfterStatement, repaymentValue: 20)
         let card = Card(account: account, productName: "UI Primary", networks: [network], lastFour: "1234")
         let sibling = Card(account: account, productName: "UI Shared", networks: [network], lastFour: "5678")
+        let foreignAccount = CreditCardAccount(bank: bank, trackingStartCycleKey: today.monthKey, limitCurrencyCode: "HKD")
+        let foreignRule = BillingRuleVersion(account: foreignAccount, statementDay: 1, repaymentKind: .daysAfterStatement, repaymentValue: 20)
+        let foreignCard = Card(account: foreignAccount, productName: "UI Foreign", networks: [network], lastFour: "9012")
         let promotion = Promotion(
             title: "UI Spend", startOn: today.addingDays(-7).rawValue, endOn: today.addingDays(30).rawValue,
             eligibleCards: [card], qualificationThreshold: Decimal(1000), progressCurrencyCode: "CNY"
@@ -42,6 +45,9 @@ enum UITestBootstrap {
         context.insert(rule)
         context.insert(card)
         context.insert(sibling)
+        context.insert(foreignAccount)
+        context.insert(foreignRule)
+        context.insert(foreignCard)
         context.insert(promotion)
         try context.save()
     }
