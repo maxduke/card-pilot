@@ -170,9 +170,10 @@ struct DashboardView: View {
                 Text(errorMessage ?? "未知错误")
             }
             .task(id: recentlyRepaid?.id) {
-                guard recentlyRepaid != nil, !UIAccessibility.isVoiceOverRunning else { return }
+                guard let feedbackID = recentlyRepaid?.id, !UIAccessibility.isVoiceOverRunning else { return }
                 do { try await Task.sleep(for: .seconds(8)) }
                 catch { return }
+                guard !Task.isCancelled, recentlyRepaid?.id == feedbackID else { return }
                 if !UIAccessibility.isVoiceOverRunning { recentlyRepaid = nil }
             }
             .onChange(of: scenePhase) { _, phase in
