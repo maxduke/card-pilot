@@ -338,7 +338,7 @@ private struct DashboardPromotionRow: View {
         NavigationLink {
             PromotionDetailView(promotion: promotion)
         } label: {
-            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "gift.fill")
                     .foregroundStyle(.tint)
                     .frame(width: 24)
@@ -563,7 +563,7 @@ private struct BillingItemRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 10) {
                 Image(systemName: item.kind.icon)
                     .foregroundStyle(item.kind == .repayment ? .orange : .blue)
                     .frame(width: 24)
