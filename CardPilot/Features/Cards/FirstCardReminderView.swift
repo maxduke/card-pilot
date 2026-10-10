@@ -17,7 +17,7 @@ struct FirstCardReminderView: View {
                     Text("接下来可以设置账单日和还款日提醒。")
                         .foregroundStyle(.secondary)
                 }
-                Section("账户日程") {
+                Section {
                     let summary = accountBillingSummary(card.account, today: currentDay.today, timeZone: currentDay.timeZone)
                     if let date = summary.nextRepaymentDate {
                         LabeledContent(summary.nextRepaymentStatus == .overdue ? "逾期还款日" : "下次还款日",
@@ -26,6 +26,8 @@ struct FirstCardReminderView: View {
                     if let date = summary.nextStatementDate {
                         LabeledContent("下次账单日", value: CardPilotUI.dateText(date))
                     }
+                } header: {
+                    Text("账户日程")
                 } footer: {
                     Text("账务日期与通知时间不同，已安排的通知请在提醒设置中查看。")
                 }
