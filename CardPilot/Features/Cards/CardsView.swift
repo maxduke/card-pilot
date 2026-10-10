@@ -479,6 +479,7 @@ private struct CardOnboardingView: View {
     @State private var nickname = ""
     @State private var lastFour = ""
     @State private var errorMessage: String?
+    @State private var savedCard: Card?
 
     private var selectedPreset: BankPreset? {
         selectedPresetCode.flatMap { code in BankPreset.catalog.first { $0.code == code } }
@@ -518,6 +519,14 @@ private struct CardOnboardingView: View {
     }
 
     var body: some View {
+        if let savedCard {
+            FirstCardReminderView(card: savedCard)
+        } else {
+            editor
+        }
+    }
+
+    private var editor: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 ProgressView(value: Double((onboardingSteps.firstIndex(of: step) ?? 0) + 1), total: Double(onboardingSteps.count))
@@ -895,6 +904,7 @@ private struct CardOnboardingView: View {
     }
 
     private func save() {
+        guard savedCard == nil else { return }
         guard validateBillingInput() else { return }
         guard !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "卡产品名称不能为空。"
@@ -913,6 +923,14 @@ private struct CardOnboardingView: View {
         }
         guard accountMode != .existing || selectedExistingAccount != nil else {
             errorMessage = "请选择要共用的信用卡账户。"
+            return
+        }
+        // Check before creating relationships, which can insert related models.
+        let isFirstCard: Bool
+        do {
+            isFirstCard = try modelContext.fetchCount(FetchDescriptor<Card>()) == 0
+        } catch {
+            errorMessage = "无法检查已有卡片，请重试。"
             return
         }
         guard let cardNetworks = resolveNetworks() else { return }
@@ -987,7 +1005,11 @@ private struct CardOnboardingView: View {
             if !card.account.cards.contains(where: { $0.id == card.id }) { card.account.cards.append(card) }
             modelContext.insert(card)
             try modelContext.save()
-            dismiss()
+            if isFirstCard {
+                savedCard = card
+            } else {
+                dismiss()
+            }
         } catch {
             bank.archivedAt = previousArchivedAt
             bank.presetCode = previousPresetCode

@@ -40,6 +40,10 @@ final class CoreFlowsUITests: XCTestCase {
         enter("UI Created", into: app.textFields["卡产品名称"])
         enter("2468", into: app.textFields["末四位"])
         tap(app.buttons["onboarding.advance"])
+        XCTAssertTrue(app.staticTexts["卡片已保存"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["onboarding.reminders.configure"].exists)
+        tap(app.buttons["onboarding.reminders.finish"])
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
         openCard("UI Created")
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
         app.terminate()
@@ -47,6 +51,67 @@ final class CoreFlowsUITests: XCTestCase {
         openCard("UI Created")
         tap(app.buttons["card.transactions"])
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
+    }
+
+    func testFirstCardReminderSettingsPersistAndRemainAccessible() throws {
+        // These preferences are changed through the app, so launch overrides
+        // must not hide their persisted values on the subsequent launch.
+        for key in ["-cardPilot.statementRemindersEnabled", "-cardPilot.repaymentRemindersEnabled"] {
+            let index = try XCTUnwrap(app.launchArguments.firstIndex(of: key))
+            app.launchArguments.removeSubrange(index...index + 1)
+        }
+        launch("empty")
+        tap(app.tabBars.buttons["记一笔"])
+        tap(app.buttons["bank.cn.icbc"])
+        tap(app.buttons["onboarding.advance"])
+        enter("UI Reminders", into: app.textFields["卡产品名称"])
+        enter("1357", into: app.textFields["末四位"])
+        tap(app.buttons["onboarding.advance"])
+        tap(app.buttons["onboarding.reminders.configure"])
+        XCTAssertTrue(app.navigationBars["通知与提醒"].waitForExistence(timeout: 10))
+
+        let statement = app.switches["reminders.statement.enabled"]
+        let repayment = app.switches["reminders.repayment.enabled"]
+        if statement.value as? String == "1" { tap(statement) }
+        if repayment.value as? String == "1" { tap(repayment) }
+        let disabled = app.staticTexts["reminders.disabled"]
+        reveal(disabled)
+        XCTAssertTrue(disabled.exists)
+
+        // The controls are above the plan section, including when lazy rows disappear.
+        tap(repayment, scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(repayment.value as? String, "1")
+        reveal(statement, scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(statement.value as? String, "0")
+        tap(app.buttons["onboarding.reminders.finish"])
+        XCTAssertTrue(app.buttons["card.UI Reminders"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons.matching(identifier: "card.UI Reminders").count, 1)
+        openCard("UI Reminders")
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["首页"])
+        tap(app.buttons["打开设置"])
+        tap(app.buttons["settings.reminders"])
+        XCTAssertTrue(app.navigationBars["通知与提醒"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.switches["reminders.statement.enabled"].value as? String, "0")
+        XCTAssertEqual(app.switches["reminders.repayment.enabled"].value as? String, "1")
+        XCTAssertFalse(app.buttons["onboarding.reminders.configure"].exists)
+    }
+
+    func testAdditionalCardDoesNotRepeatReminderOnboarding() {
+        launch("core")
+        tap(app.tabBars.buttons["卡片"])
+        tap(app.buttons["添加信用卡"])
+        tap(app.buttons["bank.cn.icbc"])
+        tap(app.buttons["onboarding.advance"])
+        enter("UI Additional", into: app.textFields["卡产品名称"])
+        enter("2468", into: app.textFields["末四位"])
+        tap(app.buttons["onboarding.advance"])
+        XCTAssertTrue(app.buttons["card.UI Additional"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["onboarding.reminders.configure"].exists)
+        openCard("UI Additional")
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
@@ -347,7 +412,7 @@ final class CoreFlowsUITests: XCTestCase {
         var bottom = app.frame.maxY - 90
         let keyboard = app.keyboards.firstMatch
         if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
-        for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance"] {
+        for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"] {
             let footer = app.buttons[identifier]
             if footer.exists { bottom = min(bottom, footer.frame.minY) }
         }

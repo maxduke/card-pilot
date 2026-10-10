@@ -18,7 +18,8 @@
 - 扩展已有地区变化 UI 用例，验证恢复摘要将 `de_DE` 的 `1,500` 显示为 `1.5 CNY`。
 - 模拟器测试数据增加一个港币账户与卡片；其完整备份往返仍由原生持久化测试验证。
 - 本地金额、草稿、交易和促销隔离回归共 58 项通过，0 失败。隔离环境不验证 SwiftUI、UIKit、SwiftData 和真实键盘。全部 Swift 源码语法检查通过；后续恢复页调整的相关文件也再次通过语法检查，diff 检查通过。
-- [首轮原生 workflow](https://github.com/maxduke/card-pilot/actions/runs/38054418049) 已通过 Xcode 构建及全部 199 项单元／集成测试，但两个新增换卡 UI 场景失败：打开选择页后主线程忙碌，以及输入商户后测试向错误方向寻找已滚出屏幕的按钮。已将选择弹层移出惰性 Form 行、打开时解除金额焦点，并修正首行按钮的测试查找方向；最终原生验收仍以 [PR #22](https://github.com/maxduke/card-pilot/pull/22) 当前提交的 `iOS` workflow 为准。
+- [首轮原生 workflow](https://github.com/maxduke/card-pilot/actions/runs/38054418049) 已通过 Xcode 构建及全部 199 项单元／集成测试，但两个新增换卡 UI 场景失败：打开选择页后主线程忙碌，以及输入商户后测试向错误方向寻找已滚出屏幕的按钮。已将选择弹层移出惰性 Form 行、打开时解除金额焦点，并修正首行按钮的测试查找方向。
+- 最终提交 `c030921` 的 [原生 iOS workflow](https://github.com/maxduke/card-pilot/actions/runs/38056187342) 通过：199 项单元／集成测试与 11 项 UI 测试，零失败，未报告跳过。[PR #22](https://github.com/maxduke/card-pilot/pull/22) 已于 2026-10-10 合并。
 
 ## 真机验收
 
