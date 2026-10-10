@@ -443,7 +443,10 @@ final class CoreFlowsUITests: XCTestCase {
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
         launch("core")
         openCard("UI Primary")
-        let normalTitleHeight = app.staticTexts["card.detail.title"].frame.height
+        // SwiftUI also propagates the identifier to the combined header row.
+        let title = app.staticTexts.matching(identifier: "card.detail.title")
+            .matching(NSPredicate(format: "label == %@", "UI Primary")).element
+        let normalTitleHeight = title.frame.height
         XCTAssertGreaterThan(normalTitleHeight, 0)
         let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle)
@@ -459,7 +462,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         relaunchAtLargestTextSize()
         openCard("UI Primary")
-        XCTAssertGreaterThan(app.staticTexts["card.detail.title"].frame.height, normalTitleHeight * 1.3)
+        XCTAssertGreaterThan(title.frame.height, normalTitleHeight * 1.3)
         reveal(cycle)
         captureScreenshot("最大字号卡片账期日程")
         try auditAccessibility(for: [.textClipped])
