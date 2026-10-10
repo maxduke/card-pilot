@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 @MainActor
 final class CoreFlowsUITests: XCTestCase {
@@ -387,6 +388,145 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
+    func testTransactionFilterChipsAreAccessibleAndRemoveTheirFilter() throws {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("12345.6789", into: app.textFields["transactionAmount"])
+        enter("UI Accessibility Coffee", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        tap(app.tabBars.buttons["交易"])
+        let transaction = app.buttons["transaction.UI Accessibility Coffee"]
+        XCTAssertTrue(transaction.waitForExistence(timeout: 10))
+        XCTAssertTrue(transaction.label.contains("12,345.6789 CNY"))
+        let normalAmountHeight = app.staticTexts["12,345.6789 CNY"].frame.height
+        XCTAssertGreaterThan(normalAmountHeight, 0)
+        let normalSearchHeight = app.searchFields["搜索交易"].frame.height
+        XCTAssertGreaterThan(normalSearchHeight, 0)
+        captureScreenshot("交易列表")
+        try auditAccessibility(for: [.textClipped])
+
+        relaunchAtLargestTextSize()
+        tap(app.tabBars.buttons["交易"])
+        reveal(transaction)
+        XCTAssertGreaterThan(app.staticTexts["12,345.6789 CNY"].frame.height, normalAmountHeight * 1.3)
+        XCTAssertGreaterThan(app.searchFields["搜索交易"].frame.height, normalSearchHeight * 1.3)
+        captureScreenshot("最大字号交易列表")
+        reveal(app.staticTexts["12,345.6789 CNY"], fullyVisible: true)
+        captureScreenshot("最大字号精确金额")
+        try auditAccessibility(for: [.textClipped])
+
+        tap(app.searchFields["搜索交易"], scrollTowardTopWhenMissing: true)
+        app.searchFields["搜索交易"].typeText("Coffee")
+        XCTAssertEqual(app.searchFields["搜索交易"].value as? String, "Coffee")
+        XCTAssertTrue(transaction.exists)
+        tap(app.buttons["取消"])
+
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.kind"])
+        tap(app.buttons["消费"])
+        tap(app.buttons["完成"])
+        let chip = app.buttons["移除筛选：消费"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 10))
+        assertTouchTarget(chip)
+        assertTouchTarget(app.buttons["transactions.filters.clear"])
+        captureScreenshot("交易筛选标签")
+        try auditAccessibility(for: [.hitRegion])
+        // The text portion removes the filter too; the small cross is decorative.
+        chip.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertFalse(chip.exists)
+        XCTAssertFalse(app.buttons["transactions.filters.clear"].exists)
+        XCTAssertTrue(app.buttons["transaction.UI Accessibility Coffee"].exists)
+    }
+
+    func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
+        launch("core")
+        openCard("UI Primary")
+        // SwiftUI also propagates the identifier to the combined header row.
+        let title = app.staticTexts.matching(identifier: "card.detail.title")
+            .matching(NSPredicate(format: "label == %@", "UI Primary")).element
+        let normalTitleHeight = title.frame.height
+        XCTAssertGreaterThan(normalTitleHeight, 0)
+        let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
+        reveal(cycle)
+        captureScreenshot("卡片账期日程")
+        try auditAccessibility(for: [.textClipped])
+
+        tap(app.tabBars.buttons["首页"])
+        let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
+        reveal(schedule)
+        assertTouchTarget(schedule)
+        captureScreenshot("首页账期日程")
+        try auditAccessibility(for: [.hitRegion, .textClipped])
+
+        relaunchAtLargestTextSize()
+        openCard("UI Primary")
+        XCTAssertGreaterThan(title.frame.height, normalTitleHeight * 1.3)
+        reveal(cycle, fullyVisible: true)
+        captureScreenshot("最大字号卡片账期日程")
+        try auditAccessibility(for: [.textClipped])
+
+        tap(app.tabBars.buttons["首页"])
+        let promotion = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.promotion.")).firstMatch
+        reveal(promotion, fullyVisible: true)
+        captureScreenshot("最大字号首页活动摘要")
+        try auditAccessibility(for: [.textClipped])
+        reveal(schedule, fullyVisible: true)
+        assertTouchTarget(schedule)
+        XCTAssertTrue(schedule.label.contains("UI Test Bank"))
+        captureScreenshot("最大字号首页账期日程")
+        // Audit text while the promotion is fully visible above. Repeating that
+        // audit after scrolling reports the same offscreen promotion (iOS 18.5,
+        // run 38074481288); check this viewport's target and navigation instead.
+        try auditAccessibility(for: [.hitRegion])
+        tap(schedule)
+        XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
+    }
+
+    private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        // Accessibility bounds can contain subpixel floating-point rounding.
+        XCTAssertGreaterThanOrEqual(element.frame.width + 0.001, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.height + 0.001, 44, file: file, line: line)
+    }
+
+    private func relaunchAtLargestTextSize() {
+        app.terminate()
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
+    }
+
+    private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {
+        let original = continueAfterFailure
+        continueAfterFailure = true
+        defer { continueAfterFailure = original }
+        try app.performAccessibilityAudit(for: types) { issue in
+            let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+            let attachment = XCTAttachment(string: details)
+            attachment.name = "无障碍审计元素"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            // iOS 18.5 reports clipping for this native placeholder even when it
+            // is fully visible at both sizes (run 38068318067). Keep the report;
+            // check actual scaling, screenshots and search interaction separately.
+            if issue.auditType == .textClipped,
+               let element = issue.element,
+               element.elementType == .searchField,
+               element.label == "搜索交易" {
+                return true
+            }
+            return false
+        }
+    }
+
+    private func captureScreenshot(_ name: String) {
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     private func selectTransactionCard(_ name: String) {
         tap(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true)
         tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
@@ -424,7 +564,7 @@ final class CoreFlowsUITests: XCTestCase {
         return bottom
     }
 
-    private func reveal(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false) {
+    private func reveal(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false, fullyVisible: Bool = false) {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
@@ -434,12 +574,18 @@ final class CoreFlowsUITests: XCTestCase {
             var targetIsAbove = scrollTowardTopWhenMissing
             if element.exists || element.waitForExistence(timeout: 2) {
                 if element.isHittable {
-                    if element.elementType != .textField || element.frame.maxY < contentBottom { return }
+                    if fullyVisible {
+                        if element.frame.minY >= app.navigationBars.firstMatch.frame.maxY,
+                           element.frame.maxY < contentBottom { return }
+                    } else if element.elementType != .textField || element.frame.maxY < contentBottom {
+                        return
+                    }
                 }
                 // After dismissing an editor, a previously visible row can be above
                 // the viewport. Always swiping up would move it farther out of reach.
                 let targetFrame = element.frame
-                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < app.frame.minY + 110
+                let contentTop = fullyVisible ? app.navigationBars.firstMatch.frame.maxY : app.frame.minY + 110
+                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < contentTop
             }
             let frame = app.frame
             let startY = min(frame.maxY - 100, contentBottom - 25)

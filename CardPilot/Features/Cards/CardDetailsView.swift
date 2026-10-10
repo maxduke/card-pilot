@@ -25,6 +25,7 @@ struct CardDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(cardName)
                                 .font(.title2.bold())
+                                .accessibilityIdentifier("card.detail.title")
                             Text("\(cardNetworkSummary(card.networks)) · •••• \(card.lastFour)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -455,6 +456,7 @@ private struct CardTransactionHistoryView: View {
 }
 
 private struct DetailActionLabel: View {
+    @ScaledMetric(relativeTo: .title3) private var iconWidth = 28.0
     let title: String
     let subtitle: String
     let systemImage: String
@@ -466,7 +468,7 @@ private struct DetailActionLabel: View {
             Image(systemName: systemImage)
                 .font(.title3)
                 .foregroundStyle(tint)
-                .frame(width: 28)
+                .frame(width: iconWidth)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
@@ -541,20 +543,24 @@ private struct BillingRuleRow: View {
 }
 
 private struct BillingCycleRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let cycle: BillingCycle
     let today: LocalDate
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                : AnyLayout(HStackLayout())
+            layout {
                 Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
                     .font(.subheadline.weight(.semibold))
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 StatusPill(title: statusTitle, color: statusColor)
             }
-            HStack {
+            layout {
                 Label("账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today))", systemImage: "doc.text")
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Label("还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))", systemImage: "calendar.badge.clock")
             }
             .font(.caption)

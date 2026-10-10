@@ -210,6 +210,7 @@ struct TransactionsView: View {
                         Label("筛选", systemImage: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     }
                     .accessibilityLabel(hasActiveFilters ? "筛选，已启用 \(activeFilterCount) 项" : "筛选")
+                    .accessibilityIdentifier("transactions.filters")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -285,7 +286,7 @@ struct TransactionsView: View {
             } message: {
                 Text("这笔消费有关联的有效退款。冲正后原消费不再计入促销，但退款仍会扣减进度，合计可能为负。请根据银行记录单独核对退款；不会自动冲正退款。")
             }
-            .searchable(text: $searchText, prompt: "搜索商户、分类或促销")
+            .searchable(text: $searchText, prompt: "搜索交易")
         }
     }
 
@@ -335,11 +336,15 @@ struct TransactionsView: View {
                 if !query.isEmpty {
                     filterChip("搜索：\(query)") { self.searchText = "" }
                 }
-                Button("清除全部") {
+                Button {
                     clearFilters()
+                } label: {
+                    Text("清除全部")
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("transactions.filters.clear")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
@@ -348,20 +353,22 @@ struct TransactionsView: View {
     }
 
     private func filterChip(_ label: String, remove: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-            Button(action: remove) {
+        Button(action: remove) {
+            HStack(spacing: 6) {
+                Text(label)
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.bold))
+                    .accessibilityHidden(true)
             }
-            .accessibilityLabel("移除筛选：\(label)")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.tint)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 44, minHeight: 44)
+            .background(Color.accentColor.opacity(0.1), in: Capsule())
+            .contentShape(Capsule())
         }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.tint)
-        .padding(.leading, 10)
-        .padding(.trailing, 7)
-        .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.1), in: Capsule())
+        .buttonStyle(.plain)
+        .accessibilityLabel("移除筛选：\(label)")
     }
 
     private func clearFilters() {
@@ -441,20 +448,51 @@ func groupedTransactionsByDate(_ transactions: [Transaction]) -> [(date: Int, tr
 }
 
 struct TransactionRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let transaction: Transaction
 
     var body: some View {
-        HStack(spacing: 12) {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                stackedContent
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        identity.fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 8)
+                        amount.fixedSize(horizontal: true, vertical: false)
+                    }
+                    stackedContent
+                }
+            }
+        }
+        .padding(.vertical, 7)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(transactionAccessibilityLabel(transaction))
+        .accessibilityHint("查看交易详情")
+        .accessibilityIdentifier("transaction.\(transaction.merchant)")
+    }
+
+    private var stackedContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            identity
+            amount
+        }
+    }
+
+    private var identity: some View {
+        HStack(alignment: .top, spacing: 12) {
             BankBadge(bank: transaction.card.account.bank)
             VStack(alignment: .leading, spacing: 4) {
                 Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
                 Text(cardShortLabel(transaction.card))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
+                let tagsLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                    : AnyLayout(HStackLayout(spacing: 6))
+                tagsLayout {
                     if transaction.kind == .refund {
                         transactionTag("退款", color: .orange)
                     }
@@ -465,7 +503,6 @@ struct TransactionRow: View {
                         Text("计入：\(promotion.title)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
                     } else if transaction.allocations.count > 1 {
                         Text("已计入 \(transaction.allocations.count) 个促销")
                             .font(.caption)
@@ -473,17 +510,14 @@ struct TransactionRow: View {
                     }
                 }
             }
-            Spacer(minLength: 8)
-            Text(signedAmountText(transaction))
-                .font(.subheadline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
-                .strikethrough(transaction.status == .reversed)
         }
-        .padding(.vertical, 7)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(transactionAccessibilityLabel(transaction))
-        .accessibilityHint("查看交易详情")
-        .accessibilityIdentifier("transaction.\(transaction.merchant)")
+    }
+
+    private var amount: some View {
+        Text(signedAmountText(transaction))
+            .font(.subheadline.weight(.semibold).monospacedDigit())
+            .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
+            .strikethrough(transaction.status == .reversed)
     }
 
     private func transactionTag(_ title: String, color: Color) -> some View {
@@ -712,6 +746,7 @@ private struct TransactionFilterSheet: View {
                         Text("退款").tag(Optional(TransactionKind.refund))
                     }
                     .pickerStyle(.menu)
+                    .accessibilityIdentifier("transactions.filter.kind")
                 }
 
                 Section("促销") {

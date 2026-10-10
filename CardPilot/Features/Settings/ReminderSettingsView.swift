@@ -5,7 +5,6 @@ import UserNotifications
 
 struct ReminderSettingsView: View {
     @EnvironmentObject private var backupStore: BackupStore
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("cardPilot.statementReminderOffsets") private var storedStatementOffsets = "7,3,1,0"
     @AppStorage("cardPilot.repaymentReminderOffsets") private var storedRepaymentOffsets = "7,3,1,0"
@@ -37,11 +36,6 @@ struct ReminderSettingsView: View {
         .interactiveDismissDisabled(backupStore.isBusy)
         .navigationTitle("通知与提醒")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("完成") { dismiss() }.disabled(backupStore.isBusy)
-            }
-        }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await refreshNotificationStatus() } }
