@@ -463,7 +463,7 @@ final class CoreFlowsUITests: XCTestCase {
         relaunchAtLargestTextSize()
         openCard("UI Primary")
         XCTAssertGreaterThan(title.frame.height, normalTitleHeight * 1.3)
-        reveal(cycle)
+        reveal(cycle, fullyVisible: true)
         captureScreenshot("最大字号卡片账期日程")
         try auditAccessibility(for: [.textClipped])
 

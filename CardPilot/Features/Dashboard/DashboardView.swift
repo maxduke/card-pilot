@@ -329,6 +329,8 @@ func dashboardPromotionsToContinue(
 }
 
 private struct DashboardPromotionRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var iconWidth = 24.0
     let promotion: Promotion
     let isEndingSoon: Bool
 
@@ -343,7 +345,7 @@ private struct DashboardPromotionRow: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "gift.fill")
                     .foregroundStyle(.tint)
-                    .frame(width: 24)
+                    .frame(width: iconWidth)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(promotion.title)
                         .font(.subheadline.weight(.medium))
@@ -351,11 +353,14 @@ private struct DashboardPromotionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let progress {
-                        HStack(spacing: 8) {
+                        let layout = dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                            : AnyLayout(HStackLayout(spacing: 8))
+                        layout {
                             Text(progressText(progress))
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.tint)
-                            Spacer(minLength: 4)
+                            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
                             Text("结束 \(CardPilotUI.dateText(promotion.endOn))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -367,6 +372,7 @@ private struct DashboardPromotionRow: View {
                             .foregroundStyle(.orange)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 10)
