@@ -42,7 +42,10 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["onboarding.advance"])
         XCTAssertTrue(app.staticTexts["卡片已保存"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["onboarding.reminders.configure"].exists)
-        tap(app.buttons["onboarding.reminders.finish"])
+        let finish = app.buttons["onboarding.reminders.finish"]
+        XCTAssertGreaterThanOrEqual(finish.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(finish.frame.height, 44)
+        finish.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
         XCTAssertFalse(app.buttons["放弃修改"].exists)
         openCard("UI Created")
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
@@ -72,14 +75,16 @@ final class CoreFlowsUITests: XCTestCase {
 
         let statement = app.switches["reminders.statement.enabled"]
         let repayment = app.switches["reminders.repayment.enabled"]
-        if statement.value as? String == "1" { tap(statement) }
-        if repayment.value as? String == "1" { tap(repayment) }
+        if statement.value as? String == "1" { tap(statement.switches.firstMatch) }
+        if repayment.value as? String == "1" { tap(repayment.switches.firstMatch) }
+        XCTAssertEqual(statement.value as? String, "0")
+        XCTAssertEqual(repayment.value as? String, "0")
         let disabled = app.staticTexts["reminders.disabled"]
         reveal(disabled)
         XCTAssertTrue(disabled.exists)
 
         // The controls are above the plan section, including when lazy rows disappear.
-        tap(repayment, scrollTowardTopWhenMissing: true)
+        tap(repayment.switches.firstMatch, scrollTowardTopWhenMissing: true)
         XCTAssertEqual(repayment.value as? String, "1")
         reveal(statement, scrollTowardTopWhenMissing: true)
         XCTAssertEqual(statement.value as? String, "0")

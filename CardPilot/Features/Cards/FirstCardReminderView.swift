@@ -50,11 +50,16 @@ struct FirstCardReminderView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 Divider()
-                Button(hasOpenedSettings ? "完成" : "稍后设置") { dismiss() }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .accessibilityIdentifier("onboarding.reminders.finish")
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
+                Button { dismiss() } label: {
+                    Text(hasOpenedSettings ? "完成" : "稍后设置")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityIdentifier("onboarding.reminders.finish")
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
             .background(.bar)
         }
