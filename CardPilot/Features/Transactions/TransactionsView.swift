@@ -286,7 +286,7 @@ struct TransactionsView: View {
             } message: {
                 Text("这笔消费有关联的有效退款。冲正后原消费不再计入促销，但退款仍会扣减进度，合计可能为负。请根据银行记录单独核对退款；不会自动冲正退款。")
             }
-            .searchable(text: $searchText, prompt: "搜索商户、分类或促销")
+            .searchable(text: $searchText, prompt: "搜索交易")
         }
     }
 
@@ -452,51 +452,72 @@ struct TransactionRow: View {
     let transaction: Transaction
 
     var body: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 12))
-        layout {
-            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
-                BankBadge(bank: transaction.card.account.bank)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
-                        .font(.subheadline.weight(.semibold))
-                    Text(cardShortLabel(transaction.card))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    let tagsLayout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-                        : AnyLayout(HStackLayout(spacing: 6))
-                    tagsLayout {
-                        if transaction.kind == .refund {
-                            transactionTag("退款", color: .orange)
-                        }
-                        if transaction.status == .reversed {
-                            transactionTag("已冲正", color: .red)
-                        }
-                        if transaction.allocations.count == 1, let promotion = transaction.allocations.first?.promotion {
-                            Text("计入：\(promotion.title)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else if transaction.allocations.count > 1 {
-                            Text("已计入 \(transaction.allocations.count) 个促销")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                stackedContent
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        identity.fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 8)
+                        amount.fixedSize(horizontal: true, vertical: false)
                     }
+                    stackedContent
                 }
             }
-            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
-            Text(signedAmountText(transaction))
-                .font(.subheadline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
-                .strikethrough(transaction.status == .reversed)
         }
         .padding(.vertical, 7)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(transactionAccessibilityLabel(transaction))
         .accessibilityHint("查看交易详情")
         .accessibilityIdentifier("transaction.\(transaction.merchant)")
+    }
+
+    private var stackedContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            identity
+            amount
+        }
+    }
+
+    private var identity: some View {
+        HStack(alignment: .top, spacing: 12) {
+            BankBadge(bank: transaction.card.account.bank)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
+                    .font(.subheadline.weight(.semibold))
+                Text(cardShortLabel(transaction.card))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                let tagsLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                    : AnyLayout(HStackLayout(spacing: 6))
+                tagsLayout {
+                    if transaction.kind == .refund {
+                        transactionTag("退款", color: .orange)
+                    }
+                    if transaction.status == .reversed {
+                        transactionTag("已冲正", color: .red)
+                    }
+                    if transaction.allocations.count == 1, let promotion = transaction.allocations.first?.promotion {
+                        Text("计入：\(promotion.title)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if transaction.allocations.count > 1 {
+                        Text("已计入 \(transaction.allocations.count) 个促销")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var amount: some View {
+        Text(signedAmountText(transaction))
+            .font(.subheadline.weight(.semibold).monospacedDigit())
+            .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
+            .strikethrough(transaction.status == .reversed)
     }
 
     private func transactionTag(_ title: String, color: Color) -> some View {

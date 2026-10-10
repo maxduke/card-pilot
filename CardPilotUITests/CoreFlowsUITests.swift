@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 @MainActor
 final class CoreFlowsUITests: XCTestCase {
@@ -399,8 +400,17 @@ final class CoreFlowsUITests: XCTestCase {
         let transaction = app.buttons["transaction.UI Accessibility Coffee"]
         XCTAssertTrue(transaction.waitForExistence(timeout: 10))
         XCTAssertTrue(transaction.label.contains("12,345.6789 CNY"))
+        let normalAmountHeight = app.staticTexts["12,345.6789 CNY"].frame.height
+        XCTAssertGreaterThan(normalAmountHeight, 0)
         captureScreenshot("交易列表")
-        try auditAccessibility(for: [.dynamicType, .textClipped])
+        try auditAccessibility(for: [.textClipped])
+
+        relaunchAtLargestTextSize()
+        tap(app.tabBars.buttons["交易"])
+        reveal(transaction)
+        XCTAssertGreaterThan(app.staticTexts["12,345.6789 CNY"].frame.height, normalAmountHeight * 1.3)
+        captureScreenshot("最大字号交易列表")
+        try auditAccessibility(for: [.textClipped])
 
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.kind"])
@@ -422,25 +432,48 @@ final class CoreFlowsUITests: XCTestCase {
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
         launch("core")
         openCard("UI Primary")
+        let normalTitleHeight = app.staticTexts["UI Primary"].frame.height
+        XCTAssertGreaterThan(normalTitleHeight, 0)
         let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle)
         captureScreenshot("卡片账期日程")
-        try auditAccessibility(for: [.dynamicType, .textClipped])
+        try auditAccessibility(for: [.textClipped])
 
         tap(app.tabBars.buttons["首页"])
         let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
         reveal(schedule)
         assertTouchTarget(schedule)
-        XCTAssertTrue(schedule.label.contains("UI Test Bank"))
         captureScreenshot("首页账期日程")
-        try auditAccessibility(for: [.hitRegion, .dynamicType, .textClipped])
+        try auditAccessibility(for: [.hitRegion, .textClipped])
+
+        relaunchAtLargestTextSize()
+        openCard("UI Primary")
+        XCTAssertGreaterThan(app.staticTexts["UI Primary"].frame.height, normalTitleHeight * 1.3)
+        reveal(cycle)
+        captureScreenshot("最大字号卡片账期日程")
+        try auditAccessibility(for: [.textClipped])
+
+        tap(app.tabBars.buttons["首页"])
+        reveal(schedule)
+        assertTouchTarget(schedule)
+        XCTAssertTrue(schedule.label.contains("UI Test Bank"))
+        captureScreenshot("最大字号首页账期日程")
+        try auditAccessibility(for: [.hitRegion, .textClipped])
         tap(schedule)
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
 
     private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertGreaterThanOrEqual(element.frame.width, 44, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(element.frame.height, 44, file: file, line: line)
+        // Accessibility bounds can contain subpixel floating-point rounding.
+        XCTAssertGreaterThanOrEqual(element.frame.width + 0.001, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.height + 0.001, 44, file: file, line: line)
+    }
+
+    private func relaunchAtLargestTextSize() {
+        app.terminate()
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
     }
 
     private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {

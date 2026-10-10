@@ -33,6 +33,8 @@ struct DashboardView: View {
                             }
                             .font(.footnote)
                             .foregroundStyle(.orange)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("通知提示：\(notificationWarning)，打开设置")
@@ -345,11 +347,9 @@ private struct DashboardPromotionRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(promotion.title)
                         .font(.subheadline.weight(.medium))
-                        .lineLimit(2)
                     Text(eligibleCardText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                     if let progress {
                         HStack(spacing: 8) {
                             Text(progressText(progress))
@@ -646,7 +646,6 @@ private struct AccountScheduleCard: View {
                     Text(accountSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
                 Spacer()
             }
