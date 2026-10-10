@@ -210,6 +210,7 @@ struct TransactionsView: View {
                         Label("筛选", systemImage: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     }
                     .accessibilityLabel(hasActiveFilters ? "筛选，已启用 \(activeFilterCount) 项" : "筛选")
+                    .accessibilityIdentifier("transactions.filters")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -335,11 +336,15 @@ struct TransactionsView: View {
                 if !query.isEmpty {
                     filterChip("搜索：\(query)") { self.searchText = "" }
                 }
-                Button("清除全部") {
+                Button {
                     clearFilters()
+                } label: {
+                    Text("清除全部")
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("transactions.filters.clear")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
@@ -348,20 +353,22 @@ struct TransactionsView: View {
     }
 
     private func filterChip(_ label: String, remove: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-            Button(action: remove) {
+        Button(action: remove) {
+            HStack(spacing: 6) {
+                Text(label)
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.bold))
+                    .accessibilityHidden(true)
             }
-            .accessibilityLabel("移除筛选：\(label)")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.tint)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 44, minHeight: 44)
+            .background(Color.accentColor.opacity(0.1), in: Capsule())
+            .contentShape(Capsule())
         }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.tint)
-        .padding(.leading, 10)
-        .padding(.trailing, 7)
-        .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.1), in: Capsule())
+        .buttonStyle(.plain)
+        .accessibilityLabel("移除筛选：\(label)")
     }
 
     private func clearFilters() {
@@ -441,39 +448,48 @@ func groupedTransactionsByDate(_ transactions: [Transaction]) -> [(date: Int, tr
 }
 
 struct TransactionRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let transaction: Transaction
 
     var body: some View {
-        HStack(spacing: 12) {
-            BankBadge(bank: transaction.card.account.bank)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text(cardShortLabel(transaction.card))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    if transaction.kind == .refund {
-                        transactionTag("退款", color: .orange)
-                    }
-                    if transaction.status == .reversed {
-                        transactionTag("已冲正", color: .red)
-                    }
-                    if transaction.allocations.count == 1, let promotion = transaction.allocations.first?.promotion {
-                        Text("计入：\(promotion.title)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    } else if transaction.allocations.count > 1 {
-                        Text("已计入 \(transaction.allocations.count) 个促销")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
+            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
+                BankBadge(bank: transaction.card.account.bank)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    Text(cardShortLabel(transaction.card))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    let tagsLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                        : AnyLayout(HStackLayout(spacing: 6))
+                    tagsLayout {
+                        if transaction.kind == .refund {
+                            transactionTag("退款", color: .orange)
+                        }
+                        if transaction.status == .reversed {
+                            transactionTag("已冲正", color: .red)
+                        }
+                        if transaction.allocations.count == 1, let promotion = transaction.allocations.first?.promotion {
+                            Text("计入：\(promotion.title)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        } else if transaction.allocations.count > 1 {
+                            Text("已计入 \(transaction.allocations.count) 个促销")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             Text(signedAmountText(transaction))
                 .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
@@ -712,6 +728,7 @@ private struct TransactionFilterSheet: View {
                         Text("退款").tag(Optional(TransactionKind.refund))
                     }
                     .pickerStyle(.menu)
+                    .accessibilityIdentifier("transactions.filter.kind")
                 }
 
                 Section("促销") {

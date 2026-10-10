@@ -387,6 +387,69 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
+    func testTransactionFilterChipsAreAccessibleAndRemoveTheirFilter() throws {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("12345.6789", into: app.textFields["transactionAmount"])
+        enter("UI Accessibility Coffee", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        tap(app.tabBars.buttons["交易"])
+        let transaction = app.buttons["transaction.UI Accessibility Coffee"]
+        XCTAssertTrue(transaction.waitForExistence(timeout: 10))
+        XCTAssertTrue(transaction.label.contains("12,345.6789 CNY"))
+        captureScreenshot("交易列表")
+        try app.performAccessibilityAudit(for: [.dynamicType, .textClipped])
+
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.kind"])
+        tap(app.buttons["消费"])
+        tap(app.buttons["完成"])
+        let chip = app.buttons["移除筛选：消费"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 10))
+        assertTouchTarget(chip)
+        assertTouchTarget(app.buttons["transactions.filters.clear"])
+        captureScreenshot("交易筛选标签")
+        try app.performAccessibilityAudit(for: [.hitRegion])
+        // The text portion removes the filter too; the small cross is decorative.
+        chip.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertFalse(chip.exists)
+        XCTAssertFalse(app.buttons["transactions.filters.clear"].exists)
+        XCTAssertTrue(app.buttons["transaction.UI Accessibility Coffee"].exists)
+    }
+
+    func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
+        launch("core")
+        openCard("UI Primary")
+        let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
+        reveal(cycle)
+        captureScreenshot("卡片账期日程")
+        try app.performAccessibilityAudit(for: [.dynamicType, .textClipped])
+
+        tap(app.tabBars.buttons["首页"])
+        let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
+        reveal(schedule)
+        assertTouchTarget(schedule)
+        XCTAssertTrue(schedule.label.contains("UI Test Bank"))
+        captureScreenshot("首页账期日程")
+        try app.performAccessibilityAudit(for: [.hitRegion, .dynamicType, .textClipped])
+        tap(schedule)
+        XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
+    }
+
+    private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertGreaterThanOrEqual(element.frame.width, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.height, 44, file: file, line: line)
+    }
+
+    private func captureScreenshot(_ name: String) {
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     private func selectTransactionCard(_ name: String) {
         tap(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true)
         tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)

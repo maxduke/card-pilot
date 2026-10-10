@@ -541,20 +541,24 @@ private struct BillingRuleRow: View {
 }
 
 private struct BillingCycleRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let cycle: BillingCycle
     let today: LocalDate
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                : AnyLayout(HStackLayout())
+            layout {
                 Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
                     .font(.subheadline.weight(.semibold))
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 StatusPill(title: statusTitle, color: statusColor)
             }
-            HStack {
+            layout {
                 Label("账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today))", systemImage: "doc.text")
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Label("还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))", systemImage: "calendar.badge.clock")
             }
             .font(.caption)

@@ -338,7 +338,7 @@ private struct DashboardPromotionRow: View {
         NavigationLink {
             PromotionDetailView(promotion: promotion)
         } label: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 10) {
                 Image(systemName: "gift.fill")
                     .foregroundStyle(.tint)
                     .frame(width: 24)
@@ -556,34 +556,40 @@ private struct DashboardSection<Content: View>: View {
 
 private struct BillingItemRow: View {
     @Environment(\.currentDay) private var currentDay
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let item: DashboardBillingItem
     let showsBank: Bool
     let markRepaid: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: item.kind.icon)
                     .foregroundStyle(item.kind == .repayment ? .orange : .blue)
                     .frame(width: 24)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.kind.title)
-                        .font(.subheadline.weight(.medium))
-                    Text(showsBank
-                         ? "\(CardPilotUI.accountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
-                         : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                    : AnyLayout(HStackLayout())
+                layout {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.kind.title)
+                            .font(.subheadline.weight(.medium))
+                        Text(showsBank
+                             ? "\(CardPilotUI.accountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
+                             : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                    VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 3) {
+                        Text(CardPilotUI.relativeDateText(item.date, today: currentDay.today))
+                            .font(.subheadline.weight(.semibold))
+                        Text(CardPilotUI.shortDateText(item.date, relativeTo: currentDay.today))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .monospacedDigit()
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(CardPilotUI.relativeDateText(item.date, today: currentDay.today))
-                        .font(.subheadline.weight(.semibold))
-                    Text(CardPilotUI.shortDateText(item.date, relativeTo: currentDay.today))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .monospacedDigit()
             }
 
             if item.kind == .repayment {
@@ -602,10 +608,23 @@ private struct BillingItemRow: View {
                         .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
                 }
             }
-            NavigationLink("查看账期") {
+            NavigationLink {
                 BillingCycleDetailView(account: item.account, cycleKey: item.cycleKey)
+            } label: {
+                HStack {
+                    Text("查看账期")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .font(.caption)
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
+            .accessibilityLabel("查看 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
+            .accessibilityIdentifier("dashboard.billingCycle.\(item.id)")
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)

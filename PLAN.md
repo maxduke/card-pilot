@@ -1,12 +1,16 @@
 # CardPilot 首版实施计划
 
-## 当前 UX 第二批（2026-10-10）
+## 当前 UX 第三批（2026-10-10）
 
-第一批 [PR #22](https://github.com/maxduke/card-pilot/pull/22) 已合并到主线 `662fd4d`，合并前当前提交的 [原生 iOS CI](https://github.com/maxduke/card-pilot/actions/runs/38056187342) 通过：199 项单元／集成测试与 11 项 UI 测试，零失败。
+基于第二批已验证的主线 `4e02dc0`，处理 O04 中筛选点击区域、交易和账期的辅助字号布局，并补充原生无障碍审计与截图。保留现有业务口径、数据格式和页面结构；范围与验收见 [第三批记录](docs/ux-accessibility-2026-10-10.md)。本地语法检查是补充，继续通过 PR 原生 workflow、合并及主线 workflow 逐批交付。
 
-第二批实现首次建卡后的提醒引导（O03）：卡片先保存，再提供设置／稍后操作；建卡与设置共用通知与提醒页面，明确权限、提醒开关和已安排计划。保持现有全局排程、通知路由和数据格式，记录见 [实施与验收](docs/ux-reminder-onboarding-2026-10-10.md)。继续按实现、验证、PR、原生 workflow、合并及主线 workflow 验证逐批交付；真实通知与 VoiceOver 仍需独立验收。
+## 已完成 UX 第二批（2026-10-10）
+
+[PR #23](https://github.com/maxduke/card-pilot/pull/23) 实现首次建卡后的提醒引导（O03）：卡片先保存，再提供设置／稍后操作；建卡与设置共用通知与提醒页面，明确权限、提醒开关和已安排计划。保持现有全局排程、通知路由和数据格式，记录见 [实施与验收](docs/ux-reminder-onboarding-2026-10-10.md)。[PR 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38062447856) 与合并提交 `4e02dc0` 的 [main 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38063324259) 均通过 199 项单元／集成测试与 13 项 UI 测试，零失败、零跳过。真实通知与 VoiceOver 仍需独立验收。
 
 ## 已完成 UX 第一批（2026-10-10）
+
+第一批 [PR #22](https://github.com/maxduke/card-pilot/pull/22) 已合并到主线 `662fd4d`，[PR 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38056187342) 与 [main 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38059420884) 均通过 199 项单元／集成测试与 11 项 UI 测试，零失败。
 
 按 [最新产品评估](docs/product-ux-review-2026-10-10.md) 开始分批实现。第一批保护换卡时的交易币种、精确金额展示，改善空表单关闭、草稿恢复摘要和首页还款反馈；保持持久化 Schema 与草稿格式。具体行为和验证边界见 [实施记录](docs/ux-input-feedback-2026-10-10.md)。本地隔离验证是补充；PR 原生验证已完成，真机与 VoiceOver 仍需独立验收。
 
