@@ -1155,6 +1155,21 @@ struct TransactionEditorForm: View {
                 Text(overRefundWarningMessage ?? "")
             }
         }
+        // Keep the picker presenter outside lazy Form rows so scrolling cannot
+        // recreate its presentation registration while the sheet is open.
+        .trackedSheet(isPresented: $showingCardPicker) {
+            CardSelectionSheet(
+                cards: selectableCards,
+                selectedCardID: cardID,
+                lastUsedCardID: lastUsedCardID,
+                onSelect: { selectedID in
+                    cardID = selectedID
+                    showingCardPicker = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
     }
 
@@ -1408,6 +1423,7 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             } else if let selectedCard {
                 Button {
+                    amountIsFocused = false
                     showingCardPicker = true
                 } label: {
                     HStack(spacing: 12) {
@@ -1442,23 +1458,11 @@ struct TransactionEditorForm: View {
                 .accessibilityIdentifier("transactionCardPicker")
             } else {
                 Button("选择其他卡片", systemImage: "creditcard") {
+                    amountIsFocused = false
                     showingCardPicker = true
                 }
                 .accessibilityHint("草稿中的卡片已不可用，请重新选择")
             }
-        }
-        .trackedSheet(isPresented: $showingCardPicker) {
-            CardSelectionSheet(
-                cards: selectableCards,
-                selectedCardID: cardID,
-                lastUsedCardID: lastUsedCardID,
-                onSelect: { selectedID in
-                    cardID = selectedID
-                    showingCardPicker = false
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
         }
     }
 

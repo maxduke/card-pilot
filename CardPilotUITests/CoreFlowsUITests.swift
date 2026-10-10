@@ -318,7 +318,7 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func selectTransactionCard(_ name: String) {
-        tap(app.buttons["transactionCardPicker"])
+        tap(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true)
         tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
     }
 
@@ -338,8 +338,8 @@ final class CoreFlowsUITests: XCTestCase {
         element.typeText(text)
     }
 
-    private func tap(_ element: XCUIElement) {
-        reveal(element)
+    private func tap(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false) {
+        reveal(element, scrollTowardTopWhenMissing: scrollTowardTopWhenMissing)
         element.tap()
     }
 
@@ -354,12 +354,14 @@ final class CoreFlowsUITests: XCTestCase {
         return bottom
     }
 
-    private func reveal(_ element: XCUIElement) {
+    private func reveal(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false) {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
         for _ in 0..<8 {
-            var targetIsAbove = false
+            // Lazy Form rows disappear from the accessibility tree offscreen.
+            // A known first-row control must be approached from the top.
+            var targetIsAbove = scrollTowardTopWhenMissing
             if element.exists || element.waitForExistence(timeout: 2) {
                 if element.isHittable {
                     if element.elementType != .textField || element.frame.maxY < contentBottom { return }
