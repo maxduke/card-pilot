@@ -379,6 +379,7 @@ private struct DashboardPromotionRow: View {
             .accessibilityElement(children: .combine)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard.promotion.\(promotion.id)")
     }
 
     private var eligibleCardText: String {

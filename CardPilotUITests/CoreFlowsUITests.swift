@@ -468,6 +468,10 @@ final class CoreFlowsUITests: XCTestCase {
         try auditAccessibility(for: [.textClipped])
 
         tap(app.tabBars.buttons["首页"])
+        let promotion = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.promotion.")).firstMatch
+        reveal(promotion, fullyVisible: true)
+        captureScreenshot("最大字号首页活动摘要")
+        try auditAccessibility(for: [.textClipped])
         reveal(schedule, fullyVisible: true)
         assertTouchTarget(schedule)
         XCTAssertTrue(schedule.label.contains("UI Test Bank"))
