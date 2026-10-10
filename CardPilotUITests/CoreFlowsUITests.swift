@@ -400,7 +400,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(transaction.waitForExistence(timeout: 10))
         XCTAssertTrue(transaction.label.contains("12,345.6789 CNY"))
         captureScreenshot("交易列表")
-        try app.performAccessibilityAudit(for: [.dynamicType, .textClipped])
+        try auditAccessibility(for: [.dynamicType, .textClipped])
 
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.kind"])
@@ -411,7 +411,7 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(chip)
         assertTouchTarget(app.buttons["transactions.filters.clear"])
         captureScreenshot("交易筛选标签")
-        try app.performAccessibilityAudit(for: [.hitRegion])
+        try auditAccessibility(for: [.hitRegion])
         // The text portion removes the filter too; the small cross is decorative.
         chip.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
         XCTAssertFalse(chip.exists)
@@ -425,7 +425,7 @@ final class CoreFlowsUITests: XCTestCase {
         let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle)
         captureScreenshot("卡片账期日程")
-        try app.performAccessibilityAudit(for: [.dynamicType, .textClipped])
+        try auditAccessibility(for: [.dynamicType, .textClipped])
 
         tap(app.tabBars.buttons["首页"])
         let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
@@ -433,7 +433,7 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(schedule)
         XCTAssertTrue(schedule.label.contains("UI Test Bank"))
         captureScreenshot("首页账期日程")
-        try app.performAccessibilityAudit(for: [.hitRegion, .dynamicType, .textClipped])
+        try auditAccessibility(for: [.hitRegion, .dynamicType, .textClipped])
         tap(schedule)
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
@@ -441,6 +441,20 @@ final class CoreFlowsUITests: XCTestCase {
     private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertGreaterThanOrEqual(element.frame.width, 44, file: file, line: line)
         XCTAssertGreaterThanOrEqual(element.frame.height, 44, file: file, line: line)
+    }
+
+    private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {
+        let original = continueAfterFailure
+        continueAfterFailure = true
+        defer { continueAfterFailure = original }
+        try app.performAccessibilityAudit(for: types) { issue in
+            let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+            let attachment = XCTAttachment(string: details)
+            attachment.name = "无障碍审计元素"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            return false
+        }
     }
 
     private func captureScreenshot(_ name: String) {

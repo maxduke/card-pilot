@@ -461,11 +461,9 @@ struct TransactionRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(transaction.merchant.isEmpty ? "未填写商户" : transaction.merchant)
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     Text(cardShortLabel(transaction.card))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     let tagsLayout = dynamicTypeSize.isAccessibilitySize
                         ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
                         : AnyLayout(HStackLayout(spacing: 6))
@@ -480,7 +478,6 @@ struct TransactionRow: View {
                             Text("计入：\(promotion.title)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         } else if transaction.allocations.count > 1 {
                             Text("已计入 \(transaction.allocations.count) 个促销")
                                 .font(.caption)
