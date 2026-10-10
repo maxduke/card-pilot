@@ -456,6 +456,7 @@ private struct CardTransactionHistoryView: View {
 }
 
 private struct DetailActionLabel: View {
+    @ScaledMetric(relativeTo: .title3) private var iconWidth = 28.0
     let title: String
     let subtitle: String
     let systemImage: String
@@ -467,7 +468,7 @@ private struct DetailActionLabel: View {
             Image(systemName: systemImage)
                 .font(.title3)
                 .foregroundStyle(tint)
-                .frame(width: 28)
+                .frame(width: iconWidth)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))

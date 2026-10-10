@@ -468,7 +468,7 @@ final class CoreFlowsUITests: XCTestCase {
         try auditAccessibility(for: [.textClipped])
 
         tap(app.tabBars.buttons["首页"])
-        reveal(schedule)
+        reveal(schedule, fullyVisible: true)
         assertTouchTarget(schedule)
         XCTAssertTrue(schedule.label.contains("UI Test Bank"))
         captureScreenshot("最大字号首页账期日程")

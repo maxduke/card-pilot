@@ -557,6 +557,7 @@ private struct DashboardSection<Content: View>: View {
 private struct BillingItemRow: View {
     @Environment(\.currentDay) private var currentDay
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var iconWidth = 24.0
     let item: DashboardBillingItem
     let showsBank: Bool
     let markRepaid: () -> Void
@@ -566,7 +567,7 @@ private struct BillingItemRow: View {
             HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 10) {
                 Image(systemName: item.kind.icon)
                     .foregroundStyle(item.kind == .repayment ? .orange : .blue)
-                    .frame(width: 24)
+                    .frame(width: iconWidth)
                 let layout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
                     : AnyLayout(HStackLayout())
