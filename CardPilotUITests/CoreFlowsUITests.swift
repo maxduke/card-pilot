@@ -99,6 +99,10 @@ final class CoreFlowsUITests: XCTestCase {
         app.launchArguments[localeIndex] = "zh_CN"
         app.launch()
         tap(app.tabBars.buttons["记一笔"])
+        let summary = app.staticTexts["transactionDraftSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains("1.5 CNY"))
+        XCTAssertTrue(summary.label.contains("UI Locale"))
         tap(app.buttons["继续草稿"])
         let restored = app.textFields["allocation.amount.UI Spend"]
         reveal(restored)
@@ -252,6 +256,70 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["card.transactions"])
         tap(app.buttons["transaction.UI No Promotion"])
         XCTAssertTrue(app.staticTexts["本笔未计入促销"].waitForExistence(timeout: 10))
+    }
+
+    func testChangingCardPreservesEnteredAmountAndCurrencyThroughSave() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("99.999", into: app.textFields["transactionAmount"])
+        enter("UI Currency Protected", into: app.textFields["商户（可选）"])
+        selectTransactionCard("UI Foreign")
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "99.999")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        tap(app.buttons["saveTransaction"])
+
+        app.terminate()
+        app.launch()
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        let transaction = app.buttons["transaction.UI Currency Protected"]
+        XCTAssertTrue(transaction.waitForExistence(timeout: 10))
+        XCTAssertTrue(transaction.label.contains("99.999 CNY"))
+    }
+
+    func testBlankTransactionFollowsCardDefaultUntilCurrencyIsExplicitlyChosen() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        selectTransactionCard("UI Foreign")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "HKD")
+        tap(app.buttons["transactionCurrency"])
+        tap(app.buttons["currency.HKD"])
+        selectTransactionCard("UI Shared")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "HKD")
+
+        tap(app.buttons["关闭"])
+        tap(app.buttons["保留草稿并关闭"])
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["记一笔"])
+        tap(app.buttons["继续草稿"])
+        // A recovered draft owns its currency even before any amount has been entered.
+        selectTransactionCard("UI Primary")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "HKD")
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+    }
+
+    func testUntouchedTransactionClosesWithoutCreatingADraft() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
+        tap(app.buttons["关闭"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["保留草稿并关闭"].exists)
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["记一笔"])
+        XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["继续草稿"].exists)
+    }
+
+    private func selectTransactionCard(_ name: String) {
+        tap(app.buttons["transactionCardPicker"])
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
     }
 
     private func launch(_ scenario: String) {

@@ -86,6 +86,7 @@ struct CurrencyPickerView: View {
             }
         }
         .accessibilityLabel("\(title)：\(selection)")
+        .accessibilityValue(selection)
         .trackedSheet(isPresented: $showingSheet) {
             CurrencyPickerSheet(selection: $selection, title: title)
         }
@@ -195,6 +196,7 @@ private struct CurrencyPickerSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(option.name)，\(option.code)")
+        .accessibilityIdentifier("currency.\(option.code)")
     }
 
     private func recordRecent(_ code: String) {
@@ -429,8 +431,12 @@ enum CardPilotUI {
         formatter.locale = locale
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 2
-        let value = formatter.string(from: NSDecimalNumber(decimal: amount)) ?? "0"
+        formatter.maximumFractionDigits = 38
+        let formatted = formatter.string(from: NSDecimalNumber(decimal: amount))
+        // NumberFormatter can round very precise Decimals even with a large fraction limit.
+        // Keep the exact value visible when its localized output would change the amount.
+        let value = formatted.flatMap { decimal($0, locale: locale) == amount ? $0 : nil }
+            ?? AmountInput.text(amount, locale: locale)
         return currencyCode.map { "\(value) \($0)" } ?? value
     }
 

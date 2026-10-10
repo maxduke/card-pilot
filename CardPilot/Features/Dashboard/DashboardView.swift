@@ -1,8 +1,11 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query private var accounts: [CreditCardAccount]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Binding var showingSettings: Bool
@@ -123,15 +126,27 @@ struct DashboardView: View {
             .navigationTitle("CardPilot")
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let recentlyRepaid {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("已标记 \(CardPilotUI.accountName(recentlyRepaid.account)) \(CardPilotUI.monthKeyText(recentlyRepaid.cycleKey)) 已还款")
-                            .font(.footnote)
-                            .lineLimit(2)
-                        Spacer()
-                        Button("撤销") { undoRepayment(recentlyRepaid) }
-                            .fontWeight(.semibold)
+                    let layout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                        : AnyLayout(HStackLayout(spacing: 12))
+                    layout {
+                        Label {
+                            Text("已标记 \(CardPilotUI.accountName(recentlyRepaid.account)) \(CardPilotUI.monthKeyText(recentlyRepaid.cycleKey)) 已还款")
+                                .font(.footnote)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 8) {
+                            Button("撤销") { undoRepayment(recentlyRepaid) }
+                                .fontWeight(.semibold)
+                                .frame(minWidth: 44, minHeight: 44)
+                            Button { self.recentlyRepaid = nil } label: {
+                                Image(systemName: "xmark")
+                                    .frame(width: 44, height: 44)
+                            }
+                            .accessibilityLabel("关闭还款提示")
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -154,6 +169,17 @@ struct DashboardView: View {
             } message: {
                 Text(errorMessage ?? "未知错误")
             }
+            .task(id: recentlyRepaid?.id) {
+                guard recentlyRepaid != nil, !UIAccessibility.isVoiceOverRunning else { return }
+                do { try await Task.sleep(for: .seconds(8)) }
+                catch { return }
+                if !UIAccessibility.isVoiceOverRunning { recentlyRepaid = nil }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { recentlyRepaid = nil }
+            }
+            .onChange(of: currentDay) { _, _ in recentlyRepaid = nil }
+            .onDisappear { recentlyRepaid = nil }
         }
     }
 
