@@ -526,6 +526,8 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
         tap(app.navigationBars["交易详情"].buttons["完成"])
         tap(app.buttons["transaction.UI Reversed Purchase"])
+        XCTAssertTrue(app.staticTexts["UI Reversed Purchase"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["已冲正"].exists)
         let recordRefund = app.buttons["transaction.recordRefund"]
         reveal(recordRefund, fullyVisible: true)
         assertTouchTarget(recordRefund)
@@ -554,11 +556,20 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(related.label.contains("状态：有效"))
         captureScreenshot("最大字号关联退款")
         try auditAccessibility(for: [.hitRegion])
+        let relatedIdentifier = related.identifier
+        let relatedFrame = related.frame
         tap(related)
         XCTAssertTrue(app.staticTexts["UI Reversed Original Refund"].waitForExistence(timeout: 10))
-        tap(app.navigationBars["交易详情"].buttons.firstMatch)
-        XCTAssertTrue(app.staticTexts["UI Reversed Purchase"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["已冲正"].exists)
+        let detailNavigation = app.navigationBars["交易详情"]
+        tap(detailNavigation.buttons["交易详情"])
+        XCTAssertTrue(detailNavigation.buttons["完成"].waitForExistence(timeout: 10))
+        // Native back restores the purchase's scroll position at its refund row;
+        // its header and status are lazy rows above the viewport at this size.
+        XCTAssertTrue(recordRefund.exists)
+        let restoredRelated = app.buttons[relatedIdentifier]
+        reveal(restoredRelated, fullyVisible: true)
+        XCTAssertEqual(restoredRelated.frame.minY, relatedFrame.minY, accuracy: 1)
+        XCTAssertTrue(restoredRelated.label.contains("UI Reversed Original Refund"))
     }
 
     func testDraftKeepsCommaDecimalMeaningAfterRegionChange() throws {
@@ -1151,7 +1162,12 @@ final class CoreFlowsUITests: XCTestCase {
         if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
         for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"] {
             let footer = app.buttons[identifier]
-            if footer.exists { bottom = min(bottom, footer.frame.minY) }
+            if footer.exists {
+                // The save button's AX frame excludes its 10pt outer padding
+                // and the footer divider. The Form ends above that whole bar.
+                let topInset: CGFloat = identifier == "saveTransaction" ? 11 : 0
+                bottom = min(bottom, footer.frame.minY - topInset)
+            }
         }
         return bottom
     }
@@ -1165,31 +1181,37 @@ final class CoreFlowsUITests: XCTestCase {
             // A known first-row control must be approached from the top.
             var targetIsAbove = scrollTowardTopWhenMissing
             var scrollDistance: CGFloat = 240
+            let frame = app.frame
+            var viewportBottom: CGFloat?
             if element.exists || element.waitForExistence(timeout: 2) {
-                if element.isHittable {
-                    if fullyVisible {
-                        if element.frame.minY >= app.navigationBars.firstMatch.frame.maxY,
-                           element.frame.maxY < contentBottom { return }
-                    } else if element.elementType != .textField || element.frame.maxY < contentBottom {
-                        return
-                    }
+                let targetFrame = element.frame
+                let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
+                let contentTop = needsUnobscuredFrame ? app.navigationBars.firstMatch.frame.maxY : frame.minY + 110
+                var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
+                if needsUnobscuredFrame {
+                    let bottom = contentBottom
+                    viewportBottom = bottom
+                    frameIsVisible = frameIsVisible && targetFrame.minY >= contentTop && targetFrame.maxY < bottom
                 }
+                // Querying hittability for a footer-clipped text field can throw
+                // an XCTest activation-point error before it can return false.
+                // Establish usable geometry first, then ask XCTest for hit points.
+                if frameIsVisible && element.isHittable { return }
                 // After dismissing an editor, a previously visible row can be above
                 // the viewport. Always swiping up would move it farther out of reach.
-                let targetFrame = element.frame
-                let contentTop = fullyVisible ? app.navigationBars.firstMatch.frame.maxY : app.frame.minY + 110
                 targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < contentTop
-                if !targetFrame.isEmpty && (fullyVisible || element.elementType == .textField) {
+                if !targetFrame.isEmpty && needsUnobscuredFrame {
+                    let bottom = viewportBottom ?? contentBottom
+                    viewportBottom = bottom
                     let obscuredDistance = targetIsAbove
                         ? contentTop - targetFrame.minY
-                        : targetFrame.maxY - contentBottom
+                        : targetFrame.maxY - bottom
                     // Large fields can straddle the footer. A fixed drag would
                     // overshoot them and alternate above and below the viewport.
                     scrollDistance = min(240, max(60, obscuredDistance + 24))
                 }
             }
-            let frame = app.frame
-            let startY = min(frame.maxY - 100, contentBottom - 25)
+            let startY = min(frame.maxY - 100, (viewportBottom ?? contentBottom) - 25)
             let endY = max(frame.minY + 160, startY - scrollDistance)
             // Use the list gutter so a drag never begins on a promotion switch.
             let origin = app.coordinate(withNormalizedOffset: .zero)
