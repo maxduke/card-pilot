@@ -1678,6 +1678,7 @@ struct PromotionDetailView: View {
     @Query private var allPromotions: [Promotion]
     @State private var showingAllocationEditor = false
     @State private var editingAllocation: PromotionAllocation?
+    @State private var showingEditOptions = false
     @State private var promotionEditorStep: PromotionEditorStep?
     @State private var selectedPeriodID: UUID
     @State private var allocationPendingDeletion: PromotionAllocation?
@@ -1903,14 +1904,11 @@ struct PromotionDetailView: View {
         .navigationTitle(displayedPromotion.title)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Menu {
-                    ForEach(PromotionEditorStep.allCases) { item in
-                        Button("编辑\(item.editingTitle)") {
-                            promotionEditorStep = item
-                        }
-                    }
+                Button {
+                    showingEditOptions = true
                 } label: {
-                    Image(systemName: "pencil")
+                    Text("编辑")
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("编辑促销")
                 .accessibilityHint("选择要编辑的内容")
@@ -1930,6 +1928,14 @@ struct PromotionDetailView: View {
                     .accessibilityLabel("复制到下个月")
                 }
             }
+        }
+        .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
+            ForEach(PromotionEditorStep.allCases) { item in
+                Button("编辑\(item.editingTitle)") {
+                    promotionEditorStep = item
+                }
+            }
+            Button("取消", role: .cancel) {}
         }
         .trackedSheet(isPresented: $showingTransactionEditor) {
             TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)

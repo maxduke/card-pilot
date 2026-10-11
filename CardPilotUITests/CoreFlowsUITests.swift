@@ -718,6 +718,8 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openPromotionEditor(_ section: String) {
+        XCTAssertTrue(app.buttons["promotion.edit"].waitForExistence(timeout: 10))
+        assertTouchTarget(app.buttons["promotion.edit"])
         tap(app.buttons["promotion.edit"])
         tap(app.buttons["编辑\(section)"])
         XCTAssertTrue(app.navigationBars["编辑促销"].waitForExistence(timeout: 10))
