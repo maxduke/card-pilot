@@ -1,5 +1,7 @@
 # UX 第五批：促销分组编辑 · 2026-10-11
 
+已通过 [PR #26](https://github.com/maxduke/card-pilot/pull/26) 合并到 `e42d959`。[PR 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38107044002) 和 [main 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38108646074) 均通过 199 项单元／集成测试和 20 项 UI 测试，零失败、零跳过。四张相关截图已检查；下文待验证和失败描述属于实施过程记录。新分组控件完整换行，旧报名选项在最大字号下的省略由[第六批](ux-promotion-progress-2026-10-11.md)继续处理。
+
 处理 [产品评估](product-ux-review-2026-10-10.md) 的 O11，基于第四批已验证主线 `bdff161`。原来编辑已有促销仍从第一步开始，修改奖励说明也需要逐步到第三步才能保存。本批复用原有三个内容分组和完整保存流程，不增加模型字段、依赖或新的表单框架。
 
 ## 行为

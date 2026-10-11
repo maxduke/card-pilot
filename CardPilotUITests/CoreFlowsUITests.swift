@@ -211,6 +211,90 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["UI Large Promotion"].waitForExistence(timeout: 10))
     }
 
+    func testPromotionOverviewPrioritizesProgressAndDistinguishesLimits() throws {
+        launch("promotionOverview")
+        let examples = [
+            ("UI Spend", "还需 1,000 CNY"),
+            ("UI Reached", "已达标"),
+            ("UI Amount Cap", "剩余可计入 500 CNY"),
+            ("UI Available", "剩余可用 2 次"),
+            ("UI Exhausted", "优惠次数已用完")
+        ]
+        var normalHeight: CGFloat = 0
+        for (name, expected) in examples {
+            openPromotion(name)
+            let remaining = app.staticTexts["promotion.remaining.\(name)"]
+            XCTAssertTrue(remaining.waitForExistence(timeout: 10))
+            XCTAssertEqual(remaining.label, expected)
+            // These assertions deliberately precede any scrolling: ordinary
+            // detail pages must show the result and deadline on their first screen.
+            XCTAssertTrue(remaining.isHittable)
+            let endDate = app.staticTexts["promotion.endDate"]
+            XCTAssertTrue(endDate.isHittable)
+            XCTAssertTrue(endDate.label.contains("结束日期"))
+            XCTAssertGreaterThanOrEqual(endDate.frame.minY, app.navigationBars[name].frame.maxY)
+            XCTAssertLessThan(endDate.frame.maxY, app.tabBars.firstMatch.frame.minY)
+            let record = app.buttons["recordPromotionTransaction"]
+            XCTAssertTrue(record.exists)
+            XCTAssertLessThan(remaining.frame.maxY, record.frame.minY)
+            if name == "UI Spend" {
+                normalHeight = remaining.frame.height
+                XCTAssertTrue(app.staticTexts["达标奖励以银行规则为准"].isHittable)
+                try auditAccessibility(for: [.textClipped])
+            }
+            if name == "UI Available" || name == "UI Exhausted" {
+                XCTAssertFalse(app.staticTexts["已达标"].exists)
+            }
+            captureScreenshot("促销详情-\(name)")
+            tap(app.navigationBars[name].buttons["促销"])
+        }
+
+        relaunchAtLargestTextSize()
+        openPromotion("UI Spend")
+        let remaining = app.staticTexts["promotion.remaining.UI Spend"]
+        XCTAssertTrue(remaining.waitForExistence(timeout: 10))
+        XCTAssertTrue(remaining.isHittable)
+        XCTAssertGreaterThan(remaining.frame.height, normalHeight * 1.3)
+        captureScreenshot("最大字号促销进度")
+    }
+
+    func testPromotionLargeTextOptionsRemainReadableAndPersist() {
+        launch("core")
+        relaunchAtLargestTextSize()
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        let pending = app.descendants(matching: .any)
+            .matching(identifier: "promotion.editor.enrollment.pending").firstMatch
+        reveal(pending, fullyVisible: true)
+        XCTAssertEqual(pending.label, "尚未报名")
+        XCTAssertGreaterThanOrEqual(pending.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
+        captureScreenshot("最大字号报名选项")
+        pending.tap()
+        let basis = app.descendants(matching: .any)
+            .matching(identifier: "promotion.editor.basis.unknown").firstMatch
+        reveal(basis, fullyVisible: true)
+        XCTAssertEqual(basis.label, "未知（交易日或入账日）")
+        XCTAssertGreaterThanOrEqual(basis.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
+        XCTAssertLessThan(basis.frame.maxY, app.frame.maxY - 40)
+        basis.tap()
+        captureScreenshot("最大字号资格日期选项")
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Spend")
+        let status = app.descendants(matching: .any)
+            .matching(identifier: "promotion.enrollmentStatus").firstMatch
+        reveal(status, fullyVisible: true)
+        XCTAssertTrue(status.label.contains("尚未报名"))
+        let savedBasis = app.descendants(matching: .any)
+            .matching(identifier: "promotion.qualificationBasis").firstMatch
+        reveal(savedBasis, fullyVisible: true)
+        XCTAssertTrue(savedBasis.label.contains("交易日期或入账日期"))
+        captureScreenshot("最大字号报名与资格详情")
+    }
+
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
         launch("core")
         openCard("UI Primary")
