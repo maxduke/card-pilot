@@ -6,10 +6,17 @@ import SwiftData
 /// No production store or persistent device preferences are removed or replaced.
 @MainActor
 enum UITestBootstrap {
+    enum Scenario: String {
+        case empty
+        case core
+        case promotionOverview
+        case dashboardActions
+    }
+
     static func makeStore() -> BackupStore? {
         let environment = ProcessInfo.processInfo.environment
-        guard let scenario = environment["CARDPILOT_UI_SCENARIO"],
-              ["empty", "core", "promotionOverview"].contains(scenario),
+        guard let rawScenario = environment["CARDPILOT_UI_SCENARIO"],
+              let scenario = Scenario(rawValue: rawScenario),
               let rawID = environment["CARDPILOT_UI_SESSION"],
               let session = UUID(uuidString: rawID) else { return nil }
         let directory = URL.temporaryDirectory.appendingPathComponent("CardPilotUITests/\(session.uuidString)", isDirectory: true)
@@ -18,15 +25,19 @@ enum UITestBootstrap {
             let url = directory.appendingPathComponent("test.store")
             let isNew = !FileManager.default.fileExists(atPath: url.path)
             let container = try CardPilotPersistence.makeContainer(at: url)
-            if isNew && scenario != "empty" {
-                try seed(container.mainContext, includePromotionOverview: scenario == "promotionOverview")
+            if isNew && scenario != .empty {
+                try seed(container.mainContext, scenario: scenario)
             }
             return container
         })
     }
 
-    static func seed(_ context: ModelContext, includePromotionOverview: Bool = false) throws {
-        let today = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!)
+    static func seed(
+        _ context: ModelContext,
+        scenario: Scenario = .core,
+        today: LocalDate = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!)
+    ) throws {
+        guard scenario != .empty else { return }
         let bank = Bank(name: "UI Test Bank")
         let networks = CardNetwork.makeBuiltIns()
         let network = networks.first { $0.code == "visa" }!
@@ -51,7 +62,7 @@ enum UITestBootstrap {
         context.insert(foreignRule)
         context.insert(foreignCard)
         context.insert(promotion)
-        if includePromotionOverview {
+        if scenario == .promotionOverview {
             promotion.rewardDescription = "达标奖励以银行规则为准"
             let amountCap = Promotion(
                 title: "UI Amount Cap", startOn: promotion.startOn, endOn: promotion.endOn,
@@ -82,6 +93,41 @@ enum UITestBootstrap {
                     ))
                 }
             }
+        }
+        if scenario == .dashboardActions {
+            let statement = today.addingDays(-2)
+            account.trackingStartCycleKey = statement.monthKey
+            context.insert(BillingCycleRecord(
+                account: account, cycleKey: statement.monthKey,
+                statementDateOverride: statement.rawValue,
+                repaymentDateOverride: today.addingDays(-1).rawValue
+            ))
+            // Keep the foreign account's 21st-day schedule from changing the
+            // expected action counts as the simulator's current date changes.
+            context.insert(BillingCycleRecord(account: foreignAccount, cycleKey: today.monthKey, repaidAt: .now))
+            for (name, repaymentDays, lastFour) in [("UI Today", 2, "2222"), ("UI Next Week", 9, "3333")] {
+                let actionAccount = CreditCardAccount(bank: bank, trackingStartCycleKey: statement.monthKey)
+                context.insert(actionAccount)
+                context.insert(BillingRuleVersion(
+                    account: actionAccount, statementDay: statement.day,
+                    repaymentKind: .daysAfterStatement, repaymentValue: repaymentDays
+                ))
+                context.insert(Card(account: actionAccount, productName: name, networks: [network], lastFour: lastFour))
+            }
+            for index in 1...15 {
+                context.insert(Card(
+                    account: account, productName: "UI Shared \(index)", networks: [network],
+                    lastFour: String(format: "%04d", 6000 + index)
+                ))
+            }
+            promotion.enrollmentStatus = .notEnrolled
+            promotion.enrollmentDeadline = today.rawValue
+            context.insert(Promotion(
+                title: "UI Upcoming Enrollment", startOn: today.addingDays(8).rawValue,
+                endOn: today.addingDays(30).rawValue, eligibleCards: [card],
+                enrollmentStatus: .notEnrolled, enrollmentDeadline: today.addingDays(7).rawValue,
+                progressCurrencyCode: "CNY"
+            ))
         }
         try context.save()
     }

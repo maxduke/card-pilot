@@ -2,6 +2,19 @@ import XCTest
 @testable import CardPilot
 
 final class UIWorkflowSupportTests: XCTestCase {
+    func testActionPeriodsRespectTodayAndSevenDayBoundaryAcrossNewYear() throws {
+        let today = try LocalDate(rawValue: 20261231)
+        let yesterday = today.addingDays(-1)
+        XCTAssertEqual(dashboardActionPeriod(for: yesterday, isOverdue: true, today: today), .overdue)
+        XCTAssertNil(dashboardActionPeriod(for: yesterday, today: today))
+        XCTAssertEqual(dashboardActionPeriod(for: today, today: today), .today)
+        XCTAssertNil(dashboardActionPeriod(for: today, isOverdue: true, today: today))
+        XCTAssertEqual(dashboardActionPeriod(for: today.addingDays(1), today: today), .nextSevenDays)
+        XCTAssertEqual(dashboardActionPeriod(for: today.addingDays(7), today: today), .nextSevenDays)
+        XCTAssertNil(dashboardActionPeriod(for: today.addingDays(8), today: today))
+        XCTAssertNil(dashboardActionPeriod(for: today.addingDays(1), isOverdue: true, today: today))
+    }
+
     func testActionCountsSeparateOverdueTodayAndNextSevenDays() throws {
         let today = try LocalDate(rawValue: 20260910)
         let account = CreditCardAccount(bank: Bank(name: "测试银行"))

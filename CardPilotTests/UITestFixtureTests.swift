@@ -23,7 +23,7 @@ final class UITestFixtureTests: XCTestCase {
 
     func testPromotionOverviewFixtureRestoresDistinctProgressModes() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
-        try UITestBootstrap.seed(container.mainContext, includePromotionOverview: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .promotionOverview)
         let records = try BackupRecords.capture(container.mainContext)
         let restored = try records.validatedContainer()
         XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
@@ -37,6 +37,36 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertEqual(progress["UI Available"]?.remainingTransactionCount, 2)
         XCTAssertEqual(progress["UI Exhausted"]?.remainingTransactionCount, 0)
         XCTAssertEqual(progress["UI Reached"]?.remainingToThreshold, 0)
+    }
+
+    func testDashboardFixtureRestoresTwentyCardsWithFiveDistinctActions() throws {
+        let timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        for rawDate in [20260101, 20260302, 20260910, 20261231] {
+            let today = try LocalDate(rawValue: rawDate)
+            let container = try CardPilotPersistence.makeContainer(inMemory: true)
+            try UITestBootstrap.seed(container.mainContext, scenario: .dashboardActions, today: today)
+            let records = try BackupRecords.capture(container.mainContext)
+            let restored = try records.validatedContainer()
+            XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+
+            let cards = try restored.mainContext.fetch(FetchDescriptor<Card>())
+            XCTAssertEqual(cards.count, 20)
+            XCTAssertEqual(Set(cards.map { $0.account.id }).count, 4)
+            let accounts = try restored.mainContext.fetch(FetchDescriptor<CreditCardAccount>())
+            let repayments = dashboardBillingItems(for: accounts, today: today, timeZone: timeZone).filter {
+                $0.kind == .repayment && dashboardActionPeriod(for: $0.date, isOverdue: $0.status == .overdue, today: today) != nil
+            }
+            XCTAssertEqual(repayments.count, 3)
+            XCTAssertEqual(Set(repayments.map { $0.account.id }).count, 3)
+            let promotions = try restored.mainContext.fetch(FetchDescriptor<Promotion>())
+            let enrollment = promotionsWithEnrollmentDeadlineWithin(promotions, today: today)
+            XCTAssertEqual(enrollment.count, 2)
+            XCTAssertTrue(enrollment.contains { $0.startOn > today.rawValue })
+            XCTAssertEqual(
+                dashboardActionCounts(billingItems: repayments, enrollmentPromotions: enrollment, today: today),
+                DashboardActionCounts(overdue: 1, today: 2, nextSevenDays: 2)
+            )
+        }
     }
 }
 #endif

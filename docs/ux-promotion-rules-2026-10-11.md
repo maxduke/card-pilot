@@ -2,6 +2,8 @@
 
 基于已验证主线 `369a034`，接续第六批的进度展示，处理产品评估 O10：让录入者能区分累计门槛、计入上限、单笔最低金额与可用优惠次数。
 
+[PR #28](https://github.com/maxduke/card-pilot/pull/28) 已合并为 `b9e9c24`。[PR workflow](https://github.com/maxduke/card-pilot/actions/runs/38119387661) 与 [main workflow](https://github.com/maxduke/card-pilot/actions/runs/38121228534) 均通过 200 项单元／集成测试和 23 项 UI 测试，零失败、零跳过。金额与文字保存读回、折叠状态及最大字号说明的原生截图已确认。
+
 ## 行为
 
 - 金额和文字字段保留独立标题，金额字段就近给出例子；填写后仍能辨认字段，不依赖消失的占位文字。例子复用应用金额格式器，显示当前地区格式与进度币种，不填入示例值。
@@ -16,10 +18,10 @@
 
 新增一条 UI 回归覆盖可选条件默认收起、隐藏的无效上限报错后展开、修正输入、收起后保存、重启后的完整金额与文字读回，以及最大字号说明的可见范围；保留对应原生截图。已有创建、分组切换、取消、报名及系列回归继续运行。
 
-两个修改的 Swift 文件通过本地 Swift 6 语法解析与 diff 检查；Linux 无 iOS SDK，这些检查不能证明原生交互和视觉正确。交付仍通过未裁剪的 GitHub iOS workflow，预期 200 项单元／集成测试和 23 项 UI 测试；当前 HEAD 全部通过且原生截图确认后合并，再验证 main。实际结果以关联 PR 和 Actions 为准。
+两个修改的 Swift 文件通过本地 Swift 6 语法解析与 diff 检查；Linux 无 iOS SDK，这些检查不能证明原生交互和视觉正确。未裁剪的 GitHub iOS workflow 已在最终 PR HEAD 和合并后的 main 分别完成，结果见上方链接。
 
 原生测试和截图不证明首次用户已经理解银行资格，也不代替真实 VoiceOver 操作、最小屏幕与数字键盘的真机走查；继续按 O13／O21 验收。
 
 ### 原生 CI 发现与修复
 
-[run 38117469701](https://github.com/maxduke/card-pilot/actions/runs/38117469701) 中 200 项单元／集成测试通过，新增 UI 用例在查询规则输入框时失败。失败截图显示原生展开内容正常；界面层级确认 SwiftUI 把 DisclosureGroup 的 identifier 传给子控件，覆盖了字段自身的 identifier。移除两个展开组的父级 identifier，测试通过原生按钮标题定位展开操作，保留输入字段自己的 identifier，并验证规则在收起后确实退出界面层级。隐藏字段保存、重启读回与最大字号检查继续执行；最终提交须重新通过完整 workflow。
+[run 38117469701](https://github.com/maxduke/card-pilot/actions/runs/38117469701) 中 200 项单元／集成测试通过，新增 UI 用例在查询规则输入框时失败。失败截图显示原生展开内容正常；界面层级确认 SwiftUI 把 DisclosureGroup 的 identifier 传给子控件，覆盖了字段自身的 identifier。移除两个展开组的父级 identifier，测试通过原生按钮标题定位展开操作，保留输入字段自己的 identifier，并验证规则在收起后确实退出界面层级。隐藏字段保存、重启读回与最大字号检查均在最终完整 workflow 中通过。
