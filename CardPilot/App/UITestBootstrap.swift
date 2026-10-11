@@ -11,6 +11,7 @@ enum UITestBootstrap {
         case core
         case promotionOverview
         case dashboardActions
+        case linkedRefunds
     }
 
     static func makeStore() -> BackupStore? {
@@ -127,6 +128,33 @@ enum UITestBootstrap {
                 endOn: today.addingDays(30).rawValue, eligibleCards: [card],
                 enrollmentStatus: .notEnrolled, enrollmentDeadline: today.addingDays(7).rawValue,
                 progressCurrencyCode: "CNY"
+            ))
+        }
+        if scenario == .linkedRefunds {
+            promotion.eligibleCards.append(foreignCard)
+            let original = Transaction(
+                card: foreignCard, transactionOn: today.addingDays(-2).rawValue,
+                amount: 100, currencyCode: "CNY", merchant: "UI Original Purchase"
+            )
+            context.insert(original)
+            context.insert(PromotionAllocation(
+                transaction: original, promotion: promotion, qualifyingAmount: 100, currencyCode: "CNY"
+            ))
+            let partial = Transaction(
+                card: foreignCard, kind: .refund, transactionOn: today.addingDays(-1).rawValue,
+                amount: 40, currencyCode: "CNY", merchant: "UI Earlier Refund", originalTransaction: original
+            )
+            context.insert(partial)
+            context.insert(PromotionAllocation(
+                transaction: partial, promotion: promotion, qualifyingAmount: 40, currencyCode: "CNY"
+            ))
+            context.insert(Transaction(
+                card: sibling, transactionOn: today.addingDays(-2).rawValue,
+                amount: 80, currencyCode: "CNY", merchant: "UI Reversed Purchase", status: .reversed
+            ))
+            context.insert(Transaction(
+                card: sibling, kind: .refund, transactionOn: today.rawValue,
+                amount: 15, currencyCode: "CNY", merchant: "UI Unlinked Refund"
             ))
         }
         try context.save()

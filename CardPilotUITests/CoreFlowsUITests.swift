@@ -386,6 +386,192 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(progress.label, "100 CNY / 1,000 CNY")
     }
 
+    func testLinkedRefundPrefillsOriginalCurrencyAndPreservesPartialRefundNavigation() {
+        launch("linkedRefunds")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        let amount = app.textFields["transactionAmount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        let original = app.buttons["transaction.original"]
+        reveal(original)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Original Purchase"))
+        captureScreenshot("从原消费记录退款")
+        enter("20", into: amount)
+        enter("UI Second Refund", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "20")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related."))
+        let second = related.matching(NSPredicate(format: "label CONTAINS %@", "UI Second Refund")).firstMatch
+        reveal(second, fullyVisible: true)
+        XCTAssertTrue(second.label.contains("−20 CNY"))
+        assertTouchTarget(second)
+        captureScreenshot("原消费关联退款")
+        tap(second)
+        XCTAssertTrue(app.staticTexts["UI Second Refund"].waitForExistence(timeout: 10))
+        let originalLink = related.matching(NSPredicate(format: "label CONTAINS %@", "UI Original Purchase")).firstMatch
+        tap(originalLink)
+        XCTAssertTrue(app.staticTexts["UI Original Purchase"].waitForExistence(timeout: 10))
+        // Each related detail belongs to the same native navigation stack.
+        tap(app.navigationBars["交易详情"].buttons.firstMatch)
+        XCTAssertTrue(app.staticTexts["UI Second Refund"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["交易详情"].buttons.firstMatch)
+        app.terminate()
+        app.launch()
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        XCTAssertTrue(app.staticTexts["100 CNY"].waitForExistence(timeout: 10))
+        for (merchant, amountText) in [("UI Earlier Refund", "−40 CNY"), ("UI Second Refund", "−20 CNY")] {
+            let row = related.matching(NSPredicate(format: "label CONTAINS %@", merchant)).firstMatch
+            reveal(row)
+            XCTAssertTrue(row.label.contains(amountText))
+        }
+    }
+
+    func testLinkedRefundExcessAmountsRequireConfirmationAndRetainOriginal() {
+        launch("linkedRefunds")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        enter("70", into: app.textFields["transactionAmount"])
+        enter("UI Excess Refund", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "60")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.alerts["退款超出可退范围"].waitForExistence(timeout: 10))
+        captureScreenshot("累计退款超额确认")
+        tap(app.alerts.buttons["取消"])
+        XCTAssertTrue(app.buttons["saveTransaction"].exists)
+        tap(app.buttons["saveTransaction"])
+        tap(app.alerts.buttons["仍然保存"])
+        app.terminate()
+        app.launch()
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        XCTAssertTrue(app.staticTexts["100 CNY"].waitForExistence(timeout: 10))
+        let excess = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "transaction.related.", "UI Excess Refund")).firstMatch
+        reveal(excess)
+        XCTAssertTrue(excess.label.contains("−70 CNY"))
+        tap(excess)
+        let savedAllocation = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Spend", "60 CNY")).firstMatch
+        reveal(savedAllocation)
+        XCTAssertTrue(savedAllocation.exists)
+    }
+
+    func testRefundEntryPreservesUnrelatedDraftAndStartsOnlyAfterDiscard() {
+        launch("linkedRefunds")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("17", into: app.textFields["transactionAmount"])
+        enter("UI Unrelated Draft", into: app.textFields["商户（可选）"])
+        tap(app.buttons["关闭"])
+        tap(app.buttons["保留草稿并关闭"])
+        tap(app.navigationBars["卡片详情"].buttons.firstMatch)
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        XCTAssertTrue(app.staticTexts["transactionDraftSummary"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["transactionDraftSummary"].label.contains("UI Unrelated Draft"))
+        tap(app.buttons["继续草稿"])
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "17")
+        XCTAssertTrue(app.segmentedControls.buttons["消费"].isSelected)
+        XCTAssertFalse(app.buttons["transaction.original"].exists)
+        tap(app.buttons["关闭"])
+        tap(app.buttons["保留草稿并关闭"])
+        tap(recordRefund)
+        tap(app.buttons["丢弃草稿并新建"])
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        selectTransactionCard("UI Primary")
+        selectTransactionCard("UI Foreign")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        tap(app.buttons["关闭"])
+        tap(app.buttons["丢弃草稿"])
+        tap(recordRefund)
+        XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["继续草稿"].exists)
+        tap(app.buttons["关闭"])
+        XCTAssertFalse(app.buttons["保留草稿并关闭"].exists)
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+    }
+
+    func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("linkedRefunds")
+        openCard("UI Shared")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Unlinked Refund"])
+        reveal(app.staticTexts["未关联原消费"])
+        XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
+        tap(app.navigationBars["交易详情"].buttons["完成"])
+        tap(app.buttons["transaction.UI Reversed Purchase"])
+        XCTAssertTrue(app.staticTexts["UI Reversed Purchase"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["已冲正"].exists)
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        assertTouchTarget(recordRefund)
+        captureScreenshot("最大字号原消费退款入口")
+        tap(recordRefund)
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        let original = app.buttons["transaction.original"]
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Reversed Purchase"))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
+        reveal(reversedMessage, fullyVisible: true)
+        captureScreenshot("最大字号已冲正原消费退款说明")
+        enter("10", into: app.textFields["transactionAmount"])
+        enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertTrue(feedback.label.contains("已记录退款 10 CNY"))
+        tap(feedback)
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 5))
+        let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related.")).firstMatch
+        reveal(related, fullyVisible: true)
+        assertTouchTarget(related)
+        XCTAssertTrue(related.label.contains("UI Reversed Original Refund"))
+        XCTAssertTrue(related.label.contains("状态：有效"))
+        captureScreenshot("最大字号关联退款")
+        try auditAccessibility(for: [.hitRegion])
+        let relatedIdentifier = related.identifier
+        let relatedFrame = related.frame
+        tap(related)
+        XCTAssertTrue(app.staticTexts["UI Reversed Original Refund"].waitForExistence(timeout: 10))
+        let detailNavigation = app.navigationBars["交易详情"]
+        tap(detailNavigation.buttons["交易详情"])
+        XCTAssertTrue(detailNavigation.buttons["完成"].waitForExistence(timeout: 10))
+        // Native back restores the purchase's scroll position at its refund row;
+        // its header and status are lazy rows above the viewport at this size.
+        XCTAssertTrue(recordRefund.exists)
+        let restoredRelated = app.buttons[relatedIdentifier]
+        reveal(restoredRelated, fullyVisible: true)
+        XCTAssertEqual(restoredRelated.frame.minY, relatedFrame.minY, accuracy: 1)
+        XCTAssertTrue(restoredRelated.label.contains("UI Reversed Original Refund"))
+    }
+
     func testDraftKeepsCommaDecimalMeaningAfterRegionChange() throws {
         let localeIndex = try XCTUnwrap(app.launchArguments.firstIndex(of: "-AppleLocale")) + 1
         app.launchArguments[localeIndex] = "de_DE"
@@ -967,12 +1153,21 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private var contentBottom: CGFloat {
-        var bottom = app.frame.maxY - 90
+        // A presented detail has no tab bar. Keep a conservative home-indicator
+        // margin there; use the actual visible tab bar on the main pages.
+        var bottom = app.frame.maxY - 40
+        let tabBar = app.tabBars.firstMatch
+        if tabBar.exists && tabBar.isHittable { bottom = min(bottom, tabBar.frame.minY) }
         let keyboard = app.keyboards.firstMatch
         if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
         for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"] {
             let footer = app.buttons[identifier]
-            if footer.exists { bottom = min(bottom, footer.frame.minY) }
+            if footer.exists {
+                // The save button's AX frame excludes its 10pt outer padding
+                // and the footer divider. The Form ends above that whole bar.
+                let topInset: CGFloat = identifier == "saveTransaction" ? 11 : 0
+                bottom = min(bottom, footer.frame.minY - topInset)
+            }
         }
         return bottom
     }
@@ -986,31 +1181,37 @@ final class CoreFlowsUITests: XCTestCase {
             // A known first-row control must be approached from the top.
             var targetIsAbove = scrollTowardTopWhenMissing
             var scrollDistance: CGFloat = 240
+            let frame = app.frame
+            var viewportBottom: CGFloat?
             if element.exists || element.waitForExistence(timeout: 2) {
-                if element.isHittable {
-                    if fullyVisible {
-                        if element.frame.minY >= app.navigationBars.firstMatch.frame.maxY,
-                           element.frame.maxY < contentBottom { return }
-                    } else if element.elementType != .textField || element.frame.maxY < contentBottom {
-                        return
-                    }
+                let targetFrame = element.frame
+                let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
+                let contentTop = needsUnobscuredFrame ? app.navigationBars.firstMatch.frame.maxY : frame.minY + 110
+                var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
+                if needsUnobscuredFrame {
+                    let bottom = contentBottom
+                    viewportBottom = bottom
+                    frameIsVisible = frameIsVisible && targetFrame.minY >= contentTop && targetFrame.maxY < bottom
                 }
+                // Querying hittability for a footer-clipped text field can throw
+                // an XCTest activation-point error before it can return false.
+                // Establish usable geometry first, then ask XCTest for hit points.
+                if frameIsVisible && element.isHittable { return }
                 // After dismissing an editor, a previously visible row can be above
                 // the viewport. Always swiping up would move it farther out of reach.
-                let targetFrame = element.frame
-                let contentTop = fullyVisible ? app.navigationBars.firstMatch.frame.maxY : app.frame.minY + 110
                 targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < contentTop
-                if !targetFrame.isEmpty && (fullyVisible || element.elementType == .textField) {
+                if !targetFrame.isEmpty && needsUnobscuredFrame {
+                    let bottom = viewportBottom ?? contentBottom
+                    viewportBottom = bottom
                     let obscuredDistance = targetIsAbove
                         ? contentTop - targetFrame.minY
-                        : targetFrame.maxY - contentBottom
+                        : targetFrame.maxY - bottom
                     // Large fields can straddle the footer. A fixed drag would
                     // overshoot them and alternate above and below the viewport.
                     scrollDistance = min(240, max(60, obscuredDistance + 24))
                 }
             }
-            let frame = app.frame
-            let startY = min(frame.maxY - 100, contentBottom - 25)
+            let startY = min(frame.maxY - 100, (viewportBottom ?? contentBottom) - 25)
             let endY = max(frame.minY + 160, startY - scrollDistance)
             // Use the list gutter so a drag never begins on a promotion switch.
             let origin = app.coordinate(withNormalizedOffset: .zero)
