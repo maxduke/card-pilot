@@ -229,7 +229,11 @@ final class CoreFlowsUITests: XCTestCase {
             // These assertions deliberately precede any scrolling: ordinary
             // detail pages must show the result and deadline on their first screen.
             XCTAssertTrue(remaining.isHittable)
-            XCTAssertTrue(app.staticTexts["结束日期"].isHittable)
+            let endDate = app.staticTexts["promotion.endDate"]
+            XCTAssertTrue(endDate.isHittable)
+            XCTAssertTrue(endDate.label.contains("结束日期"))
+            XCTAssertGreaterThanOrEqual(endDate.frame.minY, app.navigationBars[name].frame.maxY)
+            XCTAssertLessThan(endDate.frame.maxY, app.tabBars.firstMatch.frame.minY)
             let record = app.buttons["recordPromotionTransaction"]
             XCTAssertTrue(record.exists)
             XCTAssertLessThan(remaining.frame.maxY, record.frame.minY)
