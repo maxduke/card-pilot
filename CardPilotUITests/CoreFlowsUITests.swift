@@ -151,7 +151,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
-    func testPromotionOptionalRulesKeepValuesAndRevealInvalidFields() {
+    func testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed() {
         launch("core")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
@@ -170,15 +170,8 @@ final class CoreFlowsUITests: XCTestCase {
         replaceText("5000", in: cap)
         enter("100", into: perTransaction)
         tap(additionalAmounts, scrollTowardTopWhenMissing: true)
+        // Saving from another section must retain the collapsed amount bindings.
         selectPromotionEditorSection("报名与规则")
-        let ruleNotes = app.buttons["规则、排除项与备注（可选）"]
-        let rules = app.descendants(matching: .any)
-            .matching(identifier: "promotion.editor.rules").firstMatch
-        XCTAssertFalse(rules.exists)
-        tap(ruleNotes)
-        enter("UI Manual Rules", into: rules)
-        tap(ruleNotes, scrollTowardTopWhenMissing: true)
-        XCTAssertFalse(rules.exists)
         tap(app.buttons["promotion.editor.save"])
         XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
 
@@ -193,10 +186,6 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "100")
         captureScreenshot("促销金额规则说明")
-        selectPromotionEditorSection("报名与规则")
-        reveal(rules)
-        XCTAssertEqual(rules.value as? String, "UI Manual Rules")
-        captureScreenshot("促销奖励与可选规则")
         tap(app.navigationBars["编辑促销"].buttons["取消"])
         XCTAssertFalse(app.buttons["放弃修改"].exists)
 
@@ -209,6 +198,35 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(explanation.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
         XCTAssertLessThan(explanation.frame.maxY, app.frame.maxY - 40)
         captureScreenshot("最大字号促销金额规则说明")
+    }
+
+    func testPromotionOptionalRuleNotesPersistWhenCollapsed() {
+        launch("core")
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        let ruleNotes = app.buttons["规则、排除项与备注（可选）"]
+        let rules = app.descendants(matching: .any)
+            .matching(identifier: "promotion.editor.rules").firstMatch
+        XCTAssertFalse(rules.exists)
+        tap(ruleNotes)
+        enter("UI Manual Rules", into: rules)
+        tap(ruleNotes, scrollTowardTopWhenMissing: true)
+        XCTAssertFalse(rules.exists)
+        // Exercise the same hidden-value contract independently of amount validation.
+        selectPromotionEditorSection("基本信息")
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        // Saved notes reopen without expanding the disclosure again.
+        reveal(rules)
+        XCTAssertEqual(rules.value as? String, "UI Manual Rules")
+        captureScreenshot("促销奖励与可选规则")
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
@@ -890,7 +908,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
-    func testTransactionDateCurrencyAndStatusFiltersKeepCountsAndClear() {
+    func testTransactionDateAndCurrencyPresetsKeepCounts() {
         launch("transactionFilters")
         tap(app.tabBars.buttons["交易"])
         let count = app.staticTexts["transactions.results.count"]
@@ -912,6 +930,20 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.navigationBars["筛选交易"].buttons["完成"])
         XCTAssertEqual(count.label, "共 2 笔交易")
         XCTAssertTrue(app.buttons["transaction.UI Previous Reversed"].exists)
+    }
+
+    func testTransactionStatusKindAndCurrencyFiltersKeepCountsAndClear() {
+        launch("transactionFilters")
+        tap(app.tabBars.buttons["交易"])
+        let count = app.staticTexts["transactions.results.count"]
+        XCTAssertEqual(count.label, "共 8 笔交易")
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.date"])
+        tap(app.buttons["上月"])
+        tap(app.buttons["transactions.filter.currency"])
+        tap(app.buttons["CNY"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 2 笔交易")
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.status"])
         tap(app.buttons["有效"])
@@ -932,7 +964,13 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(count.label, "共 8 笔交易")
         XCTAssertFalse(app.buttons["transactions.filters.date.clear"].exists)
         XCTAssertFalse(app.buttons["transactions.filters.currency.clear"].exists)
+    }
 
+    func testCustomTransactionDateRangeShowsFieldsAndKeepsCounts() {
+        launch("transactionFilters")
+        tap(app.tabBars.buttons["交易"])
+        let count = app.staticTexts["transactions.results.count"]
+        XCTAssertEqual(count.label, "共 8 笔交易")
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.date"])
         tap(app.buttons["自定义范围"])
@@ -1022,7 +1060,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transaction.UI Accessibility Coffee"].exists)
     }
 
-    func testAccountCycleHistoryFindsOlderPaidAndUnpaidCyclesAndPersistsSharedRepayment() {
+    func testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters() {
         launch("accountHistory")
         openCard("UI Shared")
         tap(app.buttons["card.account"])
@@ -1046,9 +1084,22 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("第七个已处理账期查询")
         tap(paid)
         XCTAssertTrue(app.buttons["撤销已还款"].waitForExistence(timeout: 10))
-        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        tap(app.navigationBars["账期详情"].buttons["全部账期"])
         XCTAssertEqual(count.label, "共 1 个账期")
         tap(app.buttons["account.history.clear"], scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(count.label, "共 23 个账期")
+        XCTAssertFalse(app.buttons["account.history.clear"].exists)
+    }
+
+    func testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards() {
+        launch("accountHistory")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, fullyVisible: true)
+        tap(history)
+        let count = app.staticTexts["account.history.count"]
+        XCTAssertEqual(count.label, "共 23 个账期")
         let unpaid = accountHistoryMonth(offset: -7)
         tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[unpaid.year])
@@ -1062,7 +1113,7 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("第五个未还账期查询")
         tap(row)
         tap(app.buttons["标记已还"])
-        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        tap(app.navigationBars["账期详情"].buttons["全部账期"])
         XCTAssertEqual(count.label, "共 0 个账期")
         XCTAssertTrue(app.staticTexts["没有匹配账期"].exists)
         app.terminate()
@@ -1138,6 +1189,91 @@ final class CoreFlowsUITests: XCTestCase {
         let year = calendar.component(.year, from: date)
         let month = calendar.component(.month, from: date)
         return (year * 100 + month, String(year), "\(month) 月")
+    }
+
+    func testFutureRuleEditingSelectsRequestedVersionAndCancellationPersists() {
+        launch("futureRules")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let firstMonth = futureRuleMonth(offset: 1)
+        let laterMonth = futureRuleMonth(offset: 3)
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", firstMonth)).firstMatch
+        reveal(first, fullyVisible: true)
+        assertTouchTarget(first)
+        tap(first)
+        captureScreenshot("未来规则取消影响预览")
+        tap(app.buttons["account.rule.edit"])
+        let statement = app.buttons["account.editor.rule.statementDay"]
+        reveal(statement, fullyVisible: true)
+        XCTAssertTrue((statement.label + (statement.value as? String ?? "")).contains("每月 5 日"))
+        let effective = app.buttons["account.editor.rule.effectiveCycle"]
+        reveal(effective)
+        XCTAssertEqual(effective.value as? String, firstMonth)
+        tap(statement, scrollTowardTopWhenMissing: true)
+        tap(app.buttons["每月 6 日"])
+        tap(app.navigationBars["编辑信用卡账户"].buttons["保存"])
+        let corrected = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "每月 6 日出账")).firstMatch
+        reveal(corrected, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        XCTAssertTrue(corrected.exists)
+        let cancel = app.buttons["account.rule.cancel"]
+        reveal(cancel, fullyVisible: true)
+        tap(cancel)
+        tap(app.buttons["保留计划"])
+        XCTAssertTrue(app.navigationBars["规则计划"].exists)
+        tap(cancel)
+        captureScreenshot("取消未来规则确认")
+        tap(app.sheets.buttons["取消规则计划"])
+        XCTAssertTrue(app.navigationBars["账户详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let later = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", laterMonth)).firstMatch
+        reveal(later, fullyVisible: true)
+        XCTAssertFalse(first.exists)
+        XCTAssertTrue(later.label.contains("每月 10 日出账"))
+    }
+
+    func testInvalidFutureRuleCancellationExplainsAffectedCycleAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("futureRules")
+        openCard("UI Foreign")
+        tap(app.buttons["card.account"])
+        let firstMonth = futureRuleMonth(offset: 1)
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", firstMonth)).firstMatch
+        reveal(first, fullyVisible: true)
+        assertTouchTarget(first)
+        tap(first)
+        let explanation = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "请先调整该账期的日期")).firstMatch
+        reveal(explanation, fullyVisible: true)
+        XCTAssertTrue(explanation.label.contains(futureRuleMonth(offset: 2)))
+        captureScreenshot("最大字号未来规则取消日期冲突")
+        let cancel = app.buttons["account.rule.cancel"]
+        reveal(cancel, fullyVisible: true)
+        XCTAssertFalse(cancel.isEnabled)
+        let adjust = app.buttons["调整相关账期"]
+        reveal(adjust, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(adjust)
+        try auditAccessibility(for: [.hitRegion])
+        tap(adjust)
+        XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        tap(app.navigationBars["规则计划"].buttons.firstMatch)
+        reveal(first, fullyVisible: true)
+        XCTAssertTrue(first.exists)
+        tap(first)
+        XCTAssertTrue(app.navigationBars["规则计划"].waitForExistence(timeout: 10))
+        // Returning to the plan resets its List position. At the largest size,
+        // the cancel action is below the rule and date-conflict explanation.
+        reveal(cancel, fullyVisible: true)
+        XCTAssertFalse(cancel.isEnabled)
+    }
+
+    private func futureRuleMonth(offset: Int) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let date = calendar.date(byAdding: .month, value: offset, to: Date())!
+        return "\(calendar.component(.year, from: date))年\(calendar.component(.month, from: date))月"
     }
 
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {

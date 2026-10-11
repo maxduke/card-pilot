@@ -1250,10 +1250,17 @@ struct AccountEditorView: View {
     @State private var notes: String
     @State private var errorMessage: String?
 
-    init(account: CreditCardAccount?, banks: [Bank]) {
+    init(account: CreditCardAccount?, banks: [Bank], initialScheduledRule: BillingRuleVersion? = nil) {
         self.account = account
         self.banks = banks
-        let rule = account?.billingRuleVersions.max {
+        let currentDate = CardPilotUI.localDate(from: Date())
+        let selectedRule = initialScheduledRule.flatMap { rule -> BillingRuleVersion? in
+            guard let account, rule.account?.id == account.id,
+                  account.billingRuleVersions.contains(where: { $0.id == rule.id }),
+                  (rule.effectiveCycleKey ?? Int.min) > currentDate.monthKey else { return nil }
+            return rule
+        }
+        let rule = selectedRule ?? account?.billingRuleVersions.max {
             ($0.effectiveCycleKey ?? Int.min) < ($1.effectiveCycleKey ?? Int.min)
         }
         let availableBanks = selectableAccountBanks(banks, currentBankID: account?.bank.id)
@@ -1268,9 +1275,8 @@ struct AccountEditorView: View {
         _statementDay = State(initialValue: rule?.statementDay ?? 1)
         _repaymentKind = State(initialValue: rule?.repaymentKind ?? .fixedDay)
         _repaymentValue = State(initialValue: rule?.repaymentValue ?? 1)
-        let currentDate = CardPilotUI.localDate(from: Date())
         let currentRecord = account?.billingCycles.first { $0.cycleKey == currentDate.monthKey }
-        let effectiveCycleKey = nextBillingRuleCycleKey(
+        let effectiveCycleKey = selectedRule?.effectiveCycleKey ?? nextBillingRuleCycleKey(
             currentMonthKey: currentDate.monthKey,
             existingEffectiveCycleKeys: account?.billingRuleVersions.compactMap(\.effectiveCycleKey) ?? [],
             timeZone: CardPilotUI.homeTimeZone
@@ -1328,6 +1334,7 @@ struct AccountEditorView: View {
                             .foregroundStyle(.secondary)
                     }
                     BillingDayPicker(title: "账单日", value: $statementDay)
+                        .accessibilityIdentifier("account.editor.rule.statementDay")
                     Picker("还款规则", selection: $repaymentKind) {
                         Text("固定日").tag(RepaymentRuleKind.fixedDay)
                         Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
@@ -1345,6 +1352,7 @@ struct AccountEditorView: View {
                             selection: $effectiveCycleKeyText,
                             offsets: 1...60
                         )
+                        .accessibilityIdentifier("account.editor.rule.effectiveCycle")
                         Text("修改规则或生效账期后保存：所选未来账期已有版本时修正该版本，否则新增版本。不会改写当前与历史账期，后续已排定版本仍然保留。")
                             .font(.caption)
                             .foregroundStyle(.secondary)

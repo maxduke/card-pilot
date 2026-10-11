@@ -14,6 +14,7 @@ enum UITestBootstrap {
         case linkedRefunds
         case transactionFilters
         case accountHistory
+        case futureRules
     }
 
     static func makeStore() -> BackupStore? {
@@ -191,6 +192,26 @@ enum UITestBootstrap {
                 statementDateOverride: try LocalDate(year: future.year, month: future.month, day: 3).rawValue,
                 repaymentDateOverride: try LocalDate(year: future.year, month: future.month, day: 6).rawValue
             ))
+        }
+        if scenario == .futureRules {
+            for target in [account, foreignAccount] {
+                target.trackingStartCycleKey = today.addingMonths(-1).monthKey
+                let baseline = target === account ? rule : foreignRule
+                baseline.statementDay = 20
+                baseline.repaymentKind = .fixedDay
+                baseline.repaymentValue = 25
+                context.insert(BillingRuleVersion(account: target, effectiveCycleKey: today.addingMonths(1).monthKey,
+                                                  statementDay: 5, repaymentKind: .fixedDay, repaymentValue: 25))
+                context.insert(BillingRuleVersion(account: target, effectiveCycleKey: today.addingMonths(3).monthKey,
+                                                  statementDay: 10, repaymentKind: .fixedDay, repaymentValue: 26))
+                let overridden = today.addingMonths(2)
+                context.insert(BillingCycleRecord(
+                    account: target, cycleKey: overridden.monthKey,
+                    statementDateOverride: target === account
+                        ? try LocalDate(year: overridden.year, month: overridden.month, day: 3).rawValue : nil,
+                    repaymentDateOverride: try LocalDate(year: overridden.year, month: overridden.month, day: 10).rawValue
+                ))
+            }
         }
         try context.save()
     }
