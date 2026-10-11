@@ -800,6 +800,79 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
 
+    func testDashboardMetricsOpenMatchingActionsAndPreserveRepaymentUndo() throws {
+        launch("dashboardActions")
+        tap(app.tabBars.buttons["首页"])
+        let overdue = app.buttons["dashboard.actions.overdue"]
+        let today = app.buttons["dashboard.actions.today"]
+        let upcoming = app.buttons["dashboard.actions.nextSevenDays"]
+        let billing = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.action.billingCycle."))
+        let enrollment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.enrollment."))
+        XCTAssertTrue(today.waitForExistence(timeout: 10))
+        XCTAssertEqual(overdue.label, "逾期，1 项待办")
+        XCTAssertEqual(today.label, "今天，2 项待办")
+        XCTAssertEqual(upcoming.label, "未来 7 天，2 项待办")
+        assertTouchTarget(today)
+        captureScreenshot("二十张卡首页待办概览")
+
+        reveal(today, fullyVisible: true)
+        today.tap()
+        XCTAssertTrue(app.staticTexts["今天待办"].waitForExistence(timeout: 10))
+        XCTAssertEqual(billing.count, 1)
+        XCTAssertTrue(billing.firstMatch.label.contains("UI Today"))
+        XCTAssertEqual(enrollment.count, 1)
+        XCTAssertTrue(enrollment.firstMatch.label.contains("UI Spend"))
+        captureScreenshot("首页今日待办")
+        tap(billing.firstMatch)
+        XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        XCTAssertTrue(app.staticTexts["今天待办"].waitForExistence(timeout: 10))
+
+        reveal(upcoming, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        upcoming.tap()
+        XCTAssertTrue(app.staticTexts["未来 7 天待办"].waitForExistence(timeout: 10))
+        XCTAssertEqual(billing.count, 1)
+        XCTAssertTrue(billing.firstMatch.label.contains("UI Next Week"))
+        XCTAssertEqual(enrollment.count, 1)
+        XCTAssertTrue(enrollment.firstMatch.label.contains("UI Upcoming Enrollment"))
+        tap(enrollment.firstMatch)
+        XCTAssertTrue(app.navigationBars["UI Upcoming Enrollment"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["UI Upcoming Enrollment"].buttons.firstMatch)
+
+        reveal(overdue, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        overdue.tap()
+        XCTAssertTrue(app.staticTexts["逾期待办"].waitForExistence(timeout: 10))
+        XCTAssertEqual(billing.count, 1)
+        XCTAssertTrue(billing.firstMatch.label.contains("UI Primary"))
+        XCTAssertEqual(enrollment.count, 0)
+        let repay = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.action.repay.")).firstMatch
+        tap(repay)
+        XCTAssertTrue(app.buttons["撤销"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["没有逾期待办"].exists)
+        tap(app.buttons["撤销"])
+        XCTAssertEqual(billing.count, 1)
+        let clear = app.buttons["dashboard.actions.clear"]
+        assertTouchTarget(clear)
+        tap(clear)
+        XCTAssertTrue(app.staticTexts["待处理"].waitForExistence(timeout: 10))
+        XCTAssertEqual(billing.count, 3)
+        XCTAssertEqual(enrollment.count, 2)
+
+        relaunchAtLargestTextSize()
+        tap(app.tabBars.buttons["首页"])
+        reveal(today, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(today)
+        assertTouchTarget(upcoming)
+        captureScreenshot("最大字号首页待办入口")
+        tap(today)
+        reveal(clear, fullyVisible: true)
+        assertTouchTarget(clear)
+        XCTAssertEqual(billing.count, 1)
+        XCTAssertEqual(enrollment.count, 1)
+        captureScreenshot("最大字号首页今日待办")
+        try auditAccessibility(for: [.hitRegion])
+    }
+
     private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         // Accessibility bounds can contain subpixel floating-point rounding.
         XCTAssertGreaterThanOrEqual(element.frame.width + 0.001, 44, file: file, line: line)

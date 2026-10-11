@@ -6,12 +6,14 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query private var accounts: [CreditCardAccount]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @Binding var showingSettings: Bool
     var onAddCard: () -> Void = {}
     @State private var errorMessage: String?
     @State private var recentlyRepaid: DashboardBillingItem?
+    @State private var selectedActionPeriod: DashboardActionPeriod?
     @AppStorage("cardPilot.notificationWarning") private var notificationWarning = ""
 
     @Environment(\.currentDay) private var currentDay
@@ -19,111 +21,142 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if !accounts.isEmpty && !notificationWarning.isEmpty {
-                        Button { showingSettings = true } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "bell.badge")
-                                Text(notificationWarning)
-                                    .multilineTextAlignment(.leading)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("通知提示：\(notificationWarning)，打开设置")
-                    }
-                    if actionCounts.total > 0 {
-                        DashboardActionOverview(counts: actionCounts)
-                    }
-                    if billingItems.isEmpty && unfinishedPromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
-                        if accounts.isEmpty {
-                            ContentUnavailableView {
-                                Label("开始使用 CardPilot", systemImage: "creditcard")
-                            } description: {
-                                Text("先添加一张信用卡，首页会自动整理账单、还款和促销提醒。")
-                            } actions: {
-                                Button("添加信用卡", systemImage: "plus", action: onAddCard)
-                                    .buttonStyle(.borderedProminent)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 300)
-                        } else {
-                            ContentUnavailableView(
-                                "目前无需处理",
-                                systemImage: "checkmark.circle",
-                                description: Text("新的账单、还款或促销节点出现后，会显示在这里。")
-                            )
-                            .frame(maxWidth: .infinity, minHeight: 260)
-                        }
-                    }
-
-                    if !actionBillingItems.isEmpty || !enrollmentClosingSoonPromotions.isEmpty {
-                        DashboardSection(title: "待处理") {
-                            ForEach(actionBillingItems) { item in
-                                BillingItemRow(item: item, showsBank: true) {
-                                    markRepaid(item)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 20) {
+                        if !accounts.isEmpty && !notificationWarning.isEmpty {
+                            Button { showingSettings = true } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "bell.badge")
+                                    Text(notificationWarning)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
                                 }
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                             }
-                            ForEach(enrollmentClosingSoonPromotions) { promotion in
-                                NavigationLink {
-                                    PromotionDetailView(promotion: promotion)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "person.badge.clock")
-                                            .foregroundStyle(.orange)
-                                        Text(promotion.title)
-                                        Spacer()
-                                        if let deadlineValue = promotion.enrollmentDeadline,
-                                           let deadline = try? LocalDate(rawValue: deadlineValue) {
-                                            VStack(alignment: .trailing, spacing: 2) {
-                                                Text("\(CardPilotUI.relativeDateText(deadline, today: today))截止")
-                                                    .font(.subheadline.weight(.semibold))
-                                                Text(CardPilotUI.shortDateText(deadline, relativeTo: today))
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            .monospacedDigit()
-                                        }
-                                    }
-                                    .padding(.vertical, 10)
-                                    .accessibilityElement(children: .combine)
-                                }
-                                .buttonStyle(.plain)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("通知提示：\(notificationWarning)，打开设置")
+                        }
+                        if actionCounts.total > 0 || selectedActionPeriod != nil {
+                            DashboardActionOverview(counts: actionCounts, selectedPeriod: selectedActionPeriod) { period in
+                                selectedActionPeriod = selectedActionPeriod == period ? nil : period
                             }
                         }
-                    }
-
-                    if !unfinishedPromotions.isEmpty {
-                        DashboardSection(title: "继续完成") {
-                            ForEach(unfinishedPromotions) { promotion in
-                                DashboardPromotionRow(
-                                    promotion: promotion,
-                                    isEndingSoon: isEndingSoon(promotion)
+                        if selectedActionPeriod == nil && billingItems.isEmpty && unfinishedPromotions.isEmpty && enrollmentClosingSoonPromotions.isEmpty {
+                            if accounts.isEmpty {
+                                ContentUnavailableView {
+                                    Label("开始使用 CardPilot", systemImage: "creditcard")
+                                } description: {
+                                    Text("先添加一张信用卡，首页会自动整理账单、还款和促销提醒。")
+                                } actions: {
+                                    Button("添加信用卡", systemImage: "plus", action: onAddCard)
+                                        .buttonStyle(.borderedProminent)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 300)
+                            } else {
+                                ContentUnavailableView(
+                                    "目前无需处理",
+                                    systemImage: "checkmark.circle",
+                                    description: Text("新的账单、还款或促销节点出现后，会显示在这里。")
                                 )
+                                .frame(maxWidth: .infinity, minHeight: 260)
                             }
                         }
-                    }
 
-                    if !accountsWithBillingItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("账户日程")
-                                .font(.headline)
-                            ForEach(accountsWithBillingItems, id: \.id) { account in
-                                AccountScheduleCard(account: account, items: billingItems(for: account)) { item in
-                                    markRepaid(item)
+                        if actionCounts.total > 0 || selectedActionPeriod != nil {
+                            DashboardSection(title: selectedActionPeriod.map { "\($0.title)待办" } ?? "待处理") {
+                                if let selectedActionPeriod {
+                                    Button { self.selectedActionPeriod = nil } label: {
+                                        Text("显示全部待办")
+                                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.tint)
+                                    .accessibilityIdentifier("dashboard.actions.clear")
+                                    if filteredActionBillingItems.isEmpty && filteredEnrollmentPromotions.isEmpty {
+                                        Text(selectedActionPeriod.emptyMessage)
+                                            .foregroundStyle(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.vertical, 12)
+                                    }
+                                }
+                                ForEach(filteredActionBillingItems) { item in
+                                    BillingItemRow(item: item, showsBank: true) {
+                                        markRepaid(item)
+                                    }
+                                }
+                                ForEach(filteredEnrollmentPromotions) { promotion in
+                                    NavigationLink {
+                                        PromotionDetailView(promotion: promotion)
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "person.badge.clock")
+                                                .foregroundStyle(.orange)
+                                            Text(promotion.title)
+                                            Spacer()
+                                            if let deadlineValue = promotion.enrollmentDeadline,
+                                               let deadline = try? LocalDate(rawValue: deadlineValue) {
+                                                VStack(alignment: .trailing, spacing: 2) {
+                                                    Text("\(CardPilotUI.relativeDateText(deadline, today: today))截止")
+                                                        .font(.subheadline.weight(.semibold))
+                                                    Text(CardPilotUI.shortDateText(deadline, relativeTo: today))
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .monospacedDigit()
+                                            }
+                                        }
+                                        .padding(.vertical, 10)
+                                        .accessibilityElement(children: .combine)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("dashboard.enrollment.\(promotion.id)")
+                                }
+                            }
+                            .id("dashboard.pending")
+                        }
+
+                        if !unfinishedPromotions.isEmpty {
+                            DashboardSection(title: "继续完成") {
+                                ForEach(unfinishedPromotions) { promotion in
+                                    DashboardPromotionRow(
+                                        promotion: promotion,
+                                        isEndingSoon: isEndingSoon(promotion)
+                                    )
                                 }
                             }
                         }
-                    }
 
+                        if !accountsWithBillingItems.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("账户日程")
+                                    .font(.headline)
+                                ForEach(accountsWithBillingItems, id: \.id) { account in
+                                    AccountScheduleCard(account: account, items: billingItems(for: account)) { item in
+                                        markRepaid(item)
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                    .padding()
                 }
-                .padding()
+                .onChange(of: selectedActionPeriod) { _, _ in
+                    if reduceMotion {
+                        proxy.scrollTo("dashboard.pending", anchor: .top)
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo("dashboard.pending", anchor: .top)
+                        }
+                    }
+                }
             }
             .navigationTitle("CardPilot")
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -217,6 +250,22 @@ struct DashboardView: View {
         )
     }
 
+    private var filteredActionBillingItems: [DashboardBillingItem] {
+        guard let selectedActionPeriod else { return actionBillingItems }
+        return actionBillingItems.filter {
+            dashboardActionPeriod(for: $0.date, isOverdue: $0.status == .overdue, today: today) == selectedActionPeriod
+        }
+    }
+
+    private var filteredEnrollmentPromotions: [Promotion] {
+        guard let selectedActionPeriod else { return enrollmentClosingSoonPromotions }
+        return enrollmentClosingSoonPromotions.filter {
+            guard let rawDate = $0.enrollmentDeadline,
+                  let deadline = try? LocalDate(rawValue: rawDate) else { return false }
+            return dashboardActionPeriod(for: deadline, today: today) == selectedActionPeriod
+        }
+    }
+
     private var accountsWithBillingItems: [CreditCardAccount] {
         var seen = Set<UUID>()
         return scheduleBillingItems.compactMap { item in
@@ -234,49 +283,7 @@ struct DashboardView: View {
     }
 
     private var billingItems: [DashboardBillingItem] {
-        var result: [DashboardBillingItem] = []
-        for account in accounts {
-            let nearbyCycleKeys = LocalDate.monthKeys(
-                from: account.trackingStartCycleKey,
-                through: today.addingMonths(2).monthKey
-            )
-            let recordsByCycle = Dictionary(account.billingCycles.map { ($0.cycleKey, $0) }, uniquingKeysWith: { first, _ in first })
-            let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
-            for cycleKey in Set(nearbyCycleKeys + savedUnpaidCycleKeys) {
-                let record = recordsByCycle[cycleKey]
-                guard let cycle = try? BillingCalculator.calculate(
-                    account: account,
-                    cycleKey: cycleKey,
-                    record: record,
-                    today: today,
-                    timeZone: CardPilotUI.homeTimeZone
-                ) else { continue }
-
-                if account.status == .active && cycle.statementDate >= today {
-                    result.append(.init(
-                        account: account,
-                        cycleKey: cycleKey,
-                        kind: .statement,
-                        date: cycle.statementDate,
-                        status: cycle.status
-                    ))
-                }
-                if cycle.status != .paid && (cycle.repaymentDate >= today || cycle.status == .overdue) {
-                    result.append(.init(
-                        account: account,
-                        cycleKey: cycleKey,
-                        kind: .repayment,
-                        date: cycle.repaymentDate,
-                        status: cycle.status
-                    ))
-                }
-            }
-        }
-        return selectDashboardBillingItems(result).sorted {
-            $0.priority == $1.priority
-                ? ($0.date == $1.date ? $0.kind.sortOrder < $1.kind.sortOrder : $0.date < $1.date)
-                : $0.priority < $1.priority
-        }
+        dashboardBillingItems(for: accounts, today: today, timeZone: CardPilotUI.homeTimeZone)
     }
 
     private func isEndingSoon(_ promotion: Promotion) -> Bool {
@@ -304,6 +311,52 @@ struct DashboardView: View {
         } catch { errorMessage = error.localizedDescription }
     }
 
+}
+
+func dashboardBillingItems(for accounts: [CreditCardAccount], today: LocalDate, timeZone: TimeZone) -> [DashboardBillingItem] {
+    var result: [DashboardBillingItem] = []
+    for account in accounts {
+        let nearbyCycleKeys = LocalDate.monthKeys(
+            from: account.trackingStartCycleKey,
+            through: today.addingMonths(2).monthKey
+        )
+        let recordsByCycle = Dictionary(account.billingCycles.map { ($0.cycleKey, $0) }, uniquingKeysWith: { first, _ in first })
+        let savedUnpaidCycleKeys = account.billingCycles.filter { $0.repaidAt == nil }.map(\.cycleKey)
+        for cycleKey in Set(nearbyCycleKeys + savedUnpaidCycleKeys) {
+            let record = recordsByCycle[cycleKey]
+            guard let cycle = try? BillingCalculator.calculate(
+                account: account,
+                cycleKey: cycleKey,
+                record: record,
+                today: today,
+                timeZone: timeZone
+            ) else { continue }
+
+            if account.status == .active && cycle.statementDate >= today {
+                result.append(.init(
+                    account: account,
+                    cycleKey: cycleKey,
+                    kind: .statement,
+                    date: cycle.statementDate,
+                    status: cycle.status
+                ))
+            }
+            if cycle.status != .paid && (cycle.repaymentDate >= today || cycle.status == .overdue) {
+                result.append(.init(
+                    account: account,
+                    cycleKey: cycleKey,
+                    kind: .repayment,
+                    date: cycle.repaymentDate,
+                    status: cycle.status
+                ))
+            }
+        }
+    }
+    return selectDashboardBillingItems(result).sorted {
+        $0.priority == $1.priority
+            ? ($0.date == $1.date ? $0.kind.sortOrder < $1.kind.sortOrder : $0.date < $1.date)
+            : $0.priority < $1.priority
+    }
 }
 
 func dashboardPromotionsToContinue(
@@ -470,6 +523,43 @@ struct DashboardActionCounts: Equatable {
     let nextSevenDays: Int
 
     var total: Int { overdue + today + nextSevenDays }
+
+    func count(for period: DashboardActionPeriod) -> Int {
+        switch period {
+        case .overdue: overdue
+        case .today: today
+        case .nextSevenDays: nextSevenDays
+        }
+    }
+}
+
+enum DashboardActionPeriod: String {
+    case overdue
+    case today
+    case nextSevenDays
+
+    var title: String {
+        switch self {
+        case .overdue: "逾期"
+        case .today: "今天"
+        case .nextSevenDays: "未来 7 天"
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .overdue: "没有逾期待办"
+        case .today: "今天暂无待办"
+        case .nextSevenDays: "未来 7 天暂无待办"
+        }
+    }
+}
+
+func dashboardActionPeriod(for date: LocalDate, isOverdue: Bool = false, today: LocalDate) -> DashboardActionPeriod? {
+    if isOverdue { return date < today ? .overdue : nil }
+    if date == today { return .today }
+    if today < date && date <= today.addingDays(7) { return .nextSevenDays }
+    return nil
 }
 
 func dashboardActionCounts(
@@ -477,65 +567,75 @@ func dashboardActionCounts(
     enrollmentPromotions: [Promotion],
     today: LocalDate
 ) -> DashboardActionCounts {
-    let limit = today.addingDays(7)
-    let overdue = billingItems.filter { $0.status == .overdue && $0.date < today }.count
-    let dueToday = billingItems.filter { $0.status != .overdue && $0.date == today }.count
-    let upcomingBilling = billingItems.filter {
-        $0.status != .overdue && today < $0.date && $0.date <= limit
-    }.count
-    let enrollmentDates = enrollmentPromotions.compactMap {
-        $0.enrollmentDeadline.flatMap { try? LocalDate(rawValue: $0) }
+    var counts: [DashboardActionPeriod: Int] = [:]
+    for item in billingItems {
+        if let period = dashboardActionPeriod(for: item.date, isOverdue: item.status == .overdue, today: today) {
+            counts[period, default: 0] += 1
+        }
     }
-    let enrollmentToday = enrollmentDates.filter { $0 == today }.count
-    let enrollmentUpcoming = enrollmentDates.filter { today < $0 && $0 <= limit }.count
+    for promotion in enrollmentPromotions {
+        if let rawDate = promotion.enrollmentDeadline,
+           let deadline = try? LocalDate(rawValue: rawDate),
+           let period = dashboardActionPeriod(for: deadline, today: today) {
+            counts[period, default: 0] += 1
+        }
+    }
     return DashboardActionCounts(
-        overdue: overdue,
-        today: dueToday + enrollmentToday,
-        nextSevenDays: upcomingBilling + enrollmentUpcoming
+        overdue: counts[.overdue, default: 0],
+        today: counts[.today, default: 0],
+        nextSevenDays: counts[.nextSevenDays, default: 0]
     )
 }
 
 private struct DashboardActionOverview: View {
     let counts: DashboardActionCounts
+    let selectedPeriod: DashboardActionPeriod?
+    let onSelect: (DashboardActionPeriod) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("近期事项")
                 .font(.headline)
             HStack(spacing: 0) {
-                if counts.overdue > 0 {
-                    metric(count: counts.overdue, title: "逾期", color: .red)
+                if counts.overdue > 0 || selectedPeriod == .overdue {
+                    metric(.overdue, color: counts.overdue > 0 ? .red : .secondary)
                     Divider().frame(height: 34)
                 }
-                metric(count: counts.today, title: "今天", color: counts.today > 0 ? .orange : .secondary)
+                metric(.today, color: counts.today > 0 ? .orange : .secondary)
                 Divider().frame(height: 34)
-                metric(count: counts.nextSevenDays, title: "未来 7 天", color: .secondary)
+                metric(.nextSevenDays, color: .secondary)
             }
             .padding(.vertical, 12)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
-    }
-
-    private func metric(count: Int, title: String, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text("\(count)")
-                .font(.title3.bold().monospacedDigit())
-                .foregroundStyle(color)
-            Text(title)
+            Text("数量包含还款和报名事项；点击可查看对应待办。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
     }
 
-    private var accessibilityText: String {
-        var parts: [String] = []
-        if counts.overdue > 0 { parts.append("逾期 \(counts.overdue) 项") }
-        parts.append("今天 \(counts.today) 项")
-        parts.append("未来 7 天 \(counts.nextSevenDays) 项")
-        return parts.joined(separator: "，")
+    private func metric(_ period: DashboardActionPeriod, color: Color) -> some View {
+        let isSelected = selectedPeriod == period
+        return Button { onSelect(period) } label: {
+            VStack(spacing: 2) {
+                Text("\(counts.count(for: period))")
+                    .font(.title3.bold().monospacedDigit())
+                    .foregroundStyle(color)
+                Text(period.title)
+                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, 4)
+            .background(isSelected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(period.title)，\(counts.count(for: period)) 项待办")
+        .accessibilityHint(isSelected ? "显示全部待办" : "显示对应的还款和报名事项")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("dashboard.actions.\(period.rawValue)")
     }
 }
 
@@ -614,6 +714,7 @@ private struct BillingItemRow: View {
                         .controlSize(.regular)
                         .frame(minHeight: 44)
                         .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
+                        .accessibilityIdentifier("\(showsBank ? "dashboard.action.repay" : "dashboard.repay").\(item.id)")
                 }
             }
             NavigationLink {
@@ -632,7 +733,7 @@ private struct BillingItemRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
             .accessibilityLabel("查看 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
-            .accessibilityIdentifier("dashboard.billingCycle.\(item.id)")
+            .accessibilityIdentifier("\(showsBank ? "dashboard.action.billingCycle" : "dashboard.billingCycle").\(item.id)")
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
