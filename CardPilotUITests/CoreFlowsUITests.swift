@@ -392,6 +392,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["card.transactions"])
         tap(app.buttons["transaction.UI Original Purchase"])
         let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
         tap(recordRefund)
         let amount = app.textFields["transactionAmount"]
         XCTAssertTrue(amount.waitForExistence(timeout: 10))
@@ -443,7 +444,9 @@ final class CoreFlowsUITests: XCTestCase {
         openCard("UI Foreign")
         tap(app.buttons["card.transactions"])
         tap(app.buttons["transaction.UI Original Purchase"])
-        tap(app.buttons["transaction.recordRefund"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
         enter("70", into: app.textFields["transactionAmount"])
         enter("UI Excess Refund", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
@@ -485,6 +488,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["card.transactions"])
         tap(app.buttons["transaction.UI Original Purchase"])
         let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
         tap(recordRefund)
         XCTAssertTrue(app.staticTexts["transactionDraftSummary"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["transactionDraftSummary"].label.contains("UI Unrelated Draft"))
@@ -527,6 +531,10 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(recordRefund)
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        let original = app.buttons["transaction.original"]
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Reversed Purchase"))
         let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
         reveal(reversedMessage, fullyVisible: true)
         captureScreenshot("最大字号已冲正原消费退款说明")

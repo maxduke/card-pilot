@@ -518,8 +518,12 @@ private struct TransactionDetailContent: View {
     let transactions: [Transaction]
     var onDone: (() -> Void)? = nil
 
-    @State private var showingEditor = false
-    @State private var recordingRefund = false
+    private enum EditorDestination: String, Identifiable {
+        case edit, refund
+        var id: String { rawValue }
+    }
+
+    @State private var editorDestination: EditorDestination?
 
     var body: some View {
         List {
@@ -584,8 +588,7 @@ private struct TransactionDetailContent: View {
             } else {
                 Section("关联退款") {
                     Button {
-                        recordingRefund = true
-                        showingEditor = true
+                        editorDestination = .refund
                     } label: {
                         Label("记录退款", systemImage: "arrow.uturn.backward")
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -616,18 +619,17 @@ private struct TransactionDetailContent: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button("编辑") {
-                    recordingRefund = false
-                    showingEditor = true
+                    editorDestination = .edit
                 }
             }
         }
-        .trackedSheet(isPresented: $showingEditor, onDismiss: { recordingRefund = false }) {
+        .trackedSheet(item: $editorDestination) { destination in
             TransactionEditorView(
-                transaction: recordingRefund ? nil : transaction,
+                transaction: destination == .edit ? transaction : nil,
                 cards: cards,
                 promotions: promotions,
                 transactions: transactions,
-                initialRefundOriginal: recordingRefund ? transaction : nil
+                initialRefundOriginal: destination == .refund ? transaction : nil
             )
         }
     }
