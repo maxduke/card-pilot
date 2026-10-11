@@ -722,6 +722,8 @@ private struct PromotionEditorView: View {
     @State private var notes: String
     @State private var archived: Bool
     @State private var seriesEditScope: PromotionSeriesEditScope
+    @State private var showingAdditionalAmountRules: Bool
+    @State private var showingRuleNotes: Bool
     @State private var step: PromotionEditorStep
     @State private var showingOrganizerPicker = false
     @State private var showingCardPicker = false
@@ -760,6 +762,9 @@ private struct PromotionEditorView: View {
         _notes = State(initialValue: promotion?.notes ?? "")
         _archived = State(initialValue: promotion?.archivedAt != nil)
         _seriesEditScope = State(initialValue: .thisOnly)
+        _showingAdditionalAmountRules = State(initialValue: promotion?.qualifyingCap != nil || promotion?.perTransactionThreshold != nil)
+        _showingRuleNotes = State(initialValue: !(promotion?.rules.isEmpty ?? true)
+            || !(promotion?.exclusions.isEmpty ?? true) || !(promotion?.notes.isEmpty ?? true))
         _step = State(initialValue: promotion == nil ? .basics : initialStep)
     }
 
@@ -809,6 +814,12 @@ private struct PromotionEditorView: View {
             // Fields live in editor state; changing sections starts at the top
             // without carrying the previous section's scroll position or focus.
             .id(step)
+            .onChange(of: progressMode) { _, mode in
+                if mode == .cumulative,
+                   !qualifyingCapText.isEmpty || !perTransactionThresholdText.isEmpty {
+                    showingAdditionalAmountRules = true
+                }
+            }
             .navigationTitle(promotion == nil ? "添加促销" : "编辑促销")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -906,20 +917,31 @@ private struct PromotionEditorView: View {
                     }
                 }
                 if progressMode == .perTransaction {
-                    TextField("优惠笔数上限", text: $benefitTransactionCapText)
-                        .keyboardType(.numberPad)
-                    TextField("单笔满足金额（可选）", text: $perTransactionThresholdText)
-                        .keyboardType(.decimalPad)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("优惠笔数上限")
+                            .font(.subheadline)
+                        TextField("正整数", text: $benefitTransactionCapText)
+                            .keyboardType(.numberPad)
+                            .accessibilityLabel("优惠笔数上限")
+                        ruleExplanation("例如最多优惠 5 笔：这是可用次数上限，不是必须完成的笔数。")
+                    }
+                    amountRuleField("单笔满足金额（可选）", text: $perTransactionThresholdText,
+                                    explanation: "例如每笔至少 \(CardPilotUI.amountText(100, currencyCode: currencyCode)) 才符合金额条件；留空表示不设单笔门槛。")
                     Text("每笔符合条件的消费计 1 笔；这里只记录已用笔数，不计算优惠金额。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    TextField("累计达标门槛（可选）", text: $qualificationThresholdText)
-                        .keyboardType(.decimalPad)
-                    TextField("累计计入上限（可选）", text: $qualifyingCapText)
-                        .keyboardType(.decimalPad)
-                    TextField("单笔计入门槛（可选）", text: $perTransactionThresholdText)
-                        .keyboardType(.decimalPad)
+                    amountRuleField("累计达标门槛（可选）", text: $qualificationThresholdText,
+                                    explanation: "例如累计满 \(CardPilotUI.amountText(3000, currencyCode: currencyCode)) 才达标；留空表示只记录累计金额。")
+                    DisclosureGroup(isExpanded: $showingAdditionalAmountRules) {
+                        amountRuleField("累计计入上限（可选）", text: $qualifyingCapText,
+                                        explanation: "例如仅前 \(CardPilotUI.amountText(5000, currencyCode: currencyCode)) 可计入：这是上限，不是必须达到的金额。")
+                        amountRuleField("单笔计入门槛（可选）", text: $perTransactionThresholdText,
+                                        explanation: "例如每笔至少 \(CardPilotUI.amountText(100, currencyCode: currencyCode)) 才符合金额条件；它不是累计达标门槛。")
+                    } label: {
+                        Text("其他金额条件（可选）")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 CurrencyPickerView(selection: $currencyCode, title: "进度币种")
                     .disabled(promotion?.allocations.isEmpty == false)
@@ -935,6 +957,24 @@ private struct PromotionEditorView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func amountRuleField(_ title: String, text: Binding<String>, explanation: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.subheadline)
+            TextField("金额", text: text)
+                .keyboardType(.decimalPad)
+                .accessibilityLabel(title)
+            ruleExplanation(explanation)
+        }
+    }
+
+    private func ruleExplanation(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var eligibilityStep: some View {
@@ -1005,17 +1045,24 @@ private struct PromotionEditorView: View {
                 } else {
                     qualificationBasisPicker
                 }
+                Toggle("允许与其他活动叠加", isOn: $stackingAllowed)
             }
             Section("规则与奖励") {
-                TextField("规则（首版仅自动计算累计消费与优惠笔数）", text: $rules, axis: .vertical)
-                TextField("排除项", text: $exclusions, axis: .vertical)
-                TextField("奖励说明", text: $rewardDescription, axis: .vertical)
-                    .accessibilityIdentifier("promotion.editor.reward")
-                TextField("备注", text: $notes, axis: .vertical)
+                textRuleField("奖励说明", text: $rewardDescription, identifier: "promotion.editor.reward")
+                DisclosureGroup(isExpanded: $showingRuleNotes) {
+                    textRuleField("规则", text: $rules, identifier: "promotion.editor.rules")
+                    textRuleField("排除项", text: $exclusions, identifier: "promotion.editor.exclusions")
+                    textRuleField("备注", text: $notes, identifier: "promotion.editor.notes")
+                    ruleExplanation("这些文字用于查阅；计入资格和奖励仍需按银行条款确认。")
+                } label: {
+                    Text("规则、排除项与备注（可选）")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Section("状态") {
-                Toggle("允许与其他活动叠加", isOn: $stackingAllowed)
-                Toggle("归档", isOn: $archived)
+            if promotion != nil {
+                Section("管理") {
+                    Toggle("归档", isOn: $archived)
+                }
             }
             Section("保存前确认") {
                 LabeledContent("活动", value: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未填写" : title)
@@ -1034,6 +1081,16 @@ private struct PromotionEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    private func textRuleField(_ title: String, text: Binding<String>, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.subheadline)
+            TextField("可选", text: text, axis: .vertical)
+                .accessibilityLabel(title)
+                .accessibilityIdentifier(identifier)
         }
     }
 
@@ -1143,9 +1200,13 @@ private struct PromotionEditorView: View {
     private func validateProgressFields() -> Bool {
         switch progressMode {
         case .cumulative:
-            return parseOptionalAmount(qualificationThresholdText, label: "累计达标门槛").isValid
+            let isValid = parseOptionalAmount(qualificationThresholdText, label: "累计达标门槛").isValid
                 && parseOptionalAmount(qualifyingCapText, label: "累计计入上限").isValid
                 && parseOptionalAmount(perTransactionThresholdText, label: "单笔计入门槛").isValid
+            if !isValid, !qualifyingCapText.isEmpty || !perTransactionThresholdText.isEmpty {
+                showingAdditionalAmountRules = true
+            }
+            return isValid
         case .perTransaction:
             guard parseOptionalAmount(perTransactionThresholdText, label: "单笔满足金额").isValid else { return false }
             return parsePositiveInteger(benefitTransactionCapText, label: "优惠笔数上限").isValid
@@ -1285,6 +1346,9 @@ private struct PromotionEditorView: View {
         }
         guard threshold.isValid, cap.isValid, perTransactionThreshold.isValid, benefitTransactionCap.isValid else {
             step = .basics
+            if progressMode == .cumulative, !cap.isValid || !perTransactionThreshold.isValid {
+                showingAdditionalAmountRules = true
+            }
             return
         }
 

@@ -151,6 +151,66 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
+    func testPromotionOptionalRulesKeepValuesAndRevealInvalidFields() {
+        launch("core")
+        openPromotion("UI Spend")
+        openPromotionEditor("基本信息")
+        let additionalAmounts = app.buttons["其他金额条件（可选）"]
+        let cap = app.textFields["累计计入上限（可选）"]
+        let perTransaction = app.textFields["单笔计入门槛（可选）"]
+        XCTAssertFalse(cap.exists)
+        tap(additionalAmounts)
+        enter("0", into: cap)
+        tap(additionalAmounts, scrollTowardTopWhenMissing: true)
+        XCTAssertFalse(cap.exists)
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.staticTexts["错误：累计计入上限应为大于 0 的数字，或留空。"].waitForExistence(timeout: 10))
+        reveal(cap)
+        XCTAssertTrue(cap.isHittable)
+        replaceText("5000", in: cap)
+        enter("100", into: perTransaction)
+        tap(additionalAmounts, scrollTowardTopWhenMissing: true)
+        selectPromotionEditorSection("报名与规则")
+        let ruleNotes = app.buttons["规则、排除项与备注（可选）"]
+        let rules = app.descendants(matching: .any)
+            .matching(identifier: "promotion.editor.rules").firstMatch
+        XCTAssertFalse(rules.exists)
+        tap(ruleNotes)
+        enter("UI Manual Rules", into: rules)
+        tap(ruleNotes, scrollTowardTopWhenMissing: true)
+        XCTAssertFalse(rules.exists)
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Spend")
+        openPromotionEditor("基本信息")
+        // Saved optional rules open automatically, even when they were
+        // collapsed before Save. Their bindings never clear hidden values.
+        reveal(cap)
+        XCTAssertEqual(cap.value as? String, "5000")
+        reveal(perTransaction)
+        XCTAssertEqual(perTransaction.value as? String, "100")
+        captureScreenshot("促销金额规则说明")
+        selectPromotionEditorSection("报名与规则")
+        reveal(rules)
+        XCTAssertEqual(rules.value as? String, "UI Manual Rules")
+        captureScreenshot("促销奖励与可选规则")
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+
+        relaunchAtLargestTextSize()
+        openPromotion("UI Spend")
+        openPromotionEditor("基本信息")
+        let explanation = app.staticTexts["例如仅前 5,000 CNY 可计入：这是上限，不是必须达到的金额。"]
+        reveal(explanation, fullyVisible: true)
+        XCTAssertTrue(explanation.isHittable)
+        XCTAssertGreaterThanOrEqual(explanation.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
+        XCTAssertLessThan(explanation.frame.maxY, app.frame.maxY - 40)
+        captureScreenshot("最大字号促销金额规则说明")
+    }
+
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
         launch("core")
         tap(app.tabBars.buttons["促销"])
