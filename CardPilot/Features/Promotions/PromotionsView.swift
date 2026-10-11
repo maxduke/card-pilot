@@ -475,7 +475,8 @@ private struct PromotionRow: View {
         var values = [promotion.title, statusText, organizerText, periodText, CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn), enrollmentText]
         if let progress {
             if let cap = progress.benefitTransactionCap {
-                values.append("已用 \(progress.usedTransactionCount)/\(cap) 笔，剩余 \(progress.remainingTransactionCount ?? cap) 笔")
+                let remaining = progress.remainingTransactionCount ?? cap
+                values.append("已用 \(progress.usedTransactionCount)/\(cap) 次，\(remaining == 0 ? "优惠次数已用完" : "剩余可用 \(remaining) 次")")
             } else if let threshold = progress.qualificationThreshold {
                 values.append("进度 \(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))，目标 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
             } else {
@@ -494,42 +495,46 @@ private struct PromotionProgressSummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 4 : 8) {
             if let cap = progress.benefitTransactionCap {
-                Text("已用 \(progress.usedTransactionCount) / \(cap) 笔")
+                Text(progress.isComplete ? "优惠次数已用完" : "剩余可用 \(progress.remainingTransactionCount ?? cap) 次")
+                    .font(compact ? .caption : .headline)
+                    .foregroundStyle(progress.isComplete ? Color.secondary : Color.primary)
+                    .accessibilityIdentifier("promotion.remaining.\(promotion.title)")
+                Text("已用 \(progress.usedTransactionCount) / \(cap) 次")
                     .font(compact ? .caption : .body)
-                    .foregroundStyle(progress.isComplete ? .green : .primary)
-                Text(progress.isComplete ? "优惠笔数已用完" : "还可完成 \(progress.remainingTransactionCount ?? cap) 笔")
-                    .font(.caption)
-                    .foregroundStyle(progress.isComplete ? .green : .secondary)
+                    .foregroundStyle(.secondary)
             } else if let threshold = progress.qualificationThreshold {
+                Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingToThreshold ?? threshold, currencyCode: promotion.progressCurrencyCode))")
+                    .font(compact ? .caption : .headline)
+                    .foregroundStyle(progress.isComplete ? Color.green : Color.primary)
+                    .accessibilityIdentifier("promotion.remaining.\(promotion.title)")
+                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
+                    .accessibilityIdentifier("promotion.progress.\(promotion.title)")
+                    .font(compact ? .caption : .body)
+                    .foregroundStyle(.secondary)
                 ProgressView(
                     value: decimalDouble(min(max(.zero, progress.qualifiedAmount), threshold)),
                     total: decimalDouble(threshold)
                 )
                 .tint(progress.isComplete ? .green : .accentColor)
-                Text("\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode)) / \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))")
-                    .accessibilityIdentifier("promotion.progress.\(promotion.title)")
-                    .font(compact ? .caption : .body)
-                    .foregroundStyle(progress.isComplete ? .green : .primary)
-                Text(progress.isComplete ? "已达标" : "还需 \(CardPilotUI.amountText(progress.remainingToThreshold ?? threshold, currencyCode: promotion.progressCurrencyCode))")
-                    .font(.caption)
-                    .foregroundStyle(progress.isComplete ? .green : .secondary)
                 if let cap = progress.qualifyingCap {
                     Text("计入上限剩余 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             } else if let cap = progress.qualifyingCap {
+                Text("剩余可计入 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
+                    .font(compact ? .caption : .headline)
+                    .accessibilityIdentifier("promotion.remaining.\(promotion.title)")
                 Text("已计入 \(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))")
                     .font(compact ? .caption : .body)
-                Text("剩余可计入 \(CardPilotUI.amountText(progress.remainingCap ?? cap, currencyCode: promotion.progressCurrencyCode))")
-                    .font(.caption)
-                    .foregroundStyle((progress.remainingCap ?? cap) == .zero ? .green : .secondary)
+                    .foregroundStyle(.secondary)
             } else {
                 Text("已计入净额：\(CardPilotUI.amountText(progress.qualifiedAmount, currencyCode: promotion.progressCurrencyCode))")
                     .font(compact ? .caption : .body)
                     .foregroundStyle(.secondary)
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func decimalDouble(_ value: Decimal) -> Double {
@@ -684,6 +689,7 @@ enum PromotionCreationActions {
 private struct PromotionEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let promotion: Promotion?
     let banks: [Bank]
     let networks: [CardNetwork]
@@ -977,10 +983,10 @@ private struct PromotionEditorView: View {
     private var rulesStep: some View {
         Group {
             Section("报名与资格") {
-                Picker("报名状态", selection: $enrollmentStatus) {
-                    Text("不需要报名").tag(EnrollmentStatus.notRequired)
-                    Text("尚未报名").tag(EnrollmentStatus.notEnrolled)
-                    Text("已报名").tag(EnrollmentStatus.enrolled)
+                if dynamicTypeSize.isAccessibilitySize {
+                    enrollmentPicker.pickerStyle(.inline)
+                } else {
+                    enrollmentPicker
                 }
                 if enrollmentStatus == .enrolled {
                     Toggle("记录报名日期", isOn: $hasEnrolledOn)
@@ -994,10 +1000,10 @@ private struct PromotionEditorView: View {
                         DatePicker("报名截止日", selection: $enrollmentDeadline, displayedComponents: .date)
                     }
                 }
-                Picker("资格日期依据", selection: $qualificationDateBasis) {
-                    Text("交易日期").tag(QualificationDateBasis.transactionDate)
-                    Text("入账日期").tag(QualificationDateBasis.postingDate)
-                    Text("未知（交易日或入账日）").tag(QualificationDateBasis.unknown)
+                if dynamicTypeSize.isAccessibilitySize {
+                    qualificationBasisPicker.pickerStyle(.inline)
+                } else {
+                    qualificationBasisPicker
                 }
             }
             Section("规则与奖励") {
@@ -1028,6 +1034,26 @@ private struct PromotionEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    private var enrollmentPicker: some View {
+        Picker("报名状态", selection: $enrollmentStatus) {
+            Text("不需要报名").tag(EnrollmentStatus.notRequired)
+            Text("尚未报名").tag(EnrollmentStatus.notEnrolled)
+                .accessibilityIdentifier("promotion.editor.enrollment.pending")
+            Text("已报名").tag(EnrollmentStatus.enrolled)
+        }
+    }
+
+    private var qualificationBasisPicker: some View {
+        Picker("资格日期依据", selection: $qualificationDateBasis) {
+            Text("交易日期").tag(QualificationDateBasis.transactionDate)
+            Text("入账日期").tag(QualificationDateBasis.postingDate)
+            Text("未知（交易日或入账日）")
+                .fixedSize(horizontal: false, vertical: true)
+                .tag(QualificationDateBasis.unknown)
+                .accessibilityIdentifier("promotion.editor.basis.unknown")
         }
     }
 
@@ -1669,6 +1695,7 @@ private struct PromotionCardSelectionRow: View {
 struct PromotionDetailView: View {
     @Environment(\.currentDay) private var currentDay
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let promotion: Promotion
     @Query(sort: \Bank.name) private var banks: [Bank]
     @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
@@ -1729,6 +1756,7 @@ struct PromotionDetailView: View {
             if seriesPromotions.count > 1 {
                 seriesSection
             }
+            progressSection
             Section("更新进度") {
                 Button {
                     showingTransactionEditor = true
@@ -1774,14 +1802,6 @@ struct PromotionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("进度") {
-                if let progress {
-                    PromotionProgressSummary(promotion: displayedPromotion, progress: progress, compact: false)
-                } else {
-                    Text("暂时无法计算进度。")
-                        .foregroundStyle(.secondary)
-                }
-            }
             Section("计入活动的交易") {
                 if sortedAllocations.isEmpty {
                     VStack(spacing: 8) {
@@ -1817,7 +1837,8 @@ struct PromotionDetailView: View {
                 }
             }
             Section("报名与资格") {
-                LabeledContent("报名状态", value: enrollmentText)
+                detailValueRow("报名状态", value: enrollmentText)
+                    .accessibilityIdentifier("promotion.enrollmentStatus")
                 if displayedPromotion.enrollmentStatus == .notEnrolled {
                     Button("标记已报名", systemImage: "person.crop.circle.badge.checkmark", action: markEnrolled)
                     Text("请先在银行完成报名，再更新这里的记录。")
@@ -1825,23 +1846,24 @@ struct PromotionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 if let enrolledOn = displayedPromotion.enrolledOn {
-                    LabeledContent("报名日期", value: CardPilotUI.dateText(enrolledOn))
+                    detailValueRow("报名日期", value: CardPilotUI.dateText(enrolledOn))
                 }
                 if let deadline = displayedPromotion.enrollmentDeadline {
-                    LabeledContent("报名截止", value: CardPilotUI.dateText(deadline))
+                    detailValueRow("报名截止", value: CardPilotUI.dateText(deadline))
                 }
-                LabeledContent("资格日期依据", value: qualificationBasisText)
+                detailValueRow("资格日期依据", value: qualificationBasisText)
+                    .accessibilityIdentifier("promotion.qualificationBasis")
             }
             Section("活动信息") {
-                LabeledContent("本期有效期", value: CardPilotUI.dateRangeText(start: displayedPromotion.startOn, end: displayedPromotion.endOn))
-                LabeledContent("系列", value: displayedPromotion.seriesID == nil ? "独立活动" : periodIndexText(displayedPromotion))
-                LabeledContent("叠加", value: displayedPromotion.stackingAllowed ? "允许" : "不允许")
-                LabeledContent("状态", value: presentationStatusText)
+                detailValueRow("本期有效期", value: CardPilotUI.dateRangeText(start: displayedPromotion.startOn, end: displayedPromotion.endOn))
+                detailValueRow("系列", value: displayedPromotion.seriesID == nil ? "独立活动" : periodIndexText(displayedPromotion))
+                detailValueRow("叠加", value: displayedPromotion.stackingAllowed ? "允许" : "不允许")
+                detailValueRow("状态", value: presentationStatusText)
                 if displayedPromotion.archivedAt != nil {
-                    LabeledContent("归档", value: "已归档")
+                    detailValueRow("归档", value: "已归档")
                 }
                 if !displayedPromotion.organizingBanks.isEmpty {
-                    LabeledContent("银行主办方", value: displayedPromotion.organizingBanks.map(\.name).joined(separator: "、"))
+                    detailValueRow("银行主办方", value: displayedPromotion.organizingBanks.map(\.name).joined(separator: "、"))
                 }
                 if !displayedPromotion.organizingNetworks.isEmpty {
                     LabeledContent("卡组织主办方") {
@@ -1853,29 +1875,25 @@ struct PromotionDetailView: View {
                     }
                 }
                 if let threshold = displayedPromotion.qualificationThreshold {
-                    LabeledContent("累计达标门槛", value: CardPilotUI.amountText(threshold, currencyCode: displayedPromotion.progressCurrencyCode))
+                    detailValueRow("累计达标门槛", value: CardPilotUI.amountText(threshold, currencyCode: displayedPromotion.progressCurrencyCode))
                 }
                 if let cap = displayedPromotion.qualifyingCap {
-                    LabeledContent("累计计入上限", value: CardPilotUI.amountText(cap, currencyCode: displayedPromotion.progressCurrencyCode))
+                    detailValueRow("累计计入上限", value: CardPilotUI.amountText(cap, currencyCode: displayedPromotion.progressCurrencyCode))
                 }
                 if let perTransactionThreshold = displayedPromotion.perTransactionThreshold {
-                    LabeledContent(
+                    detailValueRow(
                         displayedPromotion.benefitTransactionCap == nil ? "单笔计入门槛" : "单笔满足金额",
                         value: CardPilotUI.amountText(perTransactionThreshold, currencyCode: displayedPromotion.progressCurrencyCode)
                     )
                 }
                 if let benefitTransactionCap = displayedPromotion.benefitTransactionCap {
-                    LabeledContent("优惠笔数上限", value: "\(benefitTransactionCap) 笔")
+                    detailValueRow("优惠笔数上限", value: "\(benefitTransactionCap) 笔")
                 }
             }
-            if !displayedPromotion.rewardDescription.isEmpty
-                || !displayedPromotion.rules.isEmpty
+            if !displayedPromotion.rules.isEmpty
                 || !displayedPromotion.exclusions.isEmpty
                 || !displayedPromotion.notes.isEmpty {
-                Section("奖励与规则") {
-                    if !displayedPromotion.rewardDescription.isEmpty {
-                        detailTextRow(title: "奖励", text: displayedPromotion.rewardDescription)
-                    }
+                Section("规则与说明") {
                     if !displayedPromotion.rules.isEmpty {
                         detailTextRow(title: "规则", text: displayedPromotion.rules)
                     }
@@ -2120,6 +2138,37 @@ struct PromotionDetailView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var progressSection: some View {
+        Section("进度") {
+            if let progress {
+                PromotionProgressSummary(promotion: displayedPromotion, progress: progress, compact: false)
+            } else {
+                Text("暂时无法计算进度。")
+                    .foregroundStyle(.secondary)
+            }
+            detailValueRow("结束日期", value: CardPilotUI.dateText(displayedPromotion.endOn))
+                .accessibilityIdentifier("promotion.endDate")
+            if !displayedPromotion.rewardDescription.isEmpty {
+                detailTextRow(title: "奖励", text: displayedPromotion.rewardDescription)
+                    .accessibilityIdentifier("promotion.reward")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func detailValueRow(_ title: String, value: String) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                Text(value).foregroundStyle(.secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+        } else {
+            LabeledContent(title, value: value)
         }
     }
 

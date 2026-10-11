@@ -20,5 +20,23 @@ final class UITestFixtureTests: XCTestCase {
         let promotion = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<Promotion>()).first)
         XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
     }
+
+    func testPromotionOverviewFixtureRestoresDistinctProgressModes() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, includePromotionOverview: true)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let promotions = try restored.mainContext.fetch(FetchDescriptor<Promotion>())
+        let progress = try Dictionary(uniqueKeysWithValues: promotions.map {
+            ($0.title, try PromotionCalculator.progress(for: $0))
+        })
+        XCTAssertEqual(progress["UI Spend"]?.remainingToThreshold, 1000)
+        XCTAssertNil(progress["UI Amount Cap"]?.qualificationThreshold)
+        XCTAssertEqual(progress["UI Amount Cap"]?.remainingCap, 500)
+        XCTAssertEqual(progress["UI Available"]?.remainingTransactionCount, 2)
+        XCTAssertEqual(progress["UI Exhausted"]?.remainingTransactionCount, 0)
+        XCTAssertEqual(progress["UI Reached"]?.remainingToThreshold, 0)
+    }
 }
 #endif

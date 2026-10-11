@@ -9,7 +9,7 @@ enum UITestBootstrap {
     static func makeStore() -> BackupStore? {
         let environment = ProcessInfo.processInfo.environment
         guard let scenario = environment["CARDPILOT_UI_SCENARIO"],
-              ["empty", "core"].contains(scenario),
+              ["empty", "core", "promotionOverview"].contains(scenario),
               let rawID = environment["CARDPILOT_UI_SESSION"],
               let session = UUID(uuidString: rawID) else { return nil }
         let directory = URL.temporaryDirectory.appendingPathComponent("CardPilotUITests/\(session.uuidString)", isDirectory: true)
@@ -18,12 +18,14 @@ enum UITestBootstrap {
             let url = directory.appendingPathComponent("test.store")
             let isNew = !FileManager.default.fileExists(atPath: url.path)
             let container = try CardPilotPersistence.makeContainer(at: url)
-            if isNew && scenario == "core" { try seed(container.mainContext) }
+            if isNew && scenario != "empty" {
+                try seed(container.mainContext, includePromotionOverview: scenario == "promotionOverview")
+            }
             return container
         })
     }
 
-    static func seed(_ context: ModelContext) throws {
+    static func seed(_ context: ModelContext, includePromotionOverview: Bool = false) throws {
         let today = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!)
         let bank = Bank(name: "UI Test Bank")
         let networks = CardNetwork.makeBuiltIns()
@@ -49,6 +51,38 @@ enum UITestBootstrap {
         context.insert(foreignRule)
         context.insert(foreignCard)
         context.insert(promotion)
+        if includePromotionOverview {
+            promotion.rewardDescription = "达标奖励以银行规则为准"
+            let amountCap = Promotion(
+                title: "UI Amount Cap", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], qualifyingCap: 500, progressCurrencyCode: "CNY"
+            )
+            let available = Promotion(
+                title: "UI Available", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], benefitTransactionCap: 4, progressCurrencyCode: "CNY"
+            )
+            let exhausted = Promotion(
+                title: "UI Exhausted", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], benefitTransactionCap: 2, progressCurrencyCode: "CNY"
+            )
+            let reached = Promotion(
+                title: "UI Reached", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], qualificationThreshold: 100, progressCurrencyCode: "CNY"
+            )
+            [amountCap, available, exhausted, reached].forEach(context.insert)
+            for index in 1...2 {
+                let transaction = Transaction(
+                    card: card, transactionOn: today.rawValue, amount: 50,
+                    currencyCode: "CNY", merchant: "UI Benefit \(index)"
+                )
+                context.insert(transaction)
+                for target in [available, exhausted, reached] {
+                    context.insert(PromotionAllocation(
+                        transaction: transaction, promotion: target, qualifyingAmount: 50, currencyCode: "CNY"
+                    ))
+                }
+            }
+        }
         try context.save()
     }
 }
