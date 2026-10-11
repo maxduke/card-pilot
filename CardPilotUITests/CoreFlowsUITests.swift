@@ -1551,8 +1551,13 @@ final class CoreFlowsUITests: XCTestCase {
             let origin = app.coordinate(withNormalizedOffset: .zero)
             let dragStartY = targetIsAbove ? endY : startY
             let dragEndY = targetIsAbove ? startY : endY
+            // End the drag at rest so List inertia cannot overshoot a tall row
+            // and make the next visibility check alternate above and below it.
             origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragStartY - frame.minY))
-                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragEndY - frame.minY)))
+                .press(forDuration: 0.05,
+                       thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragEndY - frame.minY)),
+                       withVelocity: .slow,
+                       thenHoldForDuration: 0.2)
         }
         XCTFail("Expected an unobscured element: \(element)")
     }

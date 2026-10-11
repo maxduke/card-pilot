@@ -50,3 +50,12 @@
 [run 38172691453](https://github.com/maxduke/card-pilot/actions/runs/38172691453) 的 216 项单元／集成测试全部通过，34 项 UI 测试正常通过，未出现业务断言失败或单项测试超时。拆分后的两项账户历史、两项促销可选规则，以及未来规则普通／最大字号流程均已通过。但构建与测试步骤从 20:33:27 UTC 执行到 21:23:37 UTC 时触及 50 分钟作业上限，被取消；第 35 项保存反馈用例执行中，另有三项尚未开始，因此该运行仍不算通过。
 
 本次构建、启动及单元阶段约 6 分半，UI 阶段已执行约 43 分半，说明 50 分钟已不能容纳增长后的完整套件。只将 GitHub `test` 作业预算调为 60 分钟，继续执行全部 216 项单元／集成与 38 项 UI；保留 180 秒默认／240 秒最大单项时限、串行执行、相同原生产物上传与保留设置。未改测试实现、断言、动画或筛选范围。修正后仍需当前 HEAD 完整通过、五张最终截图确认、合并与 main 验证。
+
+
+## 合并后主线回归与滚动定位修正
+
+[PR #33](https://github.com/maxduke/card-pilot/pull/33) 的最终 HEAD `3fc89e0` 通过 [run 38176490903](https://github.com/maxduke/card-pilot/actions/runs/38176490903)：216 项单元／集成与 38 项 UI，零失败、零跳过；五张原生截图已检查。合并提交为 `1208741`。其 [main run 38179767098](https://github.com/maxduke/card-pilot/actions/runs/38179767098) 通过全部 216 项单元／集成，但 38 项 UI 中一项最大字号账户历史用例失败，因此本批的主线交付门槛尚未完成。
+
+失败发生在完整显示 `account.history.cycle.202703` 时，未到后续日期断言、截图及详情往返。实际失败截图与界面层级确认页面、账期及日期正确，行高约 526 点，小于导航栏与底栏之间约 691 点的空间；最后行顶部在 38.7 点，仍在导航栏底部 100.3 点之上。日志中八次拖动反复切换方向，表明定位发生过冲；不能将这个失败解释为账期缺失或日期计算错误。
+
+测试滚动助手改用 XCTest 支持的慢速拖动，并在终点保持 0.2 秒后释放，减少惯性造成的过冲。继续使用原来的目标几何计算、八次尝试、完整可见性、44 点点击区域及全部无障碍审计；没有坐标强点、忽略失败、增加重试、放宽断言、修改生产布局或关闭动画。API 依据为 Apple 的 [拖动与终点停留说明](https://developer.apple.com/documentation/xcuiautomation/xcuicoordinate/press%28forduration%3Athendragto%3Awithvelocity%3Athenholdforduration%3A%29) 和 [慢速手势定义](https://developer.apple.com/documentation/xcuiautomation/xcuigesturevelocity/slow)。实际效果仍需修正后的完整 216 项单元／集成与 38 项 UI、最大字号截图和合并后主线验证确认。
