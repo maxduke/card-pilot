@@ -5,6 +5,38 @@ import XCTest
 
 @MainActor
 final class UITestFixtureTests: XCTestCase {
+    func testFutureRuleFixtureRestoresValidAndInvalidCancellationScenarios() throws {
+        let timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        for rawDate in [20260101, 20260910, 20261231] {
+            let today = try LocalDate(rawValue: rawDate)
+            let container = try CardPilotPersistence.makeContainer(inMemory: true)
+            try UITestBootstrap.seed(container.mainContext, scenario: .futureRules, today: today)
+            let records = try BackupRecords.capture(container.mainContext)
+            let restored = try records.validatedContainer()
+            XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+            let cards = try restored.mainContext.fetch(FetchDescriptor<Card>())
+            for name in ["UI Shared", "UI Foreign"] {
+                let account = try XCTUnwrap(cards.first { $0.productName == name }?.account)
+                XCTAssertEqual(account.billingRuleVersions.count, 3)
+                let record = try XCTUnwrap(account.billingCycles.first)
+                let overrides = [record.cycleKey: BillingCycleOverride(
+                    statementDate: try record.statementDateOverride.map { try LocalDate(rawValue: $0) },
+                    repaymentDate: try record.repaymentDateOverride.map { try LocalDate(rawValue: $0) }, repaidAt: nil)]
+                let validate = {
+                    try FutureBillingRuleCancellation.remainingRules(removing: today.addingMonths(1).monthKey,
+                        rules: account.billingRuleVersions.map(\.billingRuleInput), overrides: overrides,
+                        today: today, timeZone: timeZone)
+                }
+                if name == "UI Shared" { XCTAssertEqual(try validate().count, 2) }
+                else {
+                    XCTAssertThrowsError(try validate()) {
+                        XCTAssertEqual($0 as? FutureBillingRuleCancellation.CancellationError, .invalidDates(record.cycleKey))
+                    }
+                }
+            }
+        }
+    }
+
     func testAccountHistoryFixtureRestoresFullPaidAndUnpaidCyclesWithSavedDates() throws {
         let timeZone = TimeZone(identifier: "Asia/Shanghai")!
         for rawDate in [20260101, 20260910, 20261231] {

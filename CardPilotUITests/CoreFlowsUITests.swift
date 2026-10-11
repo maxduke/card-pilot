@@ -1140,6 +1140,87 @@ final class CoreFlowsUITests: XCTestCase {
         return (year * 100 + month, String(year), "\(month) 月")
     }
 
+    func testFutureRuleEditingSelectsRequestedVersionAndCancellationPersists() {
+        launch("futureRules")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let firstMonth = futureRuleMonth(offset: 1)
+        let laterMonth = futureRuleMonth(offset: 3)
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", firstMonth)).firstMatch
+        reveal(first, fullyVisible: true)
+        assertTouchTarget(first)
+        tap(first)
+        captureScreenshot("未来规则取消影响预览")
+        tap(app.buttons["account.rule.edit"])
+        let statement = app.buttons["account.editor.rule.statementDay"]
+        reveal(statement, fullyVisible: true)
+        XCTAssertTrue((statement.label + (statement.value as? String ?? "")).contains("每月 5 日"))
+        let effective = app.buttons["account.editor.rule.effectiveCycle"]
+        reveal(effective)
+        XCTAssertEqual(effective.value as? String, firstMonth)
+        tap(statement, scrollTowardTopWhenMissing: true)
+        tap(app.buttons["每月 6 日"])
+        tap(app.navigationBars["编辑信用卡账户"].buttons["保存"])
+        let corrected = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "每月 6 日出账")).firstMatch
+        reveal(corrected, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        XCTAssertTrue(corrected.exists)
+        let cancel = app.buttons["account.rule.cancel"]
+        reveal(cancel, fullyVisible: true)
+        tap(cancel)
+        tap(app.buttons["保留计划"])
+        XCTAssertTrue(app.navigationBars["规则计划"].exists)
+        tap(cancel)
+        captureScreenshot("取消未来规则确认")
+        tap(app.sheets.buttons["取消规则计划"])
+        XCTAssertTrue(app.navigationBars["账户详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let later = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", laterMonth)).firstMatch
+        reveal(later, fullyVisible: true)
+        XCTAssertFalse(first.exists)
+        XCTAssertTrue(later.label.contains("每月 10 日出账"))
+    }
+
+    func testInvalidFutureRuleCancellationExplainsAffectedCycleAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("futureRules")
+        openCard("UI Foreign")
+        tap(app.buttons["card.account"])
+        let firstMonth = futureRuleMonth(offset: 1)
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", firstMonth)).firstMatch
+        reveal(first, fullyVisible: true)
+        assertTouchTarget(first)
+        tap(first)
+        let explanation = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "请先调整该账期的日期")).firstMatch
+        reveal(explanation, fullyVisible: true)
+        XCTAssertTrue(explanation.label.contains(futureRuleMonth(offset: 2)))
+        captureScreenshot("最大字号未来规则取消日期冲突")
+        let cancel = app.buttons["account.rule.cancel"]
+        reveal(cancel, fullyVisible: true)
+        XCTAssertFalse(cancel.isEnabled)
+        let adjust = app.buttons["调整相关账期"]
+        reveal(adjust, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(adjust)
+        try auditAccessibility(for: [.hitRegion])
+        tap(adjust)
+        XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        tap(app.navigationBars["规则计划"].buttons.firstMatch)
+        reveal(first, fullyVisible: true)
+        XCTAssertTrue(first.exists)
+        tap(first)
+        XCTAssertFalse(cancel.isEnabled)
+    }
+
+    private func futureRuleMonth(offset: Int) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let date = calendar.date(byAdding: .month, value: offset, to: Date())!
+        return "\(calendar.component(.year, from: date))年\(calendar.component(.month, from: date))月"
+    }
+
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
         launch("core")
         openCard("UI Primary")

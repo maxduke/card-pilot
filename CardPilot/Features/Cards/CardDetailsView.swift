@@ -86,7 +86,7 @@ struct CardDetailView: View {
 
             Section("账单日程") {
                 if upcomingCycles.isEmpty {
-                    Text("暂无可显示的账期")
+                    Text("暂无可显示的未还账期")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(upcomingCycles, id: \.cycleKey) { cycle in
@@ -105,7 +105,7 @@ struct CardDetailView: View {
                             .font(.subheadline.weight(.medium))
                         Text(card.account.cards.count > 1
                              ? "与另外 \(card.account.cards.count - 1) 张卡共用账单和还款状态"
-                             : "查看账单规则和已处理账期")
+                             : "查看账单规则和已还账期")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -235,9 +235,9 @@ struct AccountDetailView: View {
                 .accessibilityElement(children: .combine)
             }
 
-            Section("近期账期") {
+            Section("未还账期") {
                 if recentCycles.isEmpty {
-                    Text("暂无可显示的账期")
+                    Text("暂无可显示的未还账期")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(recentCycles, id: \.cycleKey) { cycle in
@@ -263,7 +263,7 @@ struct AccountDetailView: View {
             }
 
             if !paidCycles.isEmpty {
-                Section("已处理账期") {
+                Section("已还账期") {
                     ForEach(paidCycles, id: \.cycleKey) { cycle in
                         NavigationLink {
                             BillingCycleDetailView(account: account, cycleKey: cycle.cycleKey)
@@ -282,10 +282,13 @@ struct AccountDetailView: View {
                 }
 
                 ForEach(scheduledRules, id: \.id) { rule in
-                    BillingRuleRow(
-                        rule: rule,
-                        title: "\(CardPilotUI.monthKeyText(rule.effectiveCycleKey)) 起生效"
-                    )
+                    NavigationLink {
+                        FutureBillingRuleView(account: account, ruleID: rule.id)
+                    } label: {
+                        BillingRuleRow(rule: rule, title: "\(CardPilotUI.monthKeyText(rule.effectiveCycleKey)) 起生效")
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("account.rule.\(rule.id)")
                 }
 
                 if !scheduledRules.isEmpty {
@@ -531,7 +534,7 @@ private struct CardPromotionRow: View {
     }
 }
 
-private struct BillingRuleRow: View {
+struct BillingRuleRow: View {
     let rule: BillingRuleVersion
     let title: String
 
