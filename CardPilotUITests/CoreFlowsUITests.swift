@@ -541,6 +541,11 @@ final class CoreFlowsUITests: XCTestCase {
         enter("10", into: app.textFields["transactionAmount"])
         enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertTrue(feedback.label.contains("已记录退款 10 CNY"))
+        tap(feedback)
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 5))
         let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related.")).firstMatch
         reveal(related, fullyVisible: true)
         assertTouchTarget(related)
@@ -1136,7 +1141,11 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private var contentBottom: CGFloat {
-        var bottom = app.frame.maxY - 90
+        // A presented detail has no tab bar. Keep a conservative home-indicator
+        // margin there; use the actual visible tab bar on the main pages.
+        var bottom = app.frame.maxY - 40
+        let tabBar = app.tabBars.firstMatch
+        if tabBar.exists && tabBar.isHittable { bottom = min(bottom, tabBar.frame.minY) }
         let keyboard = app.keyboards.firstMatch
         if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
         for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"] {
