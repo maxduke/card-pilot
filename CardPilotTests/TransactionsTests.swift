@@ -3,6 +3,37 @@ import XCTest
 @testable import CardPilot
 
 final class TransactionsTests: XCTestCase {
+    func testDateFilterRangesIncludeMonthBoundariesAndKeepCustomDates() throws {
+        let leapDay = try LocalDate(rawValue: 20240229)
+        XCTAssertNil(TransactionDatePeriod.all.range(today: leapDay, customRange: nil))
+        XCTAssertEqual(TransactionDatePeriod.thisMonth.range(today: leapDay, customRange: nil), 20240201...20240229)
+        let newYear = try LocalDate(rawValue: 20270101)
+        XCTAssertEqual(TransactionDatePeriod.lastMonth.range(today: newYear, customRange: nil), 20261201...20261231)
+        XCTAssertEqual(TransactionDatePeriod.thisMonth.range(today: newYear, customRange: nil), 20270101...20270131)
+        XCTAssertEqual(TransactionDatePeriod.custom.range(today: newYear, customRange: nil), 20270101...20270101)
+        let custom = (try LocalDate(rawValue: 20241231))...(try LocalDate(rawValue: 20250101))
+        XCTAssertEqual(TransactionDatePeriod.custom.range(today: newYear, customRange: custom), 20241231...20250101)
+        let earliest = try LocalDate(rawValue: 10101)
+        XCTAssertFalse(try XCTUnwrap(TransactionDatePeriod.lastMonth.range(today: earliest, customRange: nil)).contains(earliest.rawValue))
+    }
+
+    func testDateAndCurrencyFiltersCombineWithExistingCriteriaAndUseTransactionDate() {
+        let card = makeCard()
+        let promotion = makePromotion(card: card)
+        let earlier = Transaction(card: card, transactionOn: 20261231, postingOn: 20270101, amount: 10, currencyCode: "CNY", merchant: "Earlier")
+        let current = Transaction(card: card, transactionOn: 20270101, postingOn: 20270201, amount: 10, currencyCode: "CNY", merchant: "Current")
+        let foreign = Transaction(card: card, transactionOn: 20270131, amount: 10, currencyCode: "HKD", merchant: "Foreign")
+        let later = Transaction(card: card, transactionOn: 20270201, amount: 10, currencyCode: "CNY", merchant: "Later")
+        let reversed = Transaction(card: card, kind: .refund, transactionOn: 20270115, amount: 10, currencyCode: "CNY", merchant: "Reversed", status: .reversed)
+        current.allocations = [PromotionAllocation(transaction: current, promotion: promotion, qualifyingAmount: 10, currencyCode: "CNY")]
+        let all = [earlier, current, foreign, later, reversed]
+        let range = 20270101...20270131
+        XCTAssertEqual(filterTransactions(all, cardID: nil, kind: nil, promotionID: nil, status: nil, searchText: "", dateRange: range).map(\.id), [current.id, foreign.id, reversed.id])
+        XCTAssertEqual(filterTransactions(all, cardID: card.id, kind: .purchase, promotionID: promotion.id, status: .active, searchText: "Current", dateRange: range, currencyCode: "CNY").map(\.id), [current.id])
+        XCTAssertEqual(filterTransactions(all, cardID: nil, kind: nil, promotionID: nil, status: nil, searchText: "", dateRange: 20270131...20270131, currencyCode: "HKD").map(\.id), [foreign.id])
+        XCTAssertTrue(filterTransactions(all, cardID: nil, kind: .refund, promotionID: nil, status: .active, searchText: "", dateRange: range, currencyCode: "CNY").isEmpty)
+    }
+
     func testAllocationWarningPreservesManualAmountsAndDoesNotInferExchangeRates() {
         XCTAssertTrue(transactionAllocationExceedsAmount(transactionAmount: 100, transactionCurrencyCode: "CNY",
             allocationAmount: 1000, allocationCurrencyCode: "CNY"))

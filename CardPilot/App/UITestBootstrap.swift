@@ -12,6 +12,7 @@ enum UITestBootstrap {
         case promotionOverview
         case dashboardActions
         case linkedRefunds
+        case transactionFilters
     }
 
     static func makeStore() -> BackupStore? {
@@ -156,6 +157,24 @@ enum UITestBootstrap {
                 card: sibling, kind: .refund, transactionOn: today.rawValue,
                 amount: 15, currencyCode: "CNY", merchant: "UI Unlinked Refund"
             ))
+        }
+        if scenario == .transactionFilters {
+            let first = try LocalDate(year: today.year, month: today.month, day: 1)
+            let previous = first.addingMonths(-1)
+            let dates: [(String, LocalDate, String, TransactionKind, TransactionStatus)] = [
+                ("UI Current CNY", today, "CNY", .purchase, .active),
+                ("UI Current HKD", first, "HKD", .purchase, .active),
+                ("UI Current Refund", today, "CNY", .refund, .active),
+                ("UI Previous CNY", first.addingDays(-1), "CNY", .purchase, .active),
+                ("UI Previous HKD", previous, "HKD", .refund, .active),
+                ("UI Previous Reversed", previous, "CNY", .purchase, .reversed),
+                ("UI Older CNY", previous.addingDays(-1), "CNY", .purchase, .active),
+                ("UI Future HKD", first.addingMonths(1), "HKD", .purchase, .active)
+            ]
+            for (merchant, date, currency, kind, status) in dates {
+                context.insert(Transaction(card: sibling, kind: kind, transactionOn: date.rawValue,
+                                           amount: 10, currencyCode: currency, merchant: merchant, status: status))
+            }
         }
         try context.save()
     }

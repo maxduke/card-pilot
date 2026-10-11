@@ -88,5 +88,23 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertEqual(transactions.first { $0.merchant == "UI Reversed Purchase" }?.status, .reversed)
         XCTAssertNil(transactions.first { $0.merchant == "UI Unlinked Refund" }?.originalTransaction)
     }
+
+    func testTransactionFilterFixtureRestoresDistinctDatesCurrenciesAndStatuses() throws {
+        for rawDate in [20240229, 20270101, 20270131] {
+            let today = try LocalDate(rawValue: rawDate)
+            let container = try CardPilotPersistence.makeContainer(inMemory: true)
+            try UITestBootstrap.seed(container.mainContext, scenario: .transactionFilters, today: today)
+            let records = try BackupRecords.capture(container.mainContext)
+            let restored = try records.validatedContainer()
+            XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+            let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+            XCTAssertEqual(transactions.count, 8)
+            let range = TransactionDatePeriod.lastMonth.range(today: today, customRange: nil)
+            let matches = filterTransactions(transactions, cardID: nil, kind: nil, promotionID: nil, status: nil, searchText: "", dateRange: range, currencyCode: "CNY")
+            XCTAssertEqual(matches.count, 2)
+            XCTAssertTrue(matches.contains { $0.status == .reversed })
+            XCTAssertEqual(filterTransactions(transactions, cardID: nil, kind: nil, promotionID: nil, status: .active, searchText: "", dateRange: range, currencyCode: "CNY").count, 1)
+        }
+    }
 }
 #endif
