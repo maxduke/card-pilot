@@ -1022,6 +1022,119 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transaction.UI Accessibility Coffee"].exists)
     }
 
+    func testAccountCycleHistoryFindsOlderPaidAndUnpaidCyclesAndPersistsSharedRepayment() {
+        launch("accountHistory")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, fullyVisible: true)
+        assertTouchTarget(history)
+        captureScreenshot("账户全部账期入口")
+        tap(history)
+        let count = app.staticTexts["account.history.count"]
+        XCTAssertEqual(count.label, "共 23 个账期")
+        let olderPaid = accountHistoryMonth(offset: -18)
+        tap(app.buttons["account.history.year"])
+        tap(app.buttons[olderPaid.year])
+        tap(app.buttons["account.history.month"])
+        tap(app.buttons[olderPaid.month])
+        tap(app.buttons["account.history.status"])
+        tap(app.buttons["已还款"])
+        XCTAssertEqual(count.label, "共 1 个账期")
+        let paid = app.buttons["account.history.cycle.\(olderPaid.key)"]
+        XCTAssertTrue(paid.label.contains("已还款"))
+        captureScreenshot("第七个已处理账期查询")
+        tap(paid)
+        XCTAssertTrue(app.buttons["撤销已还款"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        XCTAssertEqual(count.label, "共 1 个账期")
+        tap(app.buttons["account.history.clear"])
+        let unpaid = accountHistoryMonth(offset: -7)
+        tap(app.buttons["account.history.year"])
+        tap(app.buttons[unpaid.year])
+        tap(app.buttons["account.history.month"])
+        tap(app.buttons[unpaid.month])
+        tap(app.buttons["account.history.status"])
+        tap(app.buttons["未还款"])
+        XCTAssertEqual(count.label, "共 1 个账期")
+        let row = app.buttons["account.history.cycle.\(unpaid.key)"]
+        XCTAssertTrue(row.label.contains("已逾期"))
+        captureScreenshot("第五个未还账期查询")
+        tap(row)
+        tap(app.buttons["标记已还"])
+        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        XCTAssertEqual(count.label, "共 0 个账期")
+        XCTAssertTrue(app.staticTexts["没有匹配账期"].exists)
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.account"])
+        reveal(app.buttons["account.cycleHistory"], fullyVisible: true)
+        tap(app.buttons["account.cycleHistory"])
+        tap(app.buttons["account.history.year"])
+        tap(app.buttons[unpaid.year])
+        tap(app.buttons["account.history.month"])
+        tap(app.buttons[unpaid.month])
+        tap(app.buttons["account.history.status"])
+        tap(app.buttons["已还款"])
+        XCTAssertEqual(count.label, "共 1 个账期")
+        XCTAssertTrue(row.label.contains("已还款"))
+    }
+
+    func testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("accountHistory")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, fullyVisible: true)
+        assertTouchTarget(history)
+        captureScreenshot("最大字号全部账期入口")
+        tap(history)
+        let future = accountHistoryMonth(offset: 5)
+        tap(app.buttons["account.history.year"])
+        tap(app.buttons[future.year])
+        tap(app.buttons["account.history.month"])
+        tap(app.buttons[future.month])
+        let status = app.buttons["account.history.status"]
+        reveal(status, fullyVisible: true)
+        assertTouchTarget(status)
+        tap(status)
+        tap(app.buttons["已还款"])
+        let count = app.staticTexts["account.history.count"]
+        reveal(count)
+        XCTAssertEqual(count.label, "共 0 个账期")
+        reveal(app.staticTexts["没有匹配账期"])
+        tap(status, scrollTowardTopWhenMissing: true)
+        tap(app.buttons["未还款"])
+        let row = app.buttons["account.history.cycle.\(future.key)"]
+        reveal(row, fullyVisible: true)
+        assertTouchTarget(row)
+        XCTAssertTrue(row.label.contains("03日"))
+        XCTAssertTrue(row.label.contains("06日"))
+        captureScreenshot("最大字号账期查询结果")
+        try auditAccessibility(for: [.hitRegion])
+        tap(row)
+        XCTAssertTrue(app.buttons["调整本期日期"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        let clear = app.buttons["account.history.clear"]
+        reveal(clear, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(clear)
+        tap(clear)
+        reveal(count)
+        XCTAssertEqual(count.label, "共 23 个账期")
+        XCTAssertFalse(app.buttons["account.history.clear"].exists)
+    }
+
+    private func accountHistoryMonth(offset: Int) -> (key: Int, year: String, month: String) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let date = calendar.date(byAdding: .month, value: offset, to: Date())!
+        let year = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        return (year * 100 + month, String(year), "\(month) 月")
+    }
+
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
         launch("core")
         openCard("UI Primary")

@@ -5,6 +5,28 @@ import XCTest
 
 @MainActor
 final class UITestFixtureTests: XCTestCase {
+    func testAccountHistoryFixtureRestoresFullPaidAndUnpaidCyclesWithSavedDates() throws {
+        let timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        for rawDate in [20260101, 20260910, 20261231] {
+            let today = try LocalDate(rawValue: rawDate)
+            let container = try CardPilotPersistence.makeContainer(inMemory: true)
+            try UITestBootstrap.seed(container.mainContext, scenario: .accountHistory, today: today)
+            let records = try BackupRecords.capture(container.mainContext)
+            let restored = try records.validatedContainer()
+            XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+            let card = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<Card>()).first { $0.productName == "UI Shared" })
+            XCTAssertEqual(card.account.cards.count, 2)
+            let cycles = accountDetailCycles(card.account, today: today, includesTrackedHistory: true, timeZone: timeZone)
+            XCTAssertEqual(cycles.count, 23)
+            XCTAssertEqual(filterAccountHistoryCycles(cycles, year: nil, month: nil, status: .paid).count, 8)
+            XCTAssertEqual(filterAccountHistoryCycles(cycles, year: nil, month: nil, status: .unpaid).count, 15)
+            let explicit = try XCTUnwrap(cycles.first { $0.cycleKey == today.addingMonths(5).monthKey })
+            XCTAssertEqual(explicit.statementDate.day, 3)
+            XCTAssertEqual(explicit.repaymentDate.day, 6)
+            XCTAssertTrue(cycles.contains { $0.cycleKey == today.addingMonths(-20).monthKey && $0.status == .paid })
+        }
+    }
+
     func testCoreFixturePassesFullBackupValidation() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         try UITestBootstrap.seed(container.mainContext)

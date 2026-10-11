@@ -17,8 +17,8 @@
 - 独立模拟器场景包含本月、上月、更早和未来月份，混合消费／退款、CNY／HKD与已冲正记录；在闰日、年初、月末进行完整备份往返和筛选检查。
 - UI 回归检查结果笔数、默认包含已冲正、有效状态、无匹配结果、清除、自定义日期控件，以及最大字号移除日期／币种条件、44 点点击范围与原生点击区域审计。
 
-本地 Swift 6 语法解析与 diff 检查通过；实际日期范围实现另在 Swift 6 下编译执行，检查闰年、跨年及支持年份边界。这些均为补充验证；交付仍需完整 GitHub iOS workflow，接续第九批后预计 206 项单元／集成测试和 30 项 UI 测试。最终 HEAD 全部通过并确认原生截图后合并，再验证 main。
+本地 Swift 6 语法解析与 diff 检查通过；实际日期范围实现另在 Swift 6 下编译执行，检查闰年、跨年及支持年份边界。这些均为补充验证。[PR #31](https://github.com/maxduke/card-pilot/pull/31) 已合并为 `c940b26`。[PR 原生 workflow](https://github.com/maxduke/card-pilot/actions/runs/38146385200) 与 [main 原生 workflow](https://github.com/maxduke/card-pilot/actions/runs/38149295591) 均通过 206 项单元／集成测试和 30 项 UI 测试，零失败、零跳过。普通筛选、自定义日期范围及两张最大字号移除条件截图已检查；最大字号筛选条继续使用横向滚动，标签整块可点，移除后笔数更新正确。
 
-前序原生运行出现产物上传 Action 的 Node.js 20 弃用提示；测试 workflow 的 `actions/upload-artifact` 从 v4 对齐到仓库 IPA workflow 已使用的 v7。[官方 Action 定义](https://github.com/actions/upload-artifact/blob/v7/action.yml)使用 Node.js 24，默认仍打包 ZIP。继续保留 `always()` 上传、七天保留期、相同结果目录和完整测试参数；合并前需实际生成并读取最终 HEAD 的原生产物，不仅检查 workflow 文本。
+前序原生运行出现产物上传 Action 的 Node.js 20 弃用提示；测试 workflow 的 `actions/upload-artifact` 从 v4 对齐到仓库 IPA workflow 已使用的 v7。[官方 Action 定义](https://github.com/actions/upload-artifact/blob/v7/action.yml)使用 Node.js 24，默认仍打包 ZIP。继续保留 `always()` 上传、七天保留期、相同结果目录和完整测试参数；最终 PR HEAD 的原生产物 `11706585503` 已实际生成，并读取四张截图；main 产物 `11707022328` 也已生成。
 
 模拟器检查不代替真实 VoiceOver、最小屏幕和长期账本性能测量。
