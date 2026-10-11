@@ -349,6 +349,80 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(transaction.label.contains("99.999 CNY"))
     }
 
+    func testTransactionSaveFeedbackClosesAcrossNestedPresentations() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("77", into: app.textFields["transactionAmount"])
+        enter("UI Save Feedback", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 77 CNY · 未计入活动")
+        assertTouchTarget(feedback)
+        feedback.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 2))
+
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Save Feedback"])
+        tap(app.navigationBars["交易详情"].buttons["编辑"])
+        let amount = app.textFields["transactionAmount"]
+        tap(amount)
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "79")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "交易已更新 · 79 CNY · 未计入活动")
+        captureScreenshot("嵌套编辑保存提示")
+        // The presented detail and the root must both forget the confirmation.
+        feedback.tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 2))
+        tap(app.navigationBars["交易详情"].buttons["完成"])
+        XCTAssertFalse(feedback.exists)
+        XCTAssertTrue(app.buttons["transaction.UI Save Feedback"].label.contains("79 CNY"))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Shared")
+        tap(app.buttons["card.transactions"])
+        XCTAssertTrue(app.buttons["transaction.UI Save Feedback"].label.contains("79 CNY"))
+        XCTAssertFalse(feedback.exists)
+    }
+
+    func testTransactionSaveFeedbackExpiresAndClearsAfterBackgrounding() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("9", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 9 CNY · 未计入活动")
+        let normalHeight = feedback.frame.height
+        captureScreenshot("交易保存提示")
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 12))
+
+        tap(app.buttons["card.addTransaction"])
+        enter("19", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 19 CNY · 未计入活动")
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        XCTAssertFalse(feedback.exists)
+
+        relaunchAtLargestTextSize()
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("53", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 53 CNY · 未计入活动")
+        XCTAssertGreaterThan(feedback.frame.height, normalHeight * 1.3)
+        captureScreenshot("最大字号交易保存提示")
+        feedback.tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 2))
+    }
+
     func testBlankTransactionFollowsCardDefaultUntilCurrencyIsExplicitlyChosen() {
         launch("core")
         openCard("UI Shared")

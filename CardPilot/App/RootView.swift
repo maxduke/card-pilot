@@ -77,7 +77,7 @@ struct RootView: View {
         .privacySensitive()
         .allowsHitTesting(!appLock.isLocked)
         .accessibilityHidden(appLock.isLocked)
-        .transactionSaveFeedbackOverlay(producesHaptic: true)
+        .transactionSaveFeedbackOverlay(producesHaptic: true, announcesSave: true)
         .trackedSheet(isPresented: $showingSettings, onDismiss: handlePendingQuickActions) {
             SettingsView().environmentObject(appLock)
         }
