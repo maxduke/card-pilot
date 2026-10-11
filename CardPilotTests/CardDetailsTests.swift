@@ -4,6 +4,41 @@ import XCTest
 final class CardDetailsTests: XCTestCase {
     private let utc = TimeZone(secondsFromGMT: 0)!
 
+    func testAccountHistoryFiltersByCycleMonthAndKeepsPaidAndUnpaidResults() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"), trackingStartCycleKey: 202601)
+        account.billingRuleVersions = [BillingRuleVersion(account: account, statementDay: 5,
+                                                         repaymentKind: .fixedDay, repaymentValue: 20)]
+        account.billingCycles = [
+            BillingCycleRecord(account: account, cycleKey: 202601, repaidAt: Date(timeIntervalSince1970: 1)),
+            BillingCycleRecord(account: account, cycleKey: 202608,
+                               statementDateOverride: 20260901, repaymentDateOverride: 20260921)
+        ]
+        let cycles = accountDetailCycles(account, today: try LocalDate(rawValue: 20260910),
+                                        includesTrackedHistory: true, timeZone: utc)
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: nil, month: nil, status: .all).map(\.cycleKey),
+                       (1...11).reversed().map { 202600 + $0 })
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: 2026, month: 1, status: .paid).map(\.cycleKey), [202601])
+        XCTAssertTrue(filterAccountHistoryCycles(cycles, year: 2026, month: 1, status: .unpaid).isEmpty)
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: 2026, month: 8, status: .unpaid).map(\.cycleKey), [202608])
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: nil, month: nil, status: .unpaid).count, 10)
+        XCTAssertTrue(filterAccountHistoryCycles(cycles, year: 2025, month: nil, status: .all).isEmpty)
+    }
+
+    func testAccountHistoryRetainsSavedPreTrackingCyclesAndClosedAccountBounds() throws {
+        let account = CreditCardAccount(bank: Bank(name: "测试银行"), trackingStartCycleKey: 202601,
+                                        status: .closed, closedOn: 20260620)
+        account.billingRuleVersions = [BillingRuleVersion(account: account, statementDay: 5,
+                                                         repaymentKind: .fixedDay, repaymentValue: 20)]
+        account.billingCycles = [BillingCycleRecord(account: account, cycleKey: 202512,
+                                                    repaidAt: Date(timeIntervalSince1970: 1))]
+        let cycles = accountDetailCycles(account, today: try LocalDate(rawValue: 20260910),
+                                        includesTrackedHistory: true, timeZone: utc)
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: nil, month: nil, status: .all).map(\.cycleKey),
+                       [202606, 202605, 202604, 202603, 202602, 202601, 202512])
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: 2025, month: nil, status: .paid).map(\.cycleKey), [202512])
+        XCTAssertEqual(filterAccountHistoryCycles(cycles, year: nil, month: nil, status: .unpaid).count, 6)
+    }
+
     func testNextBillingRuleCycleStartsAfterLatestScheduledVersion() {
         XCTAssertEqual(
             nextBillingRuleCycleKey(

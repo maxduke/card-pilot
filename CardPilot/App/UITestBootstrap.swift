@@ -13,6 +13,7 @@ enum UITestBootstrap {
         case dashboardActions
         case linkedRefunds
         case transactionFilters
+        case accountHistory
     }
 
     static func makeStore() -> BackupStore? {
@@ -175,6 +176,21 @@ enum UITestBootstrap {
                 context.insert(Transaction(card: sibling, kind: kind, transactionOn: date.rawValue,
                                            amount: 10, currencyCode: currency, merchant: merchant, status: status))
             }
+        }
+        if scenario == .accountHistory {
+            account.trackingStartCycleKey = today.addingMonths(-18).monthKey
+            for offset in -18 ... -12 {
+                context.insert(BillingCycleRecord(account: account, cycleKey: today.addingMonths(offset).monthKey,
+                                                  repaidAt: today.addingDays(-1).date(in: TimeZone(identifier: "Asia/Shanghai")!)))
+            }
+            context.insert(BillingCycleRecord(account: account, cycleKey: today.addingMonths(-20).monthKey,
+                                              repaidAt: today.addingDays(-1).date(in: TimeZone(identifier: "Asia/Shanghai")!)))
+            let future = today.addingMonths(5)
+            context.insert(BillingCycleRecord(
+                account: account, cycleKey: future.monthKey,
+                statementDateOverride: try LocalDate(year: future.year, month: future.month, day: 3).rawValue,
+                repaymentDateOverride: try LocalDate(year: future.year, month: future.month, day: 6).rawValue
+            ))
         }
         try context.save()
     }

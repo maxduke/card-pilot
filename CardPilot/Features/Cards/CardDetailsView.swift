@@ -247,6 +247,19 @@ struct AccountDetailView: View {
                         .accessibilityIdentifier("billingCycle.\(cycle.cycleKey)")
                     }
                 }
+                NavigationLink {
+                    AccountCycleHistoryView(account: account)
+                } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("查看全部账期")
+                            .font(.subheadline.weight(.medium))
+                        Text("按年月查看已还与未还账期")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityIdentifier("account.cycleHistory")
             }
 
             if !paidCycles.isEmpty {
@@ -542,7 +555,7 @@ private struct BillingRuleRow: View {
     }
 }
 
-private struct BillingCycleRow: View {
+struct BillingCycleRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let cycle: BillingCycle
     let today: LocalDate
