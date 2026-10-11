@@ -595,7 +595,7 @@ struct TransactionDetailView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .transactionSaveFeedbackOverlay()
+        .transactionSaveFeedback()
     }
 
     private func detailTag(_ title: String, color: Color) -> some View {

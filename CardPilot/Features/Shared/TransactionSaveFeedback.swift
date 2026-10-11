@@ -33,8 +33,7 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var notificationRouter = NotificationRouter.shared
-    let producesHaptic: Bool
-    let announcesSave: Bool
+    let isRootPresentation: Bool
     @State private var message: String?
     @State private var revision = 0
     @State private var pendingFeedback: PendingFeedback?
@@ -45,75 +44,75 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let message {
-                    Button {
-                        // The root and a presented transaction detail share the
-                        // confirmation. Closing either also clears the other.
-                        NotificationCenter.default.post(name: .transactionSaveFeedbackDidDismiss, object: nil)
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .accessibilityHidden(true)
-                            Text(message)
-                                .font(.footnote.weight(.medium))
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 0)
-                            Image(systemName: "xmark")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(.quaternary, lineWidth: 0.5)
-                        }
-                        .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        VStack(spacing: 0) {
+            if let message, !isRootPresentation || notificationRouter.presentations.isEmpty {
+                Button {
+                    // The root and a presented transaction detail share the
+                    // confirmation. Closing either also clears the other.
+                    NotificationCenter.default.post(name: .transactionSaveFeedbackDidDismiss, object: nil)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .accessibilityHidden(true)
+                        Text(message)
+                            .font(.footnote.weight(.medium))
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(message)
-                    .accessibilityHint("轻点关闭")
-                    .accessibilityIdentifier("transaction.saveFeedback")
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .privacySensitive()
-                    .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.quaternary, lineWidth: 0.5)
+                    }
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(message)
+                .accessibilityHint("轻点关闭")
+                .accessibilityIdentifier("transaction.saveFeedback")
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .privacySensitive()
+                .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
             }
-            .onReceive(NotificationCenter.default.publisher(for: .transactionDidSave)) { notification in
-                guard scenePhase == .active,
-                      let savedMessage = notification.userInfo?["message"] as? String else { return }
-                message = nil
-                pendingFeedback = PendingFeedback(message: savedMessage, presentations: notificationRouter.presentations)
-                presentPendingFeedback()
-            }
-            .onChange(of: notificationRouter.presentations) { _, _ in presentPendingFeedback() }
-            .onReceive(NotificationCenter.default.publisher(for: .transactionSaveFeedbackDidDismiss)) { _ in
-                clearFeedback()
-            }
-            .task(id: voiceOverEnabled ? nil : revision) {
-                guard message != nil, !voiceOverEnabled else { return }
-                let displayedRevision = revision
-                do { try await Task.sleep(for: .seconds(8)) }
-                catch { return }
-                // A newer save may be waiting for its editor to close. Its
-                // pending confirmation must survive the previous timer.
-                guard !Task.isCancelled, !voiceOverEnabled,
-                      displayedRevision == revision, message != nil else { return }
-                clearFeedback()
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active { clearFeedback() }
-            }
-            .onDisappear { clearFeedback() }
-            .sensoryFeedback(.success, trigger: producesHaptic ? revision : 0)
+            content
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .transactionDidSave)) { notification in
+            guard scenePhase == .active,
+                  let savedMessage = notification.userInfo?["message"] as? String else { return }
+            message = nil
+            pendingFeedback = PendingFeedback(message: savedMessage, presentations: notificationRouter.presentations)
+            presentPendingFeedback()
+        }
+        .onChange(of: notificationRouter.presentations) { _, _ in presentPendingFeedback() }
+        .onReceive(NotificationCenter.default.publisher(for: .transactionSaveFeedbackDidDismiss)) { _ in
+            clearFeedback()
+        }
+        .task(id: voiceOverEnabled ? nil : revision) {
+            guard message != nil, !voiceOverEnabled else { return }
+            let displayedRevision = revision
+            do { try await Task.sleep(for: .seconds(8)) }
+            catch { return }
+            // A newer save may be waiting for its editor to close. Its
+            // pending confirmation must survive the previous timer.
+            guard !Task.isCancelled, !voiceOverEnabled,
+                  displayedRevision == revision, message != nil else { return }
+            clearFeedback()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { clearFeedback() }
+        }
+        .onDisappear { clearFeedback() }
+        .sensoryFeedback(.success, trigger: isRootPresentation ? revision : 0)
     }
 
     private func presentPendingFeedback() {
@@ -126,7 +125,7 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
         withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)) {
             message = pending.message
         }
-        if announcesSave && voiceOverEnabled {
+        if isRootPresentation && voiceOverEnabled {
             let announcement = NSAttributedString(string: pending.message, attributes: [
                 .accessibilitySpeechQueueAnnouncement: NSNumber(value: true)
             ])
@@ -141,7 +140,7 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
 }
 
 extension View {
-    func transactionSaveFeedbackOverlay(producesHaptic: Bool = false, announcesSave: Bool = false) -> some View {
-        modifier(TransactionSaveFeedbackModifier(producesHaptic: producesHaptic, announcesSave: announcesSave))
+    func transactionSaveFeedback(isRootPresentation: Bool = false) -> some View {
+        modifier(TransactionSaveFeedbackModifier(isRootPresentation: isRootPresentation))
     }
 }
