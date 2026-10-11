@@ -537,10 +537,14 @@ private struct PromotionProgressSummary: View {
     }
 }
 
-private enum PromotionEditorStep: Int, CaseIterable, Hashable {
+private enum PromotionEditorStep: Int, CaseIterable, Hashable, Identifiable {
     case basics
     case eligibility
     case rules
+
+    var id: Int { rawValue }
+
+    var editingTitle: String { self == .basics ? "基本信息" : title }
 
     var title: String {
         switch self {
@@ -712,13 +716,13 @@ private struct PromotionEditorView: View {
     @State private var notes: String
     @State private var archived: Bool
     @State private var seriesEditScope: PromotionSeriesEditScope
-    @State private var step: PromotionEditorStep = .basics
+    @State private var step: PromotionEditorStep
     @State private var showingOrganizerPicker = false
     @State private var showingCardPicker = false
     @State private var errorMessage: String?
     @Query private var allPromotions: [Promotion]
 
-    init(promotion: Promotion?, banks: [Bank], networks: [CardNetwork], cards: [Card]) {
+    init(promotion: Promotion?, banks: [Bank], networks: [CardNetwork], cards: [Card], initialStep: PromotionEditorStep = .basics) {
         self.promotion = promotion
         self.banks = banks
         self.networks = networks
@@ -750,6 +754,7 @@ private struct PromotionEditorView: View {
         _notes = State(initialValue: promotion?.notes ?? "")
         _archived = State(initialValue: promotion?.archivedAt != nil)
         _seriesEditScope = State(initialValue: .thisOnly)
+        _step = State(initialValue: promotion == nil ? .basics : initialStep)
     }
 
     private var editSnapshot: String {
@@ -760,7 +765,31 @@ private struct PromotionEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    editorStepIndicator
+                    if promotion == nil {
+                        editorStepIndicator
+                    } else {
+                        Picker("编辑内容", selection: $step) {
+                            ForEach(PromotionEditorStep.allCases) { item in
+                                Text(item.editingTitle).tag(item)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .accessibilityIdentifier("promotion.editor.section")
+                    }
+                }
+                if promotion?.seriesID != nil {
+                    Section {
+                        Picker("编辑范围", selection: $seriesEditScope) {
+                            Text("仅本期").tag(PromotionSeriesEditScope.thisOnly)
+                            Text("本期及以后").tag(PromotionSeriesEditScope.thisAndFuture)
+                        }
+                        Text("规则修改应用到所选范围；报名状态、报名日期和归档操作只修改本期。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let errorMessage {
+                    InlineErrorView(message: errorMessage)
                 }
                 switch step {
                 case .basics:
@@ -770,16 +799,16 @@ private struct PromotionEditorView: View {
                 case .rules:
                     rulesStep
                 }
-
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
-                }
             }
+            // Fields live in editor state; changing sections starts at the top
+            // without carrying the previous section's scroll position or focus.
+            .id(step)
             .navigationTitle(promotion == nil ? "添加促销" : "编辑促销")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     HStack(spacing: 12) {
-                        if step != .basics {
+                        if promotion == nil && step != .basics {
                             Button {
                                 retreat()
                             } label: {
@@ -790,10 +819,12 @@ private struct PromotionEditorView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if step == .rules {
+                    if promotion != nil || step == .rules {
                         Button("保存", action: save)
+                            .accessibilityIdentifier("promotion.editor.save")
                     } else {
                         Button("下一步", action: advance)
+                            .accessibilityIdentifier("promotion.editor.advance")
                     }
                 }
             }
@@ -857,10 +888,6 @@ private struct PromotionEditorView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else if promotion?.seriesID != nil {
-                    Picker("编辑范围", selection: $seriesEditScope) {
-                        Text("仅本期").tag(PromotionSeriesEditScope.thisOnly)
-                        Text("本期及以后").tag(PromotionSeriesEditScope.thisAndFuture)
-                    }
                     Text("系列日期由首期锚点按月生成，不能单独修改。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -977,6 +1004,7 @@ private struct PromotionEditorView: View {
                 TextField("规则（首版仅自动计算累计消费与优惠笔数）", text: $rules, axis: .vertical)
                 TextField("排除项", text: $exclusions, axis: .vertical)
                 TextField("奖励说明", text: $rewardDescription, axis: .vertical)
+                    .accessibilityIdentifier("promotion.editor.reward")
                 TextField("备注", text: $notes, axis: .vertical)
             }
             Section("状态") {
@@ -1192,13 +1220,24 @@ private struct PromotionEditorView: View {
     private func save() {
         let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !normalizedTitle.isEmpty else { errorMessage = "活动标题不能为空。"; return }
-        guard startDate <= endDate else { errorMessage = "结束日期不能早于开始日期。"; return }
+        errorMessage = nil
+        guard !normalizedTitle.isEmpty else {
+            step = .basics
+            errorMessage = "活动标题不能为空。"
+            return
+        }
+        guard startDate <= endDate else {
+            step = .basics
+            errorMessage = "结束日期不能早于开始日期。"
+            return
+        }
         guard isValidCurrencyCode(normalizedCurrency) else {
+            step = .basics
             errorMessage = "进度币种应为有效的 ISO 4217 代码。"
             return
         }
         if let promotion, promotion.progressCurrencyCode != normalizedCurrency, !promotion.allocations.isEmpty {
+            step = .basics
             errorMessage = "已有促销分配后不能修改进度币种。"
             return
         }
@@ -1218,7 +1257,10 @@ private struct PromotionEditorView: View {
             perTransactionThreshold = parseOptionalAmount(perTransactionThresholdText, label: "单笔满足金额")
             benefitTransactionCap = parsePositiveInteger(benefitTransactionCapText, label: "优惠笔数上限")
         }
-        guard threshold.isValid, cap.isValid, perTransactionThreshold.isValid, benefitTransactionCap.isValid else { return }
+        guard threshold.isValid, cap.isValid, perTransactionThreshold.isValid, benefitTransactionCap.isValid else {
+            step = .basics
+            return
+        }
 
         let startOn = CardPilotUI.rawDate(startDate)
         let endOn = CardPilotUI.rawDate(endDate)
@@ -1226,6 +1268,7 @@ private struct PromotionEditorView: View {
         let enrolledValue = status == .enrolled && hasEnrolledOn ? CardPilotUI.rawDate(enrolledOn) : nil
         let deadlineValue = status == .notRequired || !hasEnrollmentDeadline ? nil : CardPilotUI.rawDate(enrollmentDeadline)
         if let deadlineValue, deadlineValue > endOn {
+            step = .rules
             errorMessage = "报名截止日不能晚于活动结束日。"
             return
         }
@@ -1305,6 +1348,7 @@ private struct PromotionEditorView: View {
         }
         let targets = seriesTargets(for: target)
         guard !targets.contains(where: { !$0.allocations.isEmpty && $0.progressCurrencyCode != normalizedCurrency }) else {
+            step = .basics
             errorMessage = "系列中已有促销分配的周期不能修改进度币种。"
             return
         }
@@ -1634,7 +1678,8 @@ struct PromotionDetailView: View {
     @Query private var allPromotions: [Promotion]
     @State private var showingAllocationEditor = false
     @State private var editingAllocation: PromotionAllocation?
-    @State private var showingPromotionEditor = false
+    @State private var showingEditOptions = false
+    @State private var promotionEditorStep: PromotionEditorStep?
     @State private var selectedPeriodID: UUID
     @State private var allocationPendingDeletion: PromotionAllocation?
     @State private var showingAllocationDeleteConfirmation = false
@@ -1860,11 +1905,14 @@ struct PromotionDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    showingPromotionEditor = true
+                    showingEditOptions = true
                 } label: {
-                    Image(systemName: "pencil")
+                    Text("编辑")
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("编辑促销")
+                .accessibilityHint("选择要编辑的内容")
+                .accessibilityIdentifier("promotion.edit")
             }
             if displayedPromotion.seriesID == nil {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1881,11 +1929,19 @@ struct PromotionDetailView: View {
                 }
             }
         }
+        .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
+            ForEach(PromotionEditorStep.allCases) { item in
+                Button("编辑\(item.editingTitle)") {
+                    promotionEditorStep = item
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
         .trackedSheet(isPresented: $showingTransactionEditor) {
             TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
         }
-        .trackedSheet(isPresented: $showingPromotionEditor) {
-            PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards)
+        .trackedSheet(item: $promotionEditorStep) { step in
+            PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards, initialStep: step)
         }
         .trackedSheet(isPresented: $showingAllocationEditor) {
             AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)

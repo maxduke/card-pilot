@@ -1,8 +1,12 @@
 # CardPilot 首版实施计划
 
-## 当前 UX 第四批（2026-10-11）
+## 当前 UX 第五批（2026-10-11）
 
-基于已验证主线 `2b69748`，继续处理 O04 的交易保存反馈：在弹层关闭后显示，保留可关闭的确认、辅助功能播报及减少动态效果适配，补齐嵌套编辑、自动收起、后台返回与最大字号回归。范围与验收见 [第四批记录](docs/ux-save-feedback-2026-10-11.md)。继续通过 PR 原生 workflow、截图检查、合并及主线 workflow 交付。
+基于已验证主线 `bdff161`，处理 O11 的促销分组编辑：从详情直接进入需要修改的内容，编辑时可切换分组并直接保存，保留创建引导、完整校验、系列编辑范围与取消保护。范围与验收见 [第五批记录](docs/ux-promotion-editing-2026-10-11.md)。继续通过 PR 原生 workflow、截图检查、合并及主线 workflow 交付。
+
+## 已完成 UX 第四批（2026-10-11）
+
+[PR #25](https://github.com/maxduke/card-pilot/pull/25) 改善 O04 的交易保存反馈：在编辑弹层关闭后显示，普通模式保留 8 秒，可手动关闭；适配 VoiceOver 与减少动态效果，修复导航遮挡和嵌套重复提示，范围与真机边界见 [第四批记录](docs/ux-save-feedback-2026-10-11.md)。[PR 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38100343026) 与合并提交 `bdff161` 的 [main 原生 CI](https://github.com/maxduke/card-pilot/actions/runs/38101803684) 均通过 199 项单元／集成测试与 17 项 UI 测试，零失败、零跳过；原生提示和交易截图已检查。
 
 ## 已完成 UX 第三批（2026-10-10）
 
