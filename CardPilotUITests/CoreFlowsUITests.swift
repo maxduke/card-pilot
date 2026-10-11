@@ -120,6 +120,94 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
+    func testPromotionSectionsSaveAndCancelWithoutRepeatingCreation() {
+        launch("core")
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        XCTAssertFalse(app.buttons["promotion.editor.advance"].exists)
+        XCTAssertTrue(app.buttons["promotion.editor.save"].isHittable)
+        captureScreenshot("促销分组编辑")
+        let reward = app.descendants(matching: .any).matching(identifier: "promotion.editor.reward").firstMatch
+        enter("UI Rule Reward", into: reward)
+        selectPromotionEditorSection("基本信息")
+        replaceText("UI Edited", in: app.textFields["活动标题"])
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Edited"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Edited")
+        openPromotionEditor("报名与规则")
+        reveal(reward)
+        XCTAssertEqual(reward.value as? String, "UI Rule Reward")
+        replaceText("UI Cancelled Reward", in: reward)
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(app.navigationBars["UI Edited"].waitForExistence(timeout: 10))
+        openPromotionEditor("报名与规则")
+        reveal(reward)
+        XCTAssertEqual(reward.value as? String, "UI Rule Reward")
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
+        launch("core")
+        tap(app.tabBars.buttons["促销"])
+        tap(app.buttons["添加促销活动"])
+        XCTAssertFalse(app.buttons["promotion.editor.section"].exists)
+        XCTAssertFalse(app.buttons["promotion.editor.save"].exists)
+        tap(app.buttons["promotion.editor.advance"])
+        XCTAssertTrue(app.staticTexts["错误：请先填写活动标题。"].exists)
+        enter("UI Created Promotion", into: app.textFields["活动标题"])
+        tap(app.buttons["promotion.editor.advance"])
+        XCTAssertTrue(app.buttons["搜索并选择适用卡"].exists)
+        tap(app.buttons["promotion.editor.advance"])
+        XCTAssertFalse(app.buttons["promotion.editor.advance"].exists)
+        tap(app.buttons["promotion.editor.save"])
+        openPromotion("UI Created Promotion")
+        openPromotionEditor("基本信息")
+        replaceText("", in: app.textFields["活动标题"])
+        selectPromotionEditorSection("报名与规则")
+        tap(app.buttons["promotion.editor.save"])
+        // Save checks fields outside the selected section and returns to the
+        // section that needs correction, without mutating the stored promotion.
+        XCTAssertTrue(app.staticTexts["错误：活动标题不能为空。"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["活动标题"].exists)
+        captureScreenshot("促销编辑校验")
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+        tap(app.buttons["放弃修改"])
+        app.terminate()
+        app.launch()
+        openPromotion("UI Created Promotion")
+        XCTAssertTrue(app.navigationBars["UI Created Promotion"].exists)
+    }
+
+    func testPromotionSectionNavigationSupportsLargestTextSize() {
+        launch("core")
+        openPromotion("UI Spend")
+        openPromotionEditor("适用范围")
+        let section = app.buttons["promotion.editor.section"]
+        XCTAssertTrue(section.waitForExistence(timeout: 10))
+        let normalHeight = section.frame.height
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+
+        relaunchAtLargestTextSize()
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        XCTAssertTrue(section.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(section.frame.height, normalHeight * 1.3)
+        assertTouchTarget(section)
+        captureScreenshot("最大字号促销分组编辑")
+        selectPromotionEditorSection("适用范围")
+        XCTAssertTrue(app.buttons["搜索并选择适用卡"].exists)
+        captureScreenshot("最大字号促销适用范围")
+        selectPromotionEditorSection("基本信息")
+        replaceText("UI Large Promotion", in: app.textFields["活动标题"])
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Large Promotion"].waitForExistence(timeout: 10))
+    }
+
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
         launch("core")
         openCard("UI Primary")
@@ -622,6 +710,28 @@ final class CoreFlowsUITests: XCTestCase {
     private func openCard(_ name: String) {
         tap(app.tabBars.buttons["卡片"])
         tap(app.buttons["card.\(name)"])
+    }
+
+    private func openPromotion(_ name: String) {
+        tap(app.tabBars.buttons["促销"])
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
+    }
+
+    private func openPromotionEditor(_ section: String) {
+        tap(app.buttons["promotion.edit"])
+        tap(app.buttons["编辑\(section)"])
+        XCTAssertTrue(app.navigationBars["编辑促销"].waitForExistence(timeout: 10))
+    }
+
+    private func selectPromotionEditorSection(_ section: String) {
+        tap(app.buttons["promotion.editor.section"], scrollTowardTopWhenMissing: true)
+        tap(app.buttons[section])
+    }
+
+    private func replaceText(_ text: String, in element: XCUIElement) {
+        tap(element)
+        let oldValue = element.value as? String ?? ""
+        element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldValue.count) + text)
     }
 
     private func enter(_ text: String, into element: XCUIElement) {
