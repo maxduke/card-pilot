@@ -18,6 +18,6 @@
 - Debug 模拟器独立场景包含 20 张卡、4 个账户、1 项逾期、2 项今天待办与 2 项未来七天待办。完整备份验证及恢复读回在年初、月初、普通日期与年末运行；检查真实首页生成结果、共享账户去重及未来开始活动的报名截止。
 - UI 回归检查三个指标与对应事项、两类详情导航、还款后的空状态和撤销、恢复全部、辅助字号点击范围，保留概览／今日待办／最大字号原生截图，并执行最大字号点击区域审计。
 
-本地 Swift 6 语法解析和 diff 检查是补充验证；Linux 没有 iOS SDK。交付仍以未裁剪的 GitHub iOS workflow 为准，预期 202 项单元／集成测试和 24 项 UI 测试；最终 HEAD 全部通过、原生截图确认后合并，并再次验证 main。
+本地 Swift 6 语法解析和 diff 检查作为补充通过；Linux 没有 iOS SDK。[PR #29](https://github.com/maxduke/card-pilot/pull/29) 已合并为 `ca319fd`。[PR 原生 workflow](https://github.com/maxduke/card-pilot/actions/runs/38123224818) 和 [main 原生 workflow](https://github.com/maxduke/card-pilot/actions/runs/38125207500) 均通过 202 项单元／集成测试和 24 项 UI 测试，零失败、零跳过。20 张卡首页概览、今日待办及两张最大字号截图已检查；工作流未裁剪或放宽检查。
 
 20 张卡的功能场景不代表长期数据性能已测量，也不代替真实 VoiceOver、最小屏幕和还款提醒验收；O19 与 O21 继续按独立记录推进。

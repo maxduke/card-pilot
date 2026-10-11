@@ -386,6 +386,167 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(progress.label, "100 CNY / 1,000 CNY")
     }
 
+    func testLinkedRefundPrefillsOriginalCurrencyAndPreservesPartialRefundNavigation() {
+        launch("linkedRefunds")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        tap(recordRefund)
+        let amount = app.textFields["transactionAmount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        let original = app.buttons["transaction.original"]
+        reveal(original)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Original Purchase"))
+        captureScreenshot("从原消费记录退款")
+        enter("20", into: amount)
+        enter("UI Second Refund", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "20")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related."))
+        let second = related.matching(NSPredicate(format: "label CONTAINS %@", "UI Second Refund")).firstMatch
+        reveal(second, fullyVisible: true)
+        XCTAssertTrue(second.label.contains("−20 CNY"))
+        assertTouchTarget(second)
+        captureScreenshot("原消费关联退款")
+        tap(second)
+        XCTAssertTrue(app.staticTexts["UI Second Refund"].waitForExistence(timeout: 10))
+        let originalLink = related.matching(NSPredicate(format: "label CONTAINS %@", "UI Original Purchase")).firstMatch
+        tap(originalLink)
+        XCTAssertTrue(app.staticTexts["UI Original Purchase"].waitForExistence(timeout: 10))
+        // Each related detail belongs to the same native navigation stack.
+        tap(app.navigationBars["交易详情"].buttons.firstMatch)
+        XCTAssertTrue(app.staticTexts["UI Second Refund"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["交易详情"].buttons.firstMatch)
+        app.terminate()
+        app.launch()
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        XCTAssertTrue(app.staticTexts["100 CNY"].waitForExistence(timeout: 10))
+        for (merchant, amountText) in [("UI Earlier Refund", "−40 CNY"), ("UI Second Refund", "−20 CNY")] {
+            let row = related.matching(NSPredicate(format: "label CONTAINS %@", merchant)).firstMatch
+            reveal(row)
+            XCTAssertTrue(row.label.contains(amountText))
+        }
+    }
+
+    func testLinkedRefundExcessAmountsRequireConfirmationAndRetainOriginal() {
+        launch("linkedRefunds")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        tap(app.buttons["transaction.recordRefund"])
+        enter("70", into: app.textFields["transactionAmount"])
+        enter("UI Excess Refund", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "60")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.alerts["退款超出可退范围"].waitForExistence(timeout: 10))
+        captureScreenshot("累计退款超额确认")
+        tap(app.alerts.buttons["取消"])
+        XCTAssertTrue(app.buttons["saveTransaction"].exists)
+        tap(app.buttons["saveTransaction"])
+        tap(app.alerts.buttons["仍然保存"])
+        app.terminate()
+        app.launch()
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        XCTAssertTrue(app.staticTexts["100 CNY"].waitForExistence(timeout: 10))
+        let excess = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "transaction.related.", "UI Excess Refund")).firstMatch
+        reveal(excess)
+        XCTAssertTrue(excess.label.contains("−70 CNY"))
+        tap(excess)
+        let savedAllocation = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Spend", "60 CNY")).firstMatch
+        reveal(savedAllocation)
+        XCTAssertTrue(savedAllocation.exists)
+    }
+
+    func testRefundEntryPreservesUnrelatedDraftAndStartsOnlyAfterDiscard() {
+        launch("linkedRefunds")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("17", into: app.textFields["transactionAmount"])
+        enter("UI Unrelated Draft", into: app.textFields["商户（可选）"])
+        tap(app.buttons["关闭"])
+        tap(app.buttons["保留草稿并关闭"])
+        tap(app.navigationBars["卡片详情"].buttons.firstMatch)
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Original Purchase"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        tap(recordRefund)
+        XCTAssertTrue(app.staticTexts["transactionDraftSummary"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["transactionDraftSummary"].label.contains("UI Unrelated Draft"))
+        tap(app.buttons["继续草稿"])
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "17")
+        XCTAssertTrue(app.segmentedControls.buttons["消费"].isSelected)
+        XCTAssertFalse(app.buttons["transaction.original"].exists)
+        tap(app.buttons["关闭"])
+        tap(app.buttons["保留草稿并关闭"])
+        tap(recordRefund)
+        tap(app.buttons["丢弃草稿并新建"])
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        selectTransactionCard("UI Primary")
+        selectTransactionCard("UI Foreign")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        tap(app.buttons["关闭"])
+        tap(app.buttons["丢弃草稿"])
+        tap(recordRefund)
+        XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["继续草稿"].exists)
+        tap(app.buttons["关闭"])
+        XCTAssertFalse(app.buttons["保留草稿并关闭"].exists)
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+    }
+
+    func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
+        launch("linkedRefunds")
+        relaunchAtLargestTextSize()
+        openCard("UI Shared")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Unlinked Refund"])
+        reveal(app.staticTexts["未关联原消费"])
+        XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
+        tap(app.navigationBars["交易详情"].buttons["完成"])
+        tap(app.buttons["transaction.UI Reversed Purchase"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        assertTouchTarget(recordRefund)
+        captureScreenshot("最大字号原消费退款入口")
+        tap(recordRefund)
+        let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
+        reveal(reversedMessage, fullyVisible: true)
+        captureScreenshot("最大字号已冲正原消费退款说明")
+        enter("10", into: app.textFields["transactionAmount"])
+        enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related.")).firstMatch
+        reveal(related, fullyVisible: true)
+        assertTouchTarget(related)
+        XCTAssertTrue(related.label.contains("UI Reversed Original Refund"))
+        XCTAssertTrue(related.label.contains("状态：有效"))
+        captureScreenshot("最大字号关联退款")
+        try auditAccessibility(for: [.hitRegion])
+        tap(related)
+        XCTAssertTrue(app.staticTexts["UI Reversed Original Refund"].waitForExistence(timeout: 10))
+        tap(app.navigationBars["交易详情"].buttons.firstMatch)
+        XCTAssertTrue(app.staticTexts["UI Reversed Purchase"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["已冲正"].exists)
+    }
+
     func testDraftKeepsCommaDecimalMeaningAfterRegionChange() throws {
         let localeIndex = try XCTUnwrap(app.launchArguments.firstIndex(of: "-AppleLocale")) + 1
         app.launchArguments[localeIndex] = "de_DE"

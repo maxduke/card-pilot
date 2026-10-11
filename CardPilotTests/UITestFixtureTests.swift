@@ -68,5 +68,25 @@ final class UITestFixtureTests: XCTestCase {
             )
         }
     }
+
+    func testLinkedRefundFixtureRestoresCurrencyAssociationAndIndependentReversal() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .linkedRefunds)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+        XCTAssertEqual(transactions.count, 4)
+        let original = try XCTUnwrap(transactions.first { $0.merchant == "UI Original Purchase" })
+        XCTAssertEqual(original.currencyCode, "CNY")
+        XCTAssertEqual(original.card.account.limitCurrencyCode, "HKD")
+        XCTAssertEqual(original.refunds.count, 1)
+        XCTAssertEqual(original.refunds.first?.originalTransaction?.id, original.id)
+        XCTAssertEqual(original.refunds.first?.allocations.first?.qualifyingAmount, 40)
+        let promotion = try XCTUnwrap(original.allocations.first?.promotion)
+        XCTAssertEqual(try PromotionCalculator.progress(for: promotion).qualifiedAmount, 60)
+        XCTAssertEqual(transactions.first { $0.merchant == "UI Reversed Purchase" }?.status, .reversed)
+        XCTAssertNil(transactions.first { $0.merchant == "UI Unlinked Refund" }?.originalTransaction)
+    }
 }
 #endif

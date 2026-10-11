@@ -11,6 +11,7 @@ struct TransactionEditorView: View {
     let transactions: [Transaction]
     var initialPromotion: Promotion? = nil
     var initialCard: Card? = nil
+    var initialRefundOriginal: Transaction? = nil
 
     @State private var loaded = false
     @State private var pendingDraft: TransactionDraft?
@@ -27,7 +28,8 @@ struct TransactionEditorView: View {
             if transaction != nil || ready {
                 TransactionEditorForm(transaction: transaction, cards: cards, promotions: promotions,
                                       transactions: transactions, initialPromotion: initialPromotion,
-                                      initialCard: initialCard, draft: resumedDraft, draftStore: store)
+                                      initialCard: initialCard, initialRefundOriginal: initialRefundOriginal,
+                                      draft: resumedDraft, draftStore: store)
             } else {
                 NavigationStack {
                     ScrollView {
