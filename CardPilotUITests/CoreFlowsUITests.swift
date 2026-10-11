@@ -890,7 +890,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
-    func testTransactionDateCurrencyAndStatusFiltersKeepCountsAndClear() {
+    func testTransactionDateAndCurrencyPresetsKeepCounts() {
         launch("transactionFilters")
         tap(app.tabBars.buttons["交易"])
         let count = app.staticTexts["transactions.results.count"]
@@ -912,6 +912,20 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.navigationBars["筛选交易"].buttons["完成"])
         XCTAssertEqual(count.label, "共 2 笔交易")
         XCTAssertTrue(app.buttons["transaction.UI Previous Reversed"].exists)
+    }
+
+    func testTransactionStatusKindAndCurrencyFiltersKeepCountsAndClear() {
+        launch("transactionFilters")
+        tap(app.tabBars.buttons["交易"])
+        let count = app.staticTexts["transactions.results.count"]
+        XCTAssertEqual(count.label, "共 8 笔交易")
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.date"])
+        tap(app.buttons["上月"])
+        tap(app.buttons["transactions.filter.currency"])
+        tap(app.buttons["CNY"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 2 笔交易")
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.status"])
         tap(app.buttons["有效"])
@@ -932,7 +946,13 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(count.label, "共 8 笔交易")
         XCTAssertFalse(app.buttons["transactions.filters.date.clear"].exists)
         XCTAssertFalse(app.buttons["transactions.filters.currency.clear"].exists)
+    }
 
+    func testCustomTransactionDateRangeShowsFieldsAndKeepsCounts() {
+        launch("transactionFilters")
+        tap(app.tabBars.buttons["交易"])
+        let count = app.staticTexts["transactions.results.count"]
+        XCTAssertEqual(count.label, "共 8 笔交易")
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.date"])
         tap(app.buttons["自定义范围"])
@@ -1211,6 +1231,10 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(first, fullyVisible: true)
         XCTAssertTrue(first.exists)
         tap(first)
+        XCTAssertTrue(app.navigationBars["规则计划"].waitForExistence(timeout: 10))
+        // Returning to the plan resets its List position. At the largest size,
+        // the cancel action is below the rule and date-conflict explanation.
+        reveal(cancel, fullyVisible: true)
         XCTAssertFalse(cancel.isEnabled)
     }
 
