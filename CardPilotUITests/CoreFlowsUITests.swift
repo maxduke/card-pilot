@@ -356,6 +356,9 @@ final class CoreFlowsUITests: XCTestCase {
         enter("77", into: app.textFields["transactionAmount"])
         enter("UI Save Feedback", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
+        let confirmation = app.descendants(matching: .any).matching(identifier: "transaction.saveFeedback").firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        XCTAssertEqual(confirmation.elementType, .button)
         let feedback = app.buttons["transaction.saveFeedback"]
         XCTAssertTrue(feedback.waitForExistence(timeout: 10))
         XCTAssertEqual(feedback.label, "已记录 77 CNY · 未计入活动")

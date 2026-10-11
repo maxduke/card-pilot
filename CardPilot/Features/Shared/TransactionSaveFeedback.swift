@@ -46,7 +46,7 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .top) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if let message {
                     Button {
                         // The root and a presented transaction detail share the
@@ -56,6 +56,7 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
                         HStack(spacing: 10) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
+                                .accessibilityHidden(true)
                             Text(message)
                                 .font(.footnote.weight(.medium))
                                 .multilineTextAlignment(.leading)
@@ -63,6 +64,7 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
                             Image(systemName: "xmark")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
@@ -76,13 +78,12 @@ private struct TransactionSaveFeedbackModifier: ViewModifier {
                         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .privacySensitive()
-                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel(message)
                     .accessibilityHint("轻点关闭")
                     .accessibilityIdentifier("transaction.saveFeedback")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .privacySensitive()
                     .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
                 }
             }
