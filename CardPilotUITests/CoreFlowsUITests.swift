@@ -890,6 +890,86 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
+    func testTransactionDateCurrencyAndStatusFiltersKeepCountsAndClear() {
+        launch("transactionFilters")
+        tap(app.tabBars.buttons["交易"])
+        let count = app.staticTexts["transactions.results.count"]
+        XCTAssertEqual(count.label, "共 8 笔交易")
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.date"])
+        tap(app.buttons["本月"])
+        tap(app.buttons["transactions.filter.currency"])
+        tap(app.buttons["CNY"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 2 笔交易")
+        XCTAssertTrue(app.buttons["transaction.UI Current CNY"].exists)
+        XCTAssertTrue(app.buttons["transaction.UI Current Refund"].exists)
+        captureScreenshot("交易日期与币种筛选")
+
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.date"])
+        tap(app.buttons["上月"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 2 笔交易")
+        XCTAssertTrue(app.buttons["transaction.UI Previous Reversed"].exists)
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.status"])
+        tap(app.buttons["有效"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 1 笔交易")
+        XCTAssertTrue(app.buttons["transaction.UI Previous CNY"].exists)
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.currency"], scrollTowardTopWhenMissing: true)
+        tap(app.buttons["HKD"])
+        tap(app.buttons["transactions.filter.kind"])
+        tap(app.buttons["消费"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 0 笔交易")
+        XCTAssertTrue(app.staticTexts["没有匹配交易"].exists)
+        tap(app.buttons["transactions.filters"])
+        tap(app.navigationBars["筛选交易"].buttons["清除"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 8 笔交易")
+        XCTAssertFalse(app.buttons["transactions.filters.date.clear"].exists)
+        XCTAssertFalse(app.buttons["transactions.filters.currency.clear"].exists)
+
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.date"])
+        tap(app.buttons["自定义范围"])
+        let start = app.descendants(matching: .any).matching(identifier: "transactions.filter.startDate").firstMatch
+        let end = app.descendants(matching: .any).matching(identifier: "transactions.filter.endDate").firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 10))
+        XCTAssertTrue(end.exists)
+        captureScreenshot("自定义交易日期范围")
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        XCTAssertEqual(count.label, "共 3 笔交易")
+    }
+
+    func testDateAndCurrencyFilterRemovalAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("transactionFilters")
+        tap(app.tabBars.buttons["交易"])
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.date"])
+        tap(app.buttons["上月"])
+        tap(app.buttons["transactions.filter.currency"])
+        tap(app.buttons["CNY"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        let count = app.staticTexts["transactions.results.count"]
+        XCTAssertEqual(count.label, "共 2 笔交易")
+        let date = app.buttons["transactions.filters.date.clear"]
+        assertTouchTarget(date)
+        captureScreenshot("最大字号日期与币种筛选")
+        date.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        XCTAssertEqual(count.label, "共 5 笔交易")
+        let currency = app.buttons["transactions.filters.currency.clear"]
+        assertTouchTarget(currency)
+        captureScreenshot("最大字号币种筛选移除")
+        try auditAccessibility(for: [.hitRegion])
+        tap(currency)
+        XCTAssertEqual(count.label, "共 8 笔交易")
+    }
+
     func testTransactionFilterChipsAreAccessibleAndRemoveTheirFilter() throws {
         launch("core")
         openCard("UI Shared")

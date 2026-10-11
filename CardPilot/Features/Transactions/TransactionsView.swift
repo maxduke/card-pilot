@@ -3,6 +3,7 @@ import SwiftUI
 
 struct TransactionsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.currentDay) private var currentDay
     @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
     @Query private var cards: [Card]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
@@ -18,6 +19,9 @@ struct TransactionsView: View {
     @State private var filterKind: TransactionKind?
     @State private var filterPromotionID: UUID?
     @State private var filterStatus: TransactionStatus?
+    @State private var filterDatePeriod: TransactionDatePeriod = .all
+    @State private var customDateRange: ClosedRange<LocalDate>?
+    @State private var filterCurrencyCode: String?
     @State private var showingFilterSheet = false
     @State private var searchText = ""
 
@@ -58,6 +62,7 @@ struct TransactionsView: View {
                         if hasActiveFilters {
                             activeFilterSummary
                         }
+                        resultCount
                         EmptyStateView(
                             title: "没有匹配交易",
                             systemImage: "line.3.horizontal.decrease.circle",
@@ -69,6 +74,7 @@ struct TransactionsView: View {
                         if hasActiveFilters {
                             activeFilterSummary
                         }
+                        resultCount
                         List {
                             ForEach(transactionSections.indices, id: \.self) { sectionIndex in
                                 let section = transactionSections[sectionIndex]
@@ -162,10 +168,15 @@ struct TransactionsView: View {
                 TransactionFilterSheet(
                     cards: cards,
                     promotions: promotions,
+                    currencies: Array(Set(transactions.map(\.currencyCode))).sorted(),
+                    today: currentDay.today,
                     cardID: $filterCardID,
                     kind: $filterKind,
                     promotionID: $filterPromotionID,
-                    status: $filterStatus
+                    status: $filterStatus,
+                    datePeriod: $filterDatePeriod,
+                    customDateRange: $customDateRange,
+                    currencyCode: $filterCurrencyCode
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -211,8 +222,24 @@ struct TransactionsView: View {
             kind: filterKind,
             promotionID: filterPromotionID,
             status: filterStatus,
-            searchText: searchText
+            searchText: searchText,
+            dateRange: dateRange,
+            currencyCode: filterCurrencyCode
         )
+    }
+
+    private var dateRange: ClosedRange<Int>? {
+        filterDatePeriod.range(today: currentDay.today, customRange: customDateRange)
+    }
+
+    private var resultCount: some View {
+        Text("共 \(filteredTransactions.count) 笔交易")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .accessibilityIdentifier("transactions.results.count")
     }
 
     private var transactionSections: [(date: Int, transactions: [Transaction])] {
@@ -221,6 +248,7 @@ struct TransactionsView: View {
 
     private var activeFilterCount: Int {
         [filterCardID != nil, filterKind != nil, filterPromotionID != nil, filterStatus != nil,
+         filterDatePeriod != .all, filterCurrencyCode != nil,
          !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty]
             .filter { $0 }
             .count
@@ -234,6 +262,19 @@ struct TransactionsView: View {
     private var activeFilterSummary: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if let dateRange {
+                    let label = filterDatePeriod == .custom
+                        ? "日期：\(CardPilotUI.dateText(dateRange.lowerBound)) 至 \(CardPilotUI.dateText(dateRange.upperBound))"
+                        : "\(filterDatePeriod.title) · \(CardPilotUI.monthKeyText(dateRange.lowerBound / 100))"
+                    filterChip(label) {
+                        filterDatePeriod = .all
+                    }
+                    .accessibilityIdentifier("transactions.filters.date.clear")
+                }
+                if let filterCurrencyCode {
+                    filterChip(filterCurrencyCode) { self.filterCurrencyCode = nil }
+                        .accessibilityIdentifier("transactions.filters.currency.clear")
+                }
                 if let filterCardID, let card = cards.first(where: { $0.id == filterCardID }) {
                     filterChip(cardShortLabel(card)) { self.filterCardID = nil }
                 }
@@ -290,6 +331,8 @@ struct TransactionsView: View {
         filterKind = nil
         filterPromotionID = nil
         filterStatus = nil
+        filterDatePeriod = .all
+        filterCurrencyCode = nil
         searchText = ""
     }
 
@@ -316,6 +359,35 @@ struct TransactionsView: View {
     }
 }
 
+enum TransactionDatePeriod: String, CaseIterable {
+    case all, thisMonth, lastMonth, custom
+
+    var title: String {
+        switch self {
+        case .all: "全部日期"
+        case .thisMonth: "本月"
+        case .lastMonth: "上月"
+        case .custom: "自定义范围"
+        }
+    }
+
+    func range(today: LocalDate, customRange: ClosedRange<LocalDate>?) -> ClosedRange<Int>? {
+        switch self {
+        case .all: return nil
+        case .custom:
+            if let customRange { return customRange.lowerBound.rawValue...customRange.upperBound.rawValue }
+            return (today.monthKey * 100 + 1)...today.rawValue
+        case .thisMonth, .lastMonth:
+            let monthKey = self == .thisMonth ? today.monthKey
+                : (today.month == 1 ? (today.year - 1) * 100 + 12 : today.monthKey - 1)
+            // The month before January of year 1 is outside stored dates,
+            // so its numeric range matches no supported transaction date.
+            let days = monthKey == 12 ? 31 : LocalDate.daysInMonth(year: monthKey / 100, month: monthKey % 100)
+            return (monthKey * 100 + 1)...(monthKey * 100 + days)
+        }
+    }
+}
+
 func filterTransactions(_ transactions: [Transaction], cardID: UUID?, searchText: String) -> [Transaction] {
     filterTransactions(
         transactions,
@@ -333,13 +405,19 @@ func filterTransactions(
     kind: TransactionKind?,
     promotionID: UUID?,
     status: TransactionStatus?,
-    searchText: String
+    searchText: String,
+    dateRange: ClosedRange<Int>? = nil,
+    currencyCode: String? = nil
 ) -> [Transaction] {
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     return transactions.filter { transaction in
         guard cardID == nil || transaction.card.id == cardID else { return false }
         guard kind == nil || transaction.kind == kind else { return false }
         guard status == nil || transaction.status == status else { return false }
+        guard currencyCode == nil || transaction.currencyCode == currencyCode else { return false }
+        if let dateRange {
+            guard dateRange.contains(transaction.transactionOn) else { return false }
+        }
         guard promotionID == nil || transaction.allocations.contains(where: { $0.promotion.id == promotionID }) else { return false }
         guard !query.isEmpty else { return true }
         return transaction.merchant.localizedCaseInsensitiveContains(query)
@@ -678,14 +756,79 @@ private struct TransactionFilterSheet: View {
 
     let cards: [Card]
     let promotions: [Promotion]
+    let currencies: [String]
+    let today: LocalDate
     @Binding var cardID: UUID?
     @Binding var kind: TransactionKind?
     @Binding var promotionID: UUID?
     @Binding var status: TransactionStatus?
+    @Binding var datePeriod: TransactionDatePeriod
+    @Binding var customDateRange: ClosedRange<LocalDate>?
+    @Binding var currencyCode: String?
+
+    private var selectableCurrencies: [String] {
+        Array(Set(currencies + [currencyCode].compactMap { $0 })).sorted()
+    }
+
+    private var resolvedCustomRange: ClosedRange<LocalDate> {
+        customDateRange ?? (try! LocalDate(year: today.year, month: today.month, day: 1))...today
+    }
+
+    private var startDate: Binding<Date> {
+        Binding(get: { resolvedCustomRange.lowerBound.date(in: CardPilotUI.homeTimeZone) }, set: { value in
+            let start = LocalDate(date: value, timeZone: CardPilotUI.homeTimeZone)
+            customDateRange = start...max(start, resolvedCustomRange.upperBound)
+        })
+    }
+
+    private var endDate: Binding<Date> {
+        Binding(get: { resolvedCustomRange.upperBound.date(in: CardPilotUI.homeTimeZone) }, set: { value in
+            let end = LocalDate(date: value, timeZone: CardPilotUI.homeTimeZone)
+            customDateRange = min(resolvedCustomRange.lowerBound, end)...end
+        })
+    }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("日期范围", selection: $datePeriod) {
+                        ForEach(TransactionDatePeriod.allCases, id: \.self) { period in
+                            Text(period.title).tag(period)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .accessibilityLabel("日期范围")
+                    .accessibilityIdentifier("transactions.filter.date")
+                    .onChange(of: datePeriod) { _, period in
+                        if period == .custom && customDateRange == nil { customDateRange = resolvedCustomRange }
+                    }
+                    if datePeriod == .custom {
+                        DatePicker("开始日期", selection: startDate, displayedComponents: .date)
+                            .accessibilityIdentifier("transactions.filter.startDate")
+                        DatePicker("结束日期", selection: endDate, in: startDate.wrappedValue..., displayedComponents: .date)
+                            .accessibilityIdentifier("transactions.filter.endDate")
+                    }
+                } header: {
+                    Text("交易日期")
+                } footer: {
+                    Text("包含起止两天，按交易日期筛选。")
+                }
+
+                Section("币种") {
+                    Picker("币种", selection: $currencyCode) {
+                        Text("全部币种").tag(nil as String?)
+                        ForEach(selectableCurrencies, id: \.self) { code in
+                            Text(code).tag(Optional(code))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .accessibilityLabel("币种")
+                    .accessibilityIdentifier("transactions.filter.currency")
+                }
+
                 Section("卡片") {
                     Picker("卡片", selection: $cardID) {
                         Text("全部卡片").tag(nil as UUID?)
@@ -728,8 +871,11 @@ private struct TransactionFilterSheet: View {
                         Text("已冲正").tag(Optional(TransactionStatus.reversed))
                     }
                     .pickerStyle(.menu)
+                    .accessibilityIdentifier("transactions.filter.status")
                 }
             }
+            .environment(\.timeZone, CardPilotUI.homeTimeZone)
+            .environment(\.calendar, LocalDate.calendar(timeZone: CardPilotUI.homeTimeZone))
             .navigationTitle("筛选交易")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -739,6 +885,8 @@ private struct TransactionFilterSheet: View {
                         kind = nil
                         promotionID = nil
                         status = nil
+                        datePeriod = .all
+                        currencyCode = nil
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
