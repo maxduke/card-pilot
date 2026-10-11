@@ -1517,11 +1517,13 @@ final class CoreFlowsUITests: XCTestCase {
             var scrollDistance: CGFloat = 240
             let frame = app.frame
             var viewportBottom: CGFloat?
+            var settlesAtDestination = false
             if element.exists || element.waitForExistence(timeout: 2) {
                 let targetFrame = element.frame
                 let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
                 let contentTop = needsUnobscuredFrame ? app.navigationBars.firstMatch.frame.maxY : frame.minY + 110
                 var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
+                settlesAtDestination = needsUnobscuredFrame && frameIsVisible
                 if needsUnobscuredFrame {
                     let bottom = contentBottom
                     viewportBottom = bottom
@@ -1551,13 +1553,16 @@ final class CoreFlowsUITests: XCTestCase {
             let origin = app.coordinate(withNormalizedOffset: .zero)
             let dragStartY = targetIsAbove ? endY : startY
             let dragEndY = targetIsAbove ? startY : endY
-            // End the drag at rest so List inertia cannot overshoot a tall row
-            // and make the next visibility check alternate above and below it.
-            origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragStartY - frame.minY))
-                .press(forDuration: 0.05,
-                       thenDragTo: origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragEndY - frame.minY)),
-                       withVelocity: .slow,
-                       thenHoldForDuration: 0.2)
+            let start = origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragStartY - frame.minY))
+            let end = origin.withOffset(CGVector(dx: frame.width * 0.03, dy: dragEndY - frame.minY))
+            if settlesAtDestination {
+                // A partly visible tall row needs precise alignment without
+                // inertia. Keep the existing coarse search for offscreen rows.
+                start.press(forDuration: 0.05, thenDragTo: end,
+                            withVelocity: .slow, thenHoldForDuration: 0.2)
+            } else {
+                start.press(forDuration: 0.05, thenDragTo: end)
+            }
         }
         XCTFail("Expected an unobscured element: \(element)")
     }
