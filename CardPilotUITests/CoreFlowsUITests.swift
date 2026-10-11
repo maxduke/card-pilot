@@ -535,6 +535,7 @@ final class CoreFlowsUITests: XCTestCase {
         let original = app.buttons["transaction.original"]
         reveal(original, fullyVisible: true)
         XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Reversed Purchase"))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
         reveal(reversedMessage, fullyVisible: true)
         captureScreenshot("最大字号已冲正原消费退款说明")

@@ -1040,7 +1040,7 @@ struct TransactionEditorForm: View {
                         InlineErrorView(message: errorMessage)
                     }
                 }
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.immediately)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
