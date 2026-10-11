@@ -942,7 +942,6 @@ private struct PromotionEditorView: View {
                         Text("其他金额条件（可选）")
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .accessibilityIdentifier("promotion.editor.additionalAmounts")
                 }
                 CurrencyPickerView(selection: $currencyCode, title: "进度币种")
                     .disabled(promotion?.allocations.isEmpty == false)
@@ -1059,7 +1058,6 @@ private struct PromotionEditorView: View {
                     Text("规则、排除项与备注（可选）")
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .accessibilityIdentifier("promotion.editor.ruleNotes")
             }
             if promotion != nil {
                 Section("管理") {
