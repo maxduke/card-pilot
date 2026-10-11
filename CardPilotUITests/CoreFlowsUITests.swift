@@ -200,7 +200,10 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(section)
         captureScreenshot("最大字号促销分组编辑")
         selectPromotionEditorSection("适用范围")
-        XCTAssertTrue(app.buttons["搜索并选择适用卡"].exists)
+        // At the largest size, this lazy Form row is below the first viewport.
+        let cardPicker = app.buttons["搜索并选择适用卡"]
+        reveal(cardPicker)
+        XCTAssertTrue(cardPicker.isHittable)
         captureScreenshot("最大字号促销适用范围")
         selectPromotionEditorSection("基本信息")
         replaceText("UI Large Promotion", in: app.textFields["活动标题"])
