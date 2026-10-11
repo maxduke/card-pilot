@@ -151,7 +151,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
-    func testPromotionOptionalRulesKeepValuesAndRevealInvalidFields() {
+    func testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed() {
         launch("core")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
@@ -170,15 +170,8 @@ final class CoreFlowsUITests: XCTestCase {
         replaceText("5000", in: cap)
         enter("100", into: perTransaction)
         tap(additionalAmounts, scrollTowardTopWhenMissing: true)
+        // Saving from another section must retain the collapsed amount bindings.
         selectPromotionEditorSection("报名与规则")
-        let ruleNotes = app.buttons["规则、排除项与备注（可选）"]
-        let rules = app.descendants(matching: .any)
-            .matching(identifier: "promotion.editor.rules").firstMatch
-        XCTAssertFalse(rules.exists)
-        tap(ruleNotes)
-        enter("UI Manual Rules", into: rules)
-        tap(ruleNotes, scrollTowardTopWhenMissing: true)
-        XCTAssertFalse(rules.exists)
         tap(app.buttons["promotion.editor.save"])
         XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
 
@@ -193,10 +186,6 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "100")
         captureScreenshot("促销金额规则说明")
-        selectPromotionEditorSection("报名与规则")
-        reveal(rules)
-        XCTAssertEqual(rules.value as? String, "UI Manual Rules")
-        captureScreenshot("促销奖励与可选规则")
         tap(app.navigationBars["编辑促销"].buttons["取消"])
         XCTAssertFalse(app.buttons["放弃修改"].exists)
 
@@ -209,6 +198,35 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(explanation.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
         XCTAssertLessThan(explanation.frame.maxY, app.frame.maxY - 40)
         captureScreenshot("最大字号促销金额规则说明")
+    }
+
+    func testPromotionOptionalRuleNotesPersistWhenCollapsed() {
+        launch("core")
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        let ruleNotes = app.buttons["规则、排除项与备注（可选）"]
+        let rules = app.descendants(matching: .any)
+            .matching(identifier: "promotion.editor.rules").firstMatch
+        XCTAssertFalse(rules.exists)
+        tap(ruleNotes)
+        enter("UI Manual Rules", into: rules)
+        tap(ruleNotes, scrollTowardTopWhenMissing: true)
+        XCTAssertFalse(rules.exists)
+        // Exercise the same hidden-value contract independently of amount validation.
+        selectPromotionEditorSection("基本信息")
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Spend")
+        openPromotionEditor("报名与规则")
+        // Saved notes reopen without expanding the disclosure again.
+        reveal(rules)
+        XCTAssertEqual(rules.value as? String, "UI Manual Rules")
+        captureScreenshot("促销奖励与可选规则")
+        tap(app.navigationBars["编辑促销"].buttons["取消"])
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
@@ -1042,7 +1060,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transaction.UI Accessibility Coffee"].exists)
     }
 
-    func testAccountCycleHistoryFindsOlderPaidAndUnpaidCyclesAndPersistsSharedRepayment() {
+    func testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters() {
         launch("accountHistory")
         openCard("UI Shared")
         tap(app.buttons["card.account"])
@@ -1066,9 +1084,22 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("第七个已处理账期查询")
         tap(paid)
         XCTAssertTrue(app.buttons["撤销已还款"].waitForExistence(timeout: 10))
-        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        tap(app.navigationBars["账期详情"].buttons["全部账期"])
         XCTAssertEqual(count.label, "共 1 个账期")
         tap(app.buttons["account.history.clear"], scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(count.label, "共 23 个账期")
+        XCTAssertFalse(app.buttons["account.history.clear"].exists)
+    }
+
+    func testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards() {
+        launch("accountHistory")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, fullyVisible: true)
+        tap(history)
+        let count = app.staticTexts["account.history.count"]
+        XCTAssertEqual(count.label, "共 23 个账期")
         let unpaid = accountHistoryMonth(offset: -7)
         tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[unpaid.year])
@@ -1082,7 +1113,7 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("第五个未还账期查询")
         tap(row)
         tap(app.buttons["标记已还"])
-        tap(app.navigationBars["账期详情"].buttons.firstMatch)
+        tap(app.navigationBars["账期详情"].buttons["全部账期"])
         XCTAssertEqual(count.label, "共 0 个账期")
         XCTAssertTrue(app.staticTexts["没有匹配账期"].exists)
         app.terminate()
