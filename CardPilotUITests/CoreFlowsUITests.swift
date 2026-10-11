@@ -517,8 +517,8 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
-        relaunchAtLargestTextSize()
         openCard("UI Shared")
         tap(app.buttons["card.transactions"])
         tap(app.buttons["transaction.UI Unlinked Refund"])
