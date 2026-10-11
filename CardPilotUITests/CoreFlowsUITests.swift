@@ -349,6 +349,87 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(transaction.label.contains("99.999 CNY"))
     }
 
+    func testTransactionSaveFeedbackClosesAcrossNestedPresentations() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("77", into: app.textFields["transactionAmount"])
+        enter("UI Save Feedback", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let confirmation = app.descendants(matching: .any).matching(identifier: "transaction.saveFeedback").firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        XCTAssertEqual(confirmation.elementType, .button)
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 77 CNY · 未计入活动")
+        assertTouchTarget(feedback)
+        feedback.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 2))
+
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Save Feedback"])
+        tap(app.navigationBars["交易详情"].buttons["编辑"])
+        let amount = app.textFields["transactionAmount"]
+        tap(amount)
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "79")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "交易已更新 · 79 CNY · 未计入活动")
+        XCTAssertEqual(app.buttons.matching(identifier: "transaction.saveFeedback").count, 1)
+        XCTAssertGreaterThanOrEqual(app.navigationBars["交易详情"].frame.minY, feedback.frame.maxY)
+        captureScreenshot("嵌套编辑保存提示")
+        // The presented detail and the root must both forget the confirmation.
+        feedback.tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 2))
+        tap(app.navigationBars["交易详情"].buttons["完成"])
+        XCTAssertFalse(feedback.exists)
+        XCTAssertTrue(app.buttons["transaction.UI Save Feedback"].label.contains("79 CNY"))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Shared")
+        tap(app.buttons["card.transactions"])
+        XCTAssertTrue(app.buttons["transaction.UI Save Feedback"].label.contains("79 CNY"))
+        XCTAssertFalse(feedback.exists)
+    }
+
+    func testTransactionSaveFeedbackExpiresAndClearsAfterBackgrounding() {
+        launch("core")
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("9", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 9 CNY · 未计入活动")
+        let normalHeight = feedback.frame.height
+        XCTAssertGreaterThanOrEqual(app.navigationBars["卡片详情"].frame.minY, feedback.frame.maxY)
+        captureScreenshot("交易保存提示")
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 12))
+
+        tap(app.buttons["card.addTransaction"])
+        enter("19", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 19 CNY · 未计入活动")
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        XCTAssertFalse(feedback.exists)
+
+        relaunchAtLargestTextSize()
+        openCard("UI Shared")
+        tap(app.buttons["card.addTransaction"])
+        enter("53", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录 53 CNY · 未计入活动")
+        XCTAssertGreaterThan(feedback.frame.height, normalHeight * 1.3)
+        XCTAssertGreaterThanOrEqual(app.navigationBars["卡片详情"].frame.minY, feedback.frame.maxY)
+        captureScreenshot("最大字号交易保存提示")
+        feedback.tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 2))
+    }
+
     func testBlankTransactionFollowsCardDefaultUntilCurrencyIsExplicitlyChosen() {
         launch("core")
         openCard("UI Shared")
@@ -572,6 +653,7 @@ final class CoreFlowsUITests: XCTestCase {
             // Lazy Form rows disappear from the accessibility tree offscreen.
             // A known first-row control must be approached from the top.
             var targetIsAbove = scrollTowardTopWhenMissing
+            var scrollDistance: CGFloat = 240
             if element.exists || element.waitForExistence(timeout: 2) {
                 if element.isHittable {
                     if fullyVisible {
@@ -586,10 +668,18 @@ final class CoreFlowsUITests: XCTestCase {
                 let targetFrame = element.frame
                 let contentTop = fullyVisible ? app.navigationBars.firstMatch.frame.maxY : app.frame.minY + 110
                 targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < contentTop
+                if !targetFrame.isEmpty && (fullyVisible || element.elementType == .textField) {
+                    let obscuredDistance = targetIsAbove
+                        ? contentTop - targetFrame.minY
+                        : targetFrame.maxY - contentBottom
+                    // Large fields can straddle the footer. A fixed drag would
+                    // overshoot them and alternate above and below the viewport.
+                    scrollDistance = min(240, max(60, obscuredDistance + 24))
+                }
             }
             let frame = app.frame
             let startY = min(frame.maxY - 100, contentBottom - 25)
-            let endY = max(frame.minY + 160, startY - 240)
+            let endY = max(frame.minY + 160, startY - scrollDistance)
             // Use the list gutter so a drag never begins on a promotion switch.
             let origin = app.coordinate(withNormalizedOffset: .zero)
             let dragStartY = targetIsAbove ? endY : startY

@@ -1,92 +1,6 @@
 import SwiftData
 import SwiftUI
 
-extension Notification.Name {
-    static let transactionDidSave = Notification.Name("CardPilot.transactionDidSave")
-}
-
-struct TransactionSaveFeedback: Equatable {
-    let message: String
-
-    static func make(
-        kind: TransactionKind,
-        amount: Decimal,
-        currencyCode: String,
-        allocationCount: Int,
-        isNew: Bool
-    ) -> TransactionSaveFeedback {
-        let amountText = CardPilotUI.amountText(amount, currencyCode: currencyCode)
-        let action: String
-        if isNew {
-            action = kind == .refund ? "已记录退款 \(amountText)" : "已记录 \(amountText)"
-        } else {
-            action = kind == .refund ? "退款已更新 · \(amountText)" : "交易已更新 · \(amountText)"
-        }
-        let allocationText = allocationCount == 0 ? "未计入活动" : "计入 \(allocationCount) 个活动"
-        return TransactionSaveFeedback(message: "\(action) · \(allocationText)")
-    }
-}
-
-private struct TransactionSaveFeedbackModifier: ViewModifier {
-    let producesHaptic: Bool
-    @State private var message: String?
-    @State private var revision = 0
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(alignment: .top) {
-                if let message {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) { self.message = nil }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text(message)
-                                .font(.footnote.weight(.medium))
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(.quaternary, lineWidth: 0.5)
-                        }
-                        .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .accessibilityLabel(message)
-                    .accessibilityHint("轻点关闭")
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .transactionDidSave)) { notification in
-                guard let savedMessage = notification.userInfo?["message"] as? String else { return }
-                revision += 1
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    message = savedMessage
-                }
-            }
-            .task(id: revision) {
-                guard message != nil else { return }
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.2)) { message = nil }
-            }
-            .sensoryFeedback(.success, trigger: producesHaptic ? revision : 0)
-    }
-}
-
-extension View {
-    func transactionSaveFeedbackOverlay(producesHaptic: Bool = false) -> some View {
-        modifier(TransactionSaveFeedbackModifier(producesHaptic: producesHaptic))
-    }
-}
-
 struct TransactionsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
@@ -681,7 +595,7 @@ struct TransactionDetailView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .transactionSaveFeedbackOverlay()
+        .transactionSaveFeedback()
     }
 
     private func detailTag(_ title: String, color: Color) -> some View {
