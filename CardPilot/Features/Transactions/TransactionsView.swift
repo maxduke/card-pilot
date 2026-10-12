@@ -1392,18 +1392,29 @@ struct TransactionEditorForm: View {
     }
 
     private var editorStepIndicator: some View {
-        HStack(spacing: 8) {
-            stepIndicatorItem(number: 1, title: "交易信息", isCurrent: editorStep == 0)
-            Rectangle()
-                .fill(.quaternary)
-                .frame(height: 1)
-            stepIndicatorItem(number: 2, title: "确认促销", isCurrent: editorStep == 1)
+        let summary = "第 \(editorStep + 1) 步，共 2 步：\(editorStep == 0 ? "交易信息" : "确认促销")"
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(summary)
+                    .font(.caption.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 8) {
+                    stepIndicatorItem(number: 1, title: "交易信息", isCurrent: editorStep == 0)
+                    Rectangle()
+                        .fill(.quaternary)
+                        .frame(height: 1)
+                    stepIndicatorItem(number: 2, title: "确认促销", isCurrent: editorStep == 1)
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .background(.bar)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("第 \(editorStep + 1) 步，共 2 步：\(editorStep == 0 ? "交易信息" : "确认促销")")
+        .accessibilityLabel(summary)
+        .accessibilityIdentifier("transaction.steps")
     }
 
     private func stepIndicatorItem(number: Int, title: String, isCurrent: Bool) -> some View {

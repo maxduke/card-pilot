@@ -454,7 +454,7 @@ final class CoreFlowsUITests: XCTestCase {
         )).firstMatch.waitForExistence(timeout: 10))
     }
 
-    func testNumericKeyboardDismissalAtLargestTextSize() {
+    func testNumericKeyboardDismissalAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("core")
         openCard("UI Primary")
@@ -464,6 +464,7 @@ final class CoreFlowsUITests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         let dismissal = app.buttons["transaction.keyboard.dismiss"]
         let navigationBar = app.navigationBars["添加交易"]
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         enter("125.50", into: amount)
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
@@ -472,6 +473,9 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(dismissal)
         XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
         XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertTrue(progress.waitForExistence(timeout: 10))
+        XCTAssertEqual(progress.label, "第 1 步，共 2 步：交易信息")
+        XCTAssertTrue(app.frame.contains(progress.frame))
         captureScreenshot("最大字号交易金额键盘收起入口")
         dismissal.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -480,6 +484,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(navigationBar.exists)
 
         let save = app.buttons["saveTransaction"]
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
+        try app.performAccessibilityAudit(for: .textClipped)
         XCTAssertTrue(save.isHittable)
         assertTouchTarget(save)
         XCTAssertTrue(app.frame.contains(save.frame))
@@ -495,6 +502,8 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(dismissal)
         XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
         XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertEqual(progress.label, "第 2 步，共 2 步：确认促销")
+        XCTAssertTrue(app.frame.contains(progress.frame))
         captureScreenshot("最大字号促销计入金额键盘收起入口")
         dismissal.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -511,6 +520,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.frame.contains(back.frame))
         XCTAssertTrue(app.frame.contains(save.frame))
         XCTAssertLessThanOrEqual(back.frame.maxY, save.frame.minY)
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, back.frame.minY)
+        try app.performAccessibilityAudit(for: .textClipped)
         captureScreenshot("最大字号收起键盘后促销确认")
     }
 
