@@ -1406,6 +1406,61 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
     }
 
+    func testBackupExportFilenameCancellationAndLargestTextRecord() throws {
+        launch("core")
+        tap(app.buttons["打开设置"])
+        tap(app.buttons["settings.backup"])
+        let record = app.staticTexts["backup.lastSuccessfulExport"]
+        XCTAssertTrue(record.waitForExistence(timeout: 10))
+        let previousRecord = record.label
+        captureScreenshot("备份成功导出记录")
+        let export = app.buttons["backup.export"]
+        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(export)
+        tap(export)
+        let filename = app.descendants(matching: .any).matching(NSPredicate(
+            format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "CardPilot-备份-", "CardPilot-备份-"
+        )).firstMatch
+        XCTAssertTrue(filename.waitForExistence(timeout: 15))
+        let proposedName = (filename.value as? String) ?? filename.label
+        XCTAssertNotNil(proposedName.range(
+            of: "^CardPilot-备份-[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}(\\.json)?$",
+            options: .regularExpression
+        ))
+        captureScreenshot("系统备份导出文件名")
+        tap(app.buttons["取消"].firstMatch)
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: filename)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+        XCTAssertTrue(record.waitForExistence(timeout: 10))
+        XCTAssertEqual(record.label, previousRecord)
+        XCTAssertFalse(app.alerts["备份与恢复"].exists)
+
+        relaunchAtLargestTextSize()
+        tap(app.buttons["打开设置"])
+        tap(app.buttons["settings.backup"])
+        XCTAssertTrue(record.waitForExistence(timeout: 10))
+        XCTAssertEqual(record.label, previousRecord)
+        reveal(record, fullyVisible: true)
+        captureScreenshot("最大字号取消导出后记录")
+        try auditAccessibility(for: [.textClipped])
+        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(export)
+        try auditAccessibility(for: [.hitRegion])
+
+        // A read-only preference override exercises the longer date layout.
+        // It does not simulate a file save or prove the export callback ran.
+        app.terminate()
+        app.launchArguments += ["-cardPilot.lastSuccessfulBackupExport", "1791633600"]
+        app.launch()
+        tap(app.buttons["打开设置"])
+        tap(app.buttons["settings.backup"])
+        XCTAssertTrue(record.waitForExistence(timeout: 10))
+        XCTAssertTrue(record.label.contains("2026"))
+        reveal(record, fullyVisible: true)
+        captureScreenshot("最大字号已有导出记录")
+        try auditAccessibility(for: [.textClipped])
+    }
+
     private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {
         let original = continueAfterFailure
         continueAfterFailure = true
