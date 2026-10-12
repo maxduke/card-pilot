@@ -1411,10 +1411,11 @@ struct TransactionEditorForm: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
-        .background(.bar)
-        .accessibilityElement(children: dynamicTypeSize.isAccessibilitySize ? .ignore : .combine)
+        // Keep this header's background below the navigation bar, within the
+        // same safe-area bounds as its content and accessibility element.
+        .background(.bar, ignoresSafeAreaEdges: [])
+        .accessibilityElement(children: .combine)
         .accessibilityLabel(summary)
-        .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("transaction.steps")
     }
 

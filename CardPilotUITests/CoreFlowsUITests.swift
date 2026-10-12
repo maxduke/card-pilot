@@ -591,6 +591,13 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(allocation)
         XCTAssertEqual(allocation.value as? String, "20")
         tap(app.buttons["saveTransaction"])
+        // The confirmation changes the detail's viewport and can evict a lazy
+        // refund row between exists and frame. Close it before locating the row.
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录退款 20 CNY · 计入 1 个活动")
+        feedback.tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
         let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related."))
         let second = related.matching(NSPredicate(format: "label CONTAINS %@", "UI Second Refund")).firstMatch
