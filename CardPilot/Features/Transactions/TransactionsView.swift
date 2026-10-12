@@ -1466,14 +1466,23 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             }
             if kind == .refund {
-                Picker("原消费", selection: $originalTransactionID) {
-                    Text("不关联原消费（可选）").tag(Self.noOriginalTransactionID)
-                    ForEach(originalTransactions, id: \.id) { original in
-                        Text(transactionLabel(original)).tag(original.id)
+                let original = originalTransactions.first { $0.id == originalTransactionID }
+                Menu {
+                    Picker("原消费", selection: $originalTransactionID) {
+                        Text("不关联原消费（可选）").tag(Self.noOriginalTransactionID)
+                        ForEach(originalTransactions, id: \.id) { original in
+                            Text(transactionLabel(original)).tag(original.id)
+                        }
                     }
+                    .pickerStyle(.inline)
+                } label: {
+                    Label(original == nil ? "选择原消费（可选）" : "更改原消费", systemImage: "chevron.up.chevron.down")
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
+                .accessibilityValue(original.map(transactionLabel) ?? "不关联原消费（可选）")
                 .accessibilityIdentifier("transaction.original")
-                if let original = originalTransactions.first(where: { $0.id == originalTransactionID }) {
+                if let original {
                     Text("原消费：\(transactionLabel(original)) · 状态：\(original.status == .reversed ? "已冲正" : "有效")")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

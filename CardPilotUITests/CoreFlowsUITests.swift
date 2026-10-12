@@ -485,7 +485,10 @@ final class CoreFlowsUITests: XCTestCase {
 
         let original = app.buttons["transaction.original"]
         tap(original)
-        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Alternate Original")).firstMatch)
+        let alternate = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Alternate Original")).firstMatch
+        XCTAssertTrue(alternate.waitForExistence(timeout: 10))
+        captureScreenshot("原消费选择菜单")
+        tap(alternate)
         reveal(summary, fullyVisible: true)
         XCTAssertEqual(summary.label, "原消费：2026年10月09日 · UI Alternate Original · 65.5 HKD · 状态：有效")
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
@@ -525,6 +528,11 @@ final class CoreFlowsUITests: XCTestCase {
         let recordRefund = app.buttons["transaction.recordRefund"]
         reveal(recordRefund, fullyVisible: true)
         tap(recordRefund)
+        let original = app.buttons["transaction.original"]
+        reveal(original, fullyVisible: true)
+        assertTouchTarget(original)
+        XCTAssertTrue(original.label.contains("更改原消费"))
+        XCTAssertEqual(original.value as? String, "2026年10月10日 · \(merchant) · 100.25 CNY")
         let summary = app.staticTexts["transaction.original.summary"]
         reveal(summary, fullyVisible: true)
         XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
