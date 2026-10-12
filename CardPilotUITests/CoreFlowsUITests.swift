@@ -478,6 +478,14 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.frame.contains(dismissal.frame))
         XCTAssertEqual(progress.label, "第 1 步，共 2 步：交易信息")
         XCTAssertTrue(app.frame.contains(progress.frame))
+        // Typing can scroll a field under the fixed header as the keyboard opens.
+        // Check the whole field before the screenshot, without a dismissing drag.
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertFalse(amount.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(amount.frame))
+        XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(amount.frame.maxY, contentBottom)
+        XCTAssertTrue(amount.isHittable)
         captureScreenshot("最大字号交易金额键盘收起入口")
         dismissal.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -489,6 +497,17 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
         try app.performAccessibilityAudit(for: .textClipped)
+        // The native audit can move the Form's viewport. Restore the tested
+        // field and recheck the editor after the audit before continuing.
+        reveal(amount, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertFalse(amount.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(amount.frame))
+        XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(amount.frame.maxY, contentBottom)
+        XCTAssertTrue(amount.isHittable)
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
         XCTAssertTrue(save.isHittable)
         assertTouchTarget(save)
         XCTAssertTrue(app.frame.contains(save.frame))
@@ -509,6 +528,12 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.frame.contains(dismissal.frame))
         XCTAssertEqual(progress.label, "第 2 步，共 2 步：确认促销")
         XCTAssertTrue(app.frame.contains(progress.frame))
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertFalse(allocation.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(allocation.frame))
+        XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, contentBottom)
+        XCTAssertTrue(allocation.isHittable)
         captureScreenshot("最大字号促销计入金额键盘收起入口")
         dismissal.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -528,6 +553,24 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, back.frame.minY)
         try app.performAccessibilityAudit(for: .textClipped)
+        reveal(allocation, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertFalse(allocation.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(allocation.frame))
+        XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, contentBottom)
+        XCTAssertTrue(allocation.isHittable)
+        XCTAssertTrue(navigationBar.exists)
+        XCTAssertTrue(back.isHittable)
+        XCTAssertTrue(save.isHittable)
+        XCTAssertTrue(save.isEnabled)
+        assertTouchTarget(save)
+        XCTAssertTrue(app.frame.contains(progress.frame))
+        XCTAssertTrue(app.frame.contains(back.frame))
+        XCTAssertTrue(app.frame.contains(save.frame))
+        XCTAssertLessThanOrEqual(back.frame.maxY, save.frame.minY)
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, back.frame.minY)
         captureScreenshot("最大字号收起键盘后促销确认")
     }
 
@@ -1437,13 +1480,10 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(status, fullyVisible: true)
         assertTouchTarget(status)
         tap(status)
-        tap(app.buttons["已还款"])
+        tap(app.buttons["未还款"])
         let count = app.staticTexts["account.history.count"]
         reveal(count)
-        XCTAssertEqual(count.label, "共 0 个账期")
-        reveal(app.staticTexts["没有匹配账期"])
-        tap(status, scrollTowardTopWhenMissing: true)
-        tap(app.buttons["未还款"])
+        XCTAssertEqual(count.label, "共 1 个账期")
         let row = app.buttons["account.history.cycle.\(future.key)"]
         reveal(row, fullyVisible: true)
         assertTouchTarget(row)
@@ -1466,6 +1506,41 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(count)
         XCTAssertEqual(count.label, "共 23 个账期")
         XCTAssertFalse(app.buttons["account.history.clear"].exists)
+    }
+
+    func testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("accountHistory")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, fullyVisible: true)
+        assertTouchTarget(history)
+        tap(history)
+        let future = accountHistoryMonth(offset: 5)
+        tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
+        tap(app.buttons[future.year])
+        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
+        tap(app.buttons[future.month])
+        let status = app.buttons["account.history.status"]
+        reveal(status, fullyVisible: true)
+        assertTouchTarget(status)
+        tap(status)
+        tap(app.buttons["已还款"])
+        let count = app.staticTexts["account.history.count"]
+        reveal(count)
+        XCTAssertEqual(count.label, "共 0 个账期")
+        let empty = app.staticTexts["没有匹配账期"]
+        reveal(empty, fullyVisible: true)
+        XCTAssertTrue(empty.exists)
+        captureScreenshot("最大字号已还账期空结果")
+        let clear = app.buttons["account.history.clear"]
+        reveal(clear, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(clear)
+        clear.tap()
+        reveal(count)
+        XCTAssertEqual(count.label, "共 23 个账期")
+        XCTAssertFalse(clear.exists)
     }
 
     private func accountHistoryMonth(offset: Int) -> (key: Int, year: String, month: String) {

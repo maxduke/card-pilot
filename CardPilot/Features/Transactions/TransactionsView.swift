@@ -1278,6 +1278,7 @@ struct TransactionEditorForm: View {
                 refreshDefaultAllocationAmounts()
             }
             .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if transaction == nil {
