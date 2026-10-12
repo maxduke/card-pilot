@@ -1531,12 +1531,13 @@ final class CoreFlowsUITests: XCTestCase {
         launch("core")
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.backup"])
+        let navigationBar = app.navigationBars["完整备份与恢复"]
         let record = app.staticTexts["backup.lastSuccessfulExport"]
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         let previousRecord = record.label
         captureScreenshot("备份成功导出记录")
         let export = app.buttons["backup.export"]
-        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true, navigationBar: navigationBar)
         assertTouchTarget(export)
         tap(export)
         let picker = app.otherElements["Browse View (Picker)"]
@@ -1569,12 +1570,12 @@ final class CoreFlowsUITests: XCTestCase {
         relaunchAtLargestTextSize()
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.backup"])
-        reveal(record, fullyVisible: true)
+        reveal(record, fullyVisible: true, navigationBar: navigationBar)
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         XCTAssertEqual(record.label, previousRecord)
         captureScreenshot("最大字号取消导出后记录")
         try auditAccessibility(for: [.textClipped])
-        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true, navigationBar: navigationBar)
         assertTouchTarget(export)
         try auditAccessibility(for: [.hitRegion])
 
@@ -1585,7 +1586,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.backup"])
-        reveal(record, fullyVisible: true)
+        reveal(record, fullyVisible: true, navigationBar: navigationBar)
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         XCTAssertTrue(record.label.contains("2026"))
         captureScreenshot("最大字号已有导出记录")
@@ -1709,7 +1710,12 @@ final class CoreFlowsUITests: XCTestCase {
         return bottom
     }
 
-    private func reveal(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false, fullyVisible: Bool = false) {
+    private func reveal(
+        _ element: XCUIElement,
+        scrollTowardTopWhenMissing: Bool = false,
+        fullyVisible: Bool = false,
+        navigationBar: XCUIElement? = nil
+    ) {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
@@ -1724,7 +1730,7 @@ final class CoreFlowsUITests: XCTestCase {
             if element.exists || element.waitForExistence(timeout: 2) {
                 let targetFrame = element.frame
                 let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
-                let contentTop = needsUnobscuredFrame ? app.navigationBars.firstMatch.frame.maxY : frame.minY + 110
+                let contentTop = needsUnobscuredFrame ? (navigationBar ?? app.navigationBars.firstMatch).frame.maxY : frame.minY + 110
                 var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
                 settlesAtDestination = needsUnobscuredFrame && frameIsVisible
                 if needsUnobscuredFrame {
