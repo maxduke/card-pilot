@@ -933,6 +933,7 @@ struct TransactionEditorForm: View {
     @State private var showingInactiveCards: Bool
     @State private var showingOtherFields: Bool
     @State private var showingCardPicker = false
+    @State private var showingOriginalPicker = false
     @State private var errorMessage: String?
     @State private var overRefundWarningMessage: String?
 
@@ -1320,6 +1321,9 @@ struct TransactionEditorForm: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .trackedSheet(isPresented: $showingOriginalPicker) {
+            originalTransactionSelection
+        }
         .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
     }
 
@@ -1467,14 +1471,9 @@ struct TransactionEditorForm: View {
             }
             if kind == .refund {
                 let original = originalTransactions.first { $0.id == originalTransactionID }
-                Menu {
-                    Picker("原消费", selection: $originalTransactionID) {
-                        Text("不关联原消费（可选）").tag(Self.noOriginalTransactionID)
-                        ForEach(originalTransactions, id: \.id) { original in
-                            Text(transactionLabel(original)).tag(original.id)
-                        }
-                    }
-                    .pickerStyle(.inline)
+                Button {
+                    amountIsFocused = false
+                    showingOriginalPicker = true
                 } label: {
                     HStack {
                         Text(original == nil ? "选择原消费（可选）" : "更改原消费")
@@ -1488,7 +1487,6 @@ struct TransactionEditorForm: View {
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
                 }
-                .menuStyle(.button)
                 .buttonStyle(.borderless)
                 .accessibilityValue(original.map(transactionLabel) ?? "不关联原消费（可选）")
                 .accessibilityIdentifier("transaction.original")
@@ -1646,6 +1644,49 @@ struct TransactionEditorForm: View {
                 .accessibilityHint("草稿中的卡片已不可用，请重新选择")
             }
         }
+    }
+
+    private var originalTransactionSelection: some View {
+        NavigationStack {
+            List {
+                originalTransactionOption("不关联原消费（可选）", id: Self.noOriginalTransactionID)
+                ForEach(originalTransactions, id: \.id) { original in
+                    originalTransactionOption(transactionLabel(original), id: original.id)
+                }
+            }
+            .navigationTitle("选择原消费")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showingOriginalPicker = false }
+                }
+            }
+        }
+    }
+
+    private func originalTransactionOption(_ title: String, id: UUID) -> some View {
+        Button {
+            originalTransactionID = id
+            showingOriginalPicker = false
+        } label: {
+            HStack {
+                Text(title)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+                if originalTransactionID == id {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(.body)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(originalTransactionID == id ? .isSelected : [])
     }
 
     @ViewBuilder
