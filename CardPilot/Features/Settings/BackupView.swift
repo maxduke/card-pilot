@@ -53,9 +53,11 @@ struct BackupView: View {
                 Text("包含全部账户、卡片、账务规则、活动、交易与历史关系，包括归档和停用数据。备份为未加密文件，请存放在可信位置。")
             }
 
-            Section("上次成功导出") {
+            Section {
                 Text(lastExportDate.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "尚无成功导出记录")
                     .accessibilityIdentifier("backup.lastSuccessfulExport")
+            } header: {
+                Text("上次成功导出")
             } footer: {
                 Text("这是本机的导出记录。请妥善保管导出文件；恢复时会重新完整校验。")
             }
