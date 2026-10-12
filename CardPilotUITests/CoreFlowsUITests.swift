@@ -465,7 +465,10 @@ final class CoreFlowsUITests: XCTestCase {
         let dismissal = app.buttons["transaction.keyboard.dismiss"]
         let navigationBar = app.navigationBars["添加交易"]
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
-        enter("125.50", into: amount)
+        XCTAssertTrue(progress.waitForExistence(timeout: 10))
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress)
+        amount.tap()
+        amount.typeText("125.50")
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
         XCTAssertEqual(dismissal.label, "收起键盘")
@@ -473,7 +476,6 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(dismissal)
         XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
         XCTAssertTrue(app.frame.contains(dismissal.frame))
-        XCTAssertTrue(progress.waitForExistence(timeout: 10))
         XCTAssertEqual(progress.label, "第 1 步，共 2 步：交易信息")
         XCTAssertTrue(app.frame.contains(progress.frame))
         captureScreenshot("最大字号交易金额键盘收起入口")
@@ -494,7 +496,10 @@ final class CoreFlowsUITests: XCTestCase {
         let back = app.buttons["返回修改交易"]
         XCTAssertTrue(back.waitForExistence(timeout: 10))
         let allocation = app.textFields["allocation.amount.UI Spend"]
-        replaceText("100.25", in: allocation)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        allocation.tap()
+        let oldAllocationValue = allocation.value as? String ?? ""
+        allocation.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldAllocationValue.count) + "100.25")
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
         XCTAssertEqual(dismissal.label, "收起键盘")
@@ -511,7 +516,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(allocation.value as? String, "100.25")
         XCTAssertTrue(navigationBar.exists)
 
-        reveal(allocation)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
         XCTAssertEqual(allocation.value as? String, "100.25")
         XCTAssertTrue(back.isHittable)
         XCTAssertTrue(save.isHittable)
@@ -1867,7 +1872,8 @@ final class CoreFlowsUITests: XCTestCase {
         _ element: XCUIElement,
         scrollTowardTopWhenMissing: Bool = false,
         fullyVisible: Bool = false,
-        navigationBar: XCUIElement? = nil
+        navigationBar: XCUIElement? = nil,
+        contentHeader: XCUIElement? = nil
     ) {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
@@ -1885,7 +1891,11 @@ final class CoreFlowsUITests: XCTestCase {
             if element.exists || element.waitForExistence(timeout: 2) {
                 let targetFrame = element.frame
                 let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
-                let contentTop = needsUnobscuredFrame ? (navigationBar ?? app.navigationBars.firstMatch).frame.maxY : frame.minY + 110
+                var contentTop = needsUnobscuredFrame ? (navigationBar ?? app.navigationBars.firstMatch).frame.maxY : frame.minY + 110
+                if needsUnobscuredFrame, let contentHeader, contentHeader.exists {
+                    // The editor's fixed step summary also obscures scrolled rows.
+                    contentTop = max(contentTop, contentHeader.frame.maxY)
+                }
                 var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
                 settlesAtDestination = needsUnobscuredFrame && frameIsVisible
                 if needsUnobscuredFrame {

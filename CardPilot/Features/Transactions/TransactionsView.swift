@@ -1393,7 +1393,7 @@ struct TransactionEditorForm: View {
 
     private var editorStepIndicator: some View {
         let summary = "第 \(editorStep + 1) 步，共 2 步：\(editorStep == 0 ? "交易信息" : "确认促销")"
-        return Group {
+        return VStack(spacing: 0) {
             if dynamicTypeSize.isAccessibilitySize {
                 Text(summary)
                     .font(.caption.weight(.semibold))
