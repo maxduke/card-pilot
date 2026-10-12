@@ -487,10 +487,13 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(summary.label.contains("7.25"))
 
         let original = app.buttons["transaction.original"]
-        // Opening the selector must work on the first tap while editing the amount.
-        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        // Revealing the summary can dismiss the keyboard through Form scrolling.
+        // Restore editing before testing a single, unassisted selector tap.
+        tap(app.textFields["transactionAmount"], scrollTowardTopWhenMissing: true)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(original.isHittable)
         assertTouchTarget(original)
-        tap(original)
+        original.tap()
         XCTAssertTrue(app.navigationBars["选择原消费"].waitForExistence(timeout: 10))
         let selectedOriginal = app.buttons["2026年10月10日 · \(merchant) · 100.25 CNY"]
         XCTAssertTrue(selectedOriginal.isSelected)
