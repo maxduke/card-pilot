@@ -1418,18 +1418,28 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
         assertTouchTarget(export)
         tap(export)
-        let filename = app.descendants(matching: .any).matching(NSPredicate(
-            format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "CardPilot-备份-", "CardPilot-备份-"
-        )).firstMatch
+        let picker = app.otherElements["Browse View (Picker)"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 20))
+        let filename = picker.textFields.firstMatch
         XCTAssertTrue(filename.waitForExistence(timeout: 15))
+        // The native picker exposes an abbreviated value until editing starts.
+        // Focus the real filename field without changing the proposed name.
+        filename.tap()
         let proposedName = (filename.value as? String) ?? filename.label
         XCTAssertNotNil(proposedName.range(
             of: "^CardPilot-备份-[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}(\\.json)?$",
             options: .regularExpression
         ))
         captureScreenshot("系统备份导出文件名")
-        tap(app.buttons["取消"].firstMatch)
-        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: filename)
+        // This directory page shows Browse and Move. Return to Browse to use
+        // the visible native Cancel button, rather than its hidden AX proxy.
+        let browse = picker.navigationBars.buttons["浏览"]
+        XCTAssertTrue(browse.waitForExistence(timeout: 10))
+        browse.tap()
+        let cancel = app.buttons["取消"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        cancel.tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: picker)
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         XCTAssertEqual(record.label, previousRecord)
@@ -1516,7 +1526,24 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["promotion.edit"].waitForExistence(timeout: 10))
         assertTouchTarget(app.buttons["promotion.edit"])
         tap(app.buttons["promotion.edit"])
-        tap(app.buttons["编辑\(section)"])
+        let options = app.sheets["编辑促销"]
+        XCTAssertTrue(options.waitForExistence(timeout: 10))
+        let option = options.buttons["编辑\(section)"]
+        XCTAssertTrue(option.waitForExistence(timeout: 10))
+        // Wait for the native dialog's action to settle before one selection.
+        // Keep the dismissal and editor assertions; do not retry the action.
+        var previousFrame: CGRect?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard option.exists else { return false }
+            let frame = option.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty && frame == previousFrame
+                && options.frame.contains(frame) && option.isHittable
+        }, object: option)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        option.tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: options)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
         XCTAssertTrue(app.navigationBars["编辑促销"].waitForExistence(timeout: 10))
     }
 
