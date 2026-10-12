@@ -188,8 +188,11 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("促销金额规则说明")
         tap(app.navigationBars["编辑促销"].buttons["取消"])
         XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
 
-        relaunchAtLargestTextSize()
+    func testPromotionOptionalAmountExplanationAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("promotionAmounts")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
         let explanation = app.staticTexts["例如仅前 5,000 CNY 可计入：这是上限，不是必须达到的金额。"]
@@ -484,6 +487,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(summary.label.contains("7.25"))
 
         let original = app.buttons["transaction.original"]
+        // Opening the selector must work on the first tap while editing the amount.
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        assertTouchTarget(original)
         tap(original)
         let alternate = app.buttons["2026年10月09日 · UI Alternate Original · 65.5 HKD"]
         XCTAssertTrue(alternate.waitForExistence(timeout: 10))
@@ -539,6 +545,14 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         captureScreenshot("最大字号完整原消费摘要")
         try auditAccessibility(for: [.textClipped])
+
+        reveal(original, fullyVisible: true)
+        tap(original)
+        let alternate = app.buttons["2026年10月09日 · UI Alternate Original · 65.5 HKD"]
+        XCTAssertTrue(alternate.waitForExistence(timeout: 10))
+        tap(alternate)
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月09日 · UI Alternate Original · 65.5 HKD · 状态：有效")
     }
 
     func testLinkedRefundExcessAmountsRequireConfirmationAndRetainOriginal() {

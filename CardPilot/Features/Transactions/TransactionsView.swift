@@ -1488,6 +1488,7 @@ struct TransactionEditorForm: View {
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
                 }
+                .menuStyle(.button)
                 .buttonStyle(.borderless)
                 .accessibilityValue(original.map(transactionLabel) ?? "不关联原消费（可选）")
                 .accessibilityIdentifier("transaction.original")

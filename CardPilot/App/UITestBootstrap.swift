@@ -9,6 +9,7 @@ enum UITestBootstrap {
     enum Scenario: String {
         case empty
         case core
+        case promotionAmounts
         case promotionOverview
         case dashboardActions
         case linkedRefunds
@@ -67,6 +68,10 @@ enum UITestBootstrap {
         context.insert(foreignRule)
         context.insert(foreignCard)
         context.insert(promotion)
+        if scenario == .promotionAmounts {
+            promotion.qualifyingCap = 5000
+            promotion.perTransactionThreshold = 100
+        }
         if scenario == .promotionOverview {
             promotion.rewardDescription = "达标奖励以银行规则为准"
             let amountCap = Promotion(

@@ -75,6 +75,30 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
     }
 
+    func testPromotionAmountsFixtureRestoresOptionalRulesAndPreservesCoreDefaults() throws {
+        let today = try LocalDate(rawValue: 20261012)
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .promotionAmounts, today: today)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let promotion = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<Promotion>()).first)
+        XCTAssertEqual(promotion.title, "UI Spend")
+        XCTAssertEqual(promotion.qualifyingCap, Decimal(5000))
+        XCTAssertEqual(promotion.perTransactionThreshold, Decimal(100))
+        XCTAssertEqual(promotion.qualificationThreshold, Decimal(1000))
+        XCTAssertEqual(promotion.progressCurrencyCode, "CNY")
+        XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
+        XCTAssertEqual(promotion.startOn, today.addingDays(-7).rawValue)
+        XCTAssertEqual(promotion.endOn, today.addingDays(30).rawValue)
+        XCTAssertTrue(promotion.allocations.isEmpty)
+        let core = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(core.mainContext, today: today)
+        let corePromotion = try XCTUnwrap(core.mainContext.fetch(FetchDescriptor<Promotion>()).first)
+        XCTAssertNil(corePromotion.qualifyingCap)
+        XCTAssertNil(corePromotion.perTransactionThreshold)
+    }
+
     func testPromotionOverviewFixtureRestoresDistinctProgressModes() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         try UITestBootstrap.seed(container.mainContext, scenario: .promotionOverview)
