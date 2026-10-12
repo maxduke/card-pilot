@@ -1412,8 +1412,9 @@ struct TransactionEditorForm: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .background(.bar)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: dynamicTypeSize.isAccessibilitySize ? .ignore : .combine)
         .accessibilityLabel(summary)
+        .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("transaction.steps")
     }
 
