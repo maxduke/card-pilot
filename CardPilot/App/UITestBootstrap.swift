@@ -9,9 +9,11 @@ enum UITestBootstrap {
     enum Scenario: String {
         case empty
         case core
+        case promotionAmounts
         case promotionOverview
         case dashboardActions
         case linkedRefunds
+        case refundIdentity
         case transactionFilters
         case accountHistory
         case futureRules
@@ -66,6 +68,10 @@ enum UITestBootstrap {
         context.insert(foreignRule)
         context.insert(foreignCard)
         context.insert(promotion)
+        if scenario == .promotionAmounts {
+            promotion.qualifyingCap = 5000
+            promotion.perTransactionThreshold = 100
+        }
         if scenario == .promotionOverview {
             promotion.rewardDescription = "达标奖励以银行规则为准"
             let amountCap = Promotion(
@@ -158,6 +164,17 @@ enum UITestBootstrap {
             context.insert(Transaction(
                 card: sibling, kind: .refund, transactionOn: today.rawValue,
                 amount: 15, currencyCode: "CNY", merchant: "UI Unlinked Refund"
+            ))
+        }
+        if scenario == .refundIdentity {
+            context.insert(Transaction(
+                card: foreignCard, transactionOn: 20261010,
+                amount: Decimal(string: "100.25")!, currencyCode: "CNY",
+                merchant: "星河百货中心生活用品与家居电器联合专柜", status: .reversed
+            ))
+            context.insert(Transaction(
+                card: foreignCard, transactionOn: 20261009,
+                amount: Decimal(string: "65.5")!, currencyCode: "HKD", merchant: "UI Alternate Original"
             ))
         }
         if scenario == .transactionFilters {

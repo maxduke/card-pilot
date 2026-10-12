@@ -188,8 +188,11 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("促销金额规则说明")
         tap(app.navigationBars["编辑促销"].buttons["取消"])
         XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
 
-        relaunchAtLargestTextSize()
+    func testPromotionOptionalAmountExplanationAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("promotionAmounts")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
         let explanation = app.staticTexts["例如仅前 5,000 CNY 可计入：这是上限，不是必须达到的金额。"]
@@ -257,8 +260,15 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["放弃修改"])
         app.terminate()
         app.launch()
-        openPromotion("UI Created Promotion")
-        XCTAssertTrue(app.navigationBars["UI Created Promotion"].exists)
+        tap(app.tabBars.buttons["促销"])
+        let createdPromotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Created Promotion")).firstMatch
+        reveal(createdPromotion)
+        assertTouchTarget(createdPromotion)
+        // This row also has a context menu. Specify a single short press when
+        // reopening the saved value, then wait for the actual detail page.
+        createdPromotion.press(forDuration: 0.05)
+        XCTAssertTrue(app.navigationBars["UI Created Promotion"].waitForExistence(timeout: 10))
+        captureScreenshot("促销校验后原值读回")
     }
 
     func testPromotionSectionNavigationSupportsLargestTextSize() {
@@ -420,6 +430,11 @@ final class CoreFlowsUITests: XCTestCase {
         let original = app.buttons["transaction.original"]
         reveal(original)
         XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Original Purchase"))
+        let originalSummary = app.staticTexts["transaction.original.summary"]
+        reveal(originalSummary, fullyVisible: true)
+        XCTAssertTrue(originalSummary.label.contains("UI Original Purchase"))
+        XCTAssertTrue(originalSummary.label.contains("100 CNY"))
+        XCTAssertTrue(originalSummary.label.contains("状态：有效"))
         captureScreenshot("从原消费记录退款")
         enter("20", into: amount)
         enter("UI Second Refund", into: app.textFields["商户（可选）"])
@@ -455,6 +470,121 @@ final class CoreFlowsUITests: XCTestCase {
             reveal(row)
             XCTAssertTrue(row.label.contains(amountText))
         }
+    }
+
+    func testRefundOriginalSummaryUpdatesWithSelectionAndClearsWhenCardChanges() {
+        let merchant = "星河百货中心生活用品与家居电器联合专柜"
+        launch("refundIdentity")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.\(merchant)"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        let summary = app.staticTexts["transaction.original.summary"]
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
+        captureScreenshot("完整原消费摘要")
+        enter("7.25", into: app.textFields["transactionAmount"])
+        reveal(summary, fullyVisible: true)
+        XCTAssertTrue(summary.label.contains("100.25 CNY"))
+        XCTAssertFalse(summary.label.contains("7.25"))
+
+        let original = app.buttons["transaction.original"]
+        // Revealing the summary can dismiss the keyboard through Form scrolling.
+        // Restore editing before testing a single, unassisted selector tap.
+        tap(app.textFields["transactionAmount"], scrollTowardTopWhenMissing: true)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(original.isHittable)
+        assertTouchTarget(original)
+        original.tap()
+        XCTAssertTrue(app.navigationBars["选择原消费"].waitForExistence(timeout: 10))
+        let selectedOriginal = app.buttons["2026年10月10日 · \(merchant) · 100.25 CNY"]
+        XCTAssertTrue(selectedOriginal.isSelected)
+        let alternate = app.buttons["2026年10月09日 · UI Alternate Original · 65.5 HKD"]
+        reveal(alternate, fullyVisible: true)
+        assertTouchTarget(alternate)
+        captureScreenshot("原消费选择列表")
+        tap(alternate)
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月09日 · UI Alternate Original · 65.5 HKD · 状态：有效")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        XCTAssertFalse(app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"].exists)
+        captureScreenshot("切换原消费后的摘要")
+        tap(original)
+        XCTAssertTrue(app.navigationBars["选择原消费"].waitForExistence(timeout: 10))
+        XCTAssertTrue(alternate.isSelected)
+        tap(app.buttons["不关联原消费（可选）"])
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
+        XCTAssertFalse(summary.exists)
+        tap(original)
+        XCTAssertTrue(app.navigationBars["选择原消费"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["不关联原消费（可选）"].isSelected)
+        tap(app.buttons["2026年10月10日 · \(merchant) · 100.25 CNY"])
+        reveal(summary, fullyVisible: true)
+        XCTAssertTrue(summary.label.contains(merchant))
+        XCTAssertTrue(summary.label.contains("状态：已冲正"))
+        selectTransactionCard("UI Primary")
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
+        XCTAssertTrue(app.staticTexts["当前卡片暂无可关联的原消费，可稍后在详情中补充。"].exists)
+        XCTAssertFalse(summary.exists)
+        selectTransactionCard("UI Foreign")
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
+        XCTAssertFalse(summary.exists)
+        reveal(app.textFields["transactionAmount"], scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "7.25")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+    }
+
+    func testLongRefundOriginalSummaryAtLargestTextSize() throws {
+        let merchant = "星河百货中心生活用品与家居电器联合专柜"
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("refundIdentity")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.\(merchant)"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        let original = app.buttons["transaction.original"]
+        reveal(original, fullyVisible: true)
+        assertTouchTarget(original)
+        XCTAssertTrue(original.label.contains("更改原消费"))
+        XCTAssertEqual(original.value as? String, "2026年10月10日 · \(merchant) · 100.25 CNY")
+        let summary = app.staticTexts["transaction.original.summary"]
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        captureScreenshot("最大字号完整原消费摘要")
+        try auditAccessibility(for: [.textClipped])
+
+        reveal(original, fullyVisible: true)
+        tap(original)
+        XCTAssertTrue(app.navigationBars["选择原消费"].waitForExistence(timeout: 10))
+        let selectedOriginal = app.buttons["2026年10月10日 · \(merchant) · 100.25 CNY"]
+        reveal(selectedOriginal, fullyVisible: true)
+        XCTAssertEqual(selectedOriginal.label, "2026年10月10日 · \(merchant) · 100.25 CNY")
+        XCTAssertTrue(selectedOriginal.isSelected)
+        assertTouchTarget(selectedOriginal)
+        captureScreenshot("最大字号原消费选择列表")
+        try auditAccessibility(for: [.textClipped])
+        // This sheet has no save footer; the covered editor's AX button still exists.
+        app.swipeUp()
+        let alternate = app.buttons["2026年10月09日 · UI Alternate Original · 65.5 HKD"]
+        XCTAssertTrue(alternate.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(alternate.frame.minY, app.navigationBars["选择原消费"].frame.maxY)
+        XCTAssertLessThan(alternate.frame.maxY, app.frame.maxY - 40)
+        XCTAssertTrue(alternate.isHittable)
+        assertTouchTarget(alternate)
+        tap(alternate)
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月09日 · UI Alternate Original · 65.5 HKD · 状态：有效")
     }
 
     func testLinkedRefundExcessAmountsRequireConfirmationAndRetainOriginal() {
@@ -514,6 +644,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "17")
         XCTAssertTrue(app.segmentedControls.buttons["消费"].isSelected)
         XCTAssertFalse(app.buttons["transaction.original"].exists)
+        XCTAssertFalse(app.staticTexts["transaction.original.summary"].exists)
         tap(app.buttons["关闭"])
         tap(app.buttons["保留草稿并关闭"])
         tap(recordRefund)
@@ -1410,12 +1541,13 @@ final class CoreFlowsUITests: XCTestCase {
         launch("core")
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.backup"])
+        let navigationBar = app.navigationBars["完整备份与恢复"]
         let record = app.staticTexts["backup.lastSuccessfulExport"]
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         let previousRecord = record.label
         captureScreenshot("备份成功导出记录")
         let export = app.buttons["backup.export"]
-        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true, navigationBar: navigationBar)
         assertTouchTarget(export)
         tap(export)
         let picker = app.otherElements["Browse View (Picker)"]
@@ -1448,12 +1580,12 @@ final class CoreFlowsUITests: XCTestCase {
         relaunchAtLargestTextSize()
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.backup"])
-        reveal(record, fullyVisible: true)
+        reveal(record, fullyVisible: true, navigationBar: navigationBar)
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         XCTAssertEqual(record.label, previousRecord)
         captureScreenshot("最大字号取消导出后记录")
         try auditAccessibility(for: [.textClipped])
-        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        reveal(export, scrollTowardTopWhenMissing: true, fullyVisible: true, navigationBar: navigationBar)
         assertTouchTarget(export)
         try auditAccessibility(for: [.hitRegion])
 
@@ -1464,7 +1596,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.backup"])
-        reveal(record, fullyVisible: true)
+        reveal(record, fullyVisible: true, navigationBar: navigationBar)
         XCTAssertTrue(record.waitForExistence(timeout: 10))
         XCTAssertTrue(record.label.contains("2026"))
         captureScreenshot("最大字号已有导出记录")
@@ -1588,10 +1720,17 @@ final class CoreFlowsUITests: XCTestCase {
         return bottom
     }
 
-    private func reveal(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false, fullyVisible: Bool = false) {
+    private func reveal(
+        _ element: XCUIElement,
+        scrollTowardTopWhenMissing: Bool = false,
+        fullyVisible: Bool = false,
+        navigationBar: XCUIElement? = nil
+    ) {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
+        let geometryTolerance: CGFloat = 0.001
+        var geometryDescription = "Element missing"
         for _ in 0..<8 {
             // Lazy Form rows disappear from the accessibility tree offscreen.
             // A known first-row control must be approached from the top.
@@ -1603,13 +1742,15 @@ final class CoreFlowsUITests: XCTestCase {
             if element.exists || element.waitForExistence(timeout: 2) {
                 let targetFrame = element.frame
                 let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
-                let contentTop = needsUnobscuredFrame ? app.navigationBars.firstMatch.frame.maxY : frame.minY + 110
+                let contentTop = needsUnobscuredFrame ? (navigationBar ?? app.navigationBars.firstMatch).frame.maxY : frame.minY + 110
                 var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
                 settlesAtDestination = needsUnobscuredFrame && frameIsVisible
                 if needsUnobscuredFrame {
                     let bottom = contentBottom
                     viewportBottom = bottom
-                    frameIsVisible = frameIsVisible && targetFrame.minY >= contentTop && targetFrame.maxY < bottom
+                    geometryDescription = "minY=\(targetFrame.minY), top=\(contentTop), maxY=\(targetFrame.maxY), bottom=\(bottom)"
+                    // A row can meet the bar at a subpixel AX rounding boundary.
+                    frameIsVisible = frameIsVisible && targetFrame.minY + geometryTolerance >= contentTop && targetFrame.maxY < bottom
                 }
                 // Querying hittability for a footer-clipped text field can throw
                 // an XCTest activation-point error before it can return false.
@@ -1617,7 +1758,7 @@ final class CoreFlowsUITests: XCTestCase {
                 if frameIsVisible && element.isHittable { return }
                 // After dismissing an editor, a previously visible row can be above
                 // the viewport. Always swiping up would move it farther out of reach.
-                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < contentTop
+                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY + geometryTolerance < contentTop
                 if !targetFrame.isEmpty && needsUnobscuredFrame {
                     let bottom = viewportBottom ?? contentBottom
                     viewportBottom = bottom
@@ -1646,6 +1787,6 @@ final class CoreFlowsUITests: XCTestCase {
                 start.press(forDuration: 0.05, thenDragTo: end)
             }
         }
-        XCTFail("Expected an unobscured element: \(element)")
+        XCTFail("Expected an unobscured element: \(element). \(geometryDescription)")
     }
 }

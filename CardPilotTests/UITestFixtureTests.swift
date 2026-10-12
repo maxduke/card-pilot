@@ -75,6 +75,30 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
     }
 
+    func testPromotionAmountsFixtureRestoresOptionalRulesAndPreservesCoreDefaults() throws {
+        let today = try LocalDate(rawValue: 20261012)
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .promotionAmounts, today: today)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let promotion = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<Promotion>()).first)
+        XCTAssertEqual(promotion.title, "UI Spend")
+        XCTAssertEqual(promotion.qualifyingCap, Decimal(5000))
+        XCTAssertEqual(promotion.perTransactionThreshold, Decimal(100))
+        XCTAssertEqual(promotion.qualificationThreshold, Decimal(1000))
+        XCTAssertEqual(promotion.progressCurrencyCode, "CNY")
+        XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
+        XCTAssertEqual(promotion.startOn, today.addingDays(-7).rawValue)
+        XCTAssertEqual(promotion.endOn, today.addingDays(30).rawValue)
+        XCTAssertTrue(promotion.allocations.isEmpty)
+        let core = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(core.mainContext, today: today)
+        let corePromotion = try XCTUnwrap(core.mainContext.fetch(FetchDescriptor<Promotion>()).first)
+        XCTAssertNil(corePromotion.qualifyingCap)
+        XCTAssertNil(corePromotion.perTransactionThreshold)
+    }
+
     func testPromotionOverviewFixtureRestoresDistinctProgressModes() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         try UITestBootstrap.seed(container.mainContext, scenario: .promotionOverview)
@@ -141,6 +165,29 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertEqual(try PromotionCalculator.progress(for: promotion).qualifiedAmount, 60)
         XCTAssertEqual(transactions.first { $0.merchant == "UI Reversed Purchase" }?.status, .reversed)
         XCTAssertNil(transactions.first { $0.merchant == "UI Unlinked Refund" }?.originalTransaction)
+    }
+
+    func testRefundIdentityFixtureRestoresDistinctOriginalAmountsCurrenciesAndStatuses() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .refundIdentity)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+        XCTAssertEqual(transactions.count, 2)
+        let original = try XCTUnwrap(transactions.first { $0.merchant == "星河百货中心生活用品与家居电器联合专柜" })
+        let alternate = try XCTUnwrap(transactions.first { $0.merchant == "UI Alternate Original" })
+        XCTAssertEqual(original.card.id, alternate.card.id)
+        XCTAssertEqual(original.card.account.limitCurrencyCode, "HKD")
+        XCTAssertTrue(transactions.allSatisfy { $0.kind == .purchase && $0.originalTransaction == nil && $0.refunds.isEmpty })
+        XCTAssertEqual(original.transactionOn, 20261010)
+        XCTAssertEqual(original.amount, Decimal(string: "100.25"))
+        XCTAssertEqual(original.currencyCode, "CNY")
+        XCTAssertEqual(original.status, .reversed)
+        XCTAssertEqual(alternate.transactionOn, 20261009)
+        XCTAssertEqual(alternate.amount, Decimal(string: "65.5"))
+        XCTAssertEqual(alternate.currencyCode, "HKD")
+        XCTAssertEqual(alternate.status, .active)
     }
 
     func testTransactionFilterFixtureRestoresDistinctDatesCurrenciesAndStatuses() throws {

@@ -933,6 +933,7 @@ struct TransactionEditorForm: View {
     @State private var showingInactiveCards: Bool
     @State private var showingOtherFields: Bool
     @State private var showingCardPicker = false
+    @State private var showingOriginalPicker = false
     @State private var errorMessage: String?
     @State private var overRefundWarningMessage: String?
 
@@ -1320,6 +1321,9 @@ struct TransactionEditorForm: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .trackedSheet(isPresented: $showingOriginalPicker) {
+            originalTransactionSelection
+        }
         .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
     }
 
@@ -1466,17 +1470,37 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             }
             if kind == .refund {
-                Picker("原消费", selection: $originalTransactionID) {
-                    Text("不关联原消费（可选）").tag(Self.noOriginalTransactionID)
-                    ForEach(originalTransactions, id: \.id) { original in
-                        Text(transactionLabel(original)).tag(original.id)
+                let original = originalTransactions.first { $0.id == originalTransactionID }
+                Button {
+                    amountIsFocused = false
+                    showingOriginalPicker = true
+                } label: {
+                    HStack {
+                        Text(original == nil ? "选择原消费（可选）" : "更改原消费")
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .accessibilityHidden(true)
                     }
+                    .font(.body)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.borderless)
+                .accessibilityValue(original.map(transactionLabel) ?? "不关联原消费（可选）")
                 .accessibilityIdentifier("transaction.original")
-                if originalTransactions.first(where: { $0.id == originalTransactionID })?.status == .reversed {
-                    Text("原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。")
+                if let original {
+                    Text("原消费：\(transactionLabel(original)) · 状态：\(original.status == .reversed ? "已冲正" : "有效")")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("transaction.original.summary")
+                    if original.status == .reversed {
+                        Text("原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 if originalTransactions.isEmpty {
                     Text("当前卡片暂无可关联的原消费，可稍后在详情中补充。")
@@ -1620,6 +1644,49 @@ struct TransactionEditorForm: View {
                 .accessibilityHint("草稿中的卡片已不可用，请重新选择")
             }
         }
+    }
+
+    private var originalTransactionSelection: some View {
+        NavigationStack {
+            List {
+                originalTransactionOption("不关联原消费（可选）", id: Self.noOriginalTransactionID)
+                ForEach(originalTransactions, id: \.id) { original in
+                    originalTransactionOption(transactionLabel(original), id: original.id)
+                }
+            }
+            .navigationTitle("选择原消费")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showingOriginalPicker = false }
+                }
+            }
+        }
+    }
+
+    private func originalTransactionOption(_ title: String, id: UUID) -> some View {
+        Button {
+            originalTransactionID = id
+            showingOriginalPicker = false
+        } label: {
+            HStack {
+                Text(title)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+                if originalTransactionID == id {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(.body)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(originalTransactionID == id ? .isSelected : [])
     }
 
     @ViewBuilder
