@@ -46,6 +46,7 @@ struct SettingsView: View {
             } label: {
                 Label("完整备份与恢复", systemImage: "externaldrive")
             }
+            .accessibilityIdentifier("settings.backup")
         }
     }
 

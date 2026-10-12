@@ -59,3 +59,10 @@
 失败发生在完整显示 `account.history.cycle.202703` 时，未到后续日期断言、截图及详情往返。实际失败截图与界面层级确认页面、账期及日期正确，行高约 526 点，小于导航栏与底栏之间约 691 点的空间；最后行顶部在 38.7 点，仍在导航栏底部 100.3 点之上。日志中八次拖动反复切换方向，表明定位发生过冲；不能将这个失败解释为账期缺失或日期计算错误。
 
 测试滚动助手对已经与屏幕相交、但需要完整可见的行或输入框改用 XCTest 支持的慢速拖动，并在终点保持 0.2 秒后释放，减少惯性造成的过冲。尚未进入屏幕的 lazy 行仍保留原来的粗定位拖动，避免缩小远距离查找范围。继续使用原来的目标几何计算、八次尝试、完整可见性、44 点点击区域及全部无障碍审计；没有坐标强点、忽略失败、增加重试、放宽断言、修改生产布局或关闭动画。API 依据为 Apple 的 [拖动与终点停留说明](https://developer.apple.com/documentation/xcuiautomation/xcuicoordinate/press%28forduration%3Athendragto%3Awithvelocity%3Athenholdforduration%3A%29) 和 [慢速手势定义](https://developer.apple.com/documentation/xcuiautomation/xcuigesturevelocity/slow)。实际效果仍需修正后的完整 216 项单元／集成与 38 项 UI、最大字号截图和合并后主线验证确认。
+
+
+## 最终交付
+
+滚动定位修正 [PR #34](https://github.com/maxduke/card-pilot/pull/34) 的最终 HEAD `dc60514` 通过 [PR run 38184250840](https://github.com/maxduke/card-pilot/actions/runs/38184250840)，合并提交 `a9461d5` 通过 [main run 38187087684](https://github.com/maxduke/card-pilot/actions/runs/38187087684)：两者均完整执行 216 项单元／集成与 38 项 UI，零失败、零跳过；原生产物分别为 `11719672721` 和 `11721077010`。没有未解决的有效评审发现。
+
+最终绿色 HEAD 的七张原生截图已检查：最大字号全部账期入口／账期查询结果、未来规则取消影响预览、取消未来规则确认、最大字号取消日期冲突、交易日期与币种筛选、自定义交易日期范围。最大字号账期整行的标题、状态及账单／还款日期位于导航栏与底栏之间；未来规则的实际保存、取消及重启读回均通过。上述首次合并后的失败和修正经过保留，不以 PR 首次绿色替代最终 main 验证；真机、真实通知及 VoiceOver 边界不变。

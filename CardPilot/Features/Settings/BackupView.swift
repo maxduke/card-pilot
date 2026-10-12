@@ -17,8 +17,10 @@ struct BackupDocument: FileDocument {
 
 struct BackupView: View {
     @EnvironmentObject private var store: BackupStore
+    @AppStorage("cardPilot.lastSuccessfulBackupExport") private var lastSuccessfulExport = 0.0
     @State private var importing = false
     @State private var exporting = false
+    @State private var exportFilename = "CardPilot-备份"
     @State private var document: BackupDocument?
     @State private var preview: RestorePreview?
     @State private var retained: [BackupStore.RetainedBackup] = []
@@ -37,14 +39,27 @@ struct BackupView: View {
                 if store.container != nil {
                     Button("导出完整备份", systemImage: "square.and.arrow.up") {
                         perform {
-                            document = BackupDocument(data: try await store.exportData())
+                            let startedAt = Date()
+                            let data = try await store.exportData()
+                            exportFilename = filename(for: startedAt)
+                            document = BackupDocument(data: data)
                             exporting = true
                         }
                     }
+                    .accessibilityIdentifier("backup.export")
                 }
                 Button("选择备份恢复", systemImage: "square.and.arrow.down") { importing = true }
             } footer: {
                 Text("包含全部账户、卡片、账务规则、活动、交易与历史关系，包括归档和停用数据。备份为未加密文件，请存放在可信位置。")
+            }
+
+            Section {
+                Text(lastExportDate.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "尚无成功导出记录")
+                    .accessibilityIdentifier("backup.lastSuccessfulExport")
+            } header: {
+                Text("上次成功导出")
+            } footer: {
+                Text("这是本机的导出记录。请妥善保管导出文件；恢复时会重新完整校验。")
             }
 
             Section("恢复方式") {
@@ -83,9 +98,11 @@ struct BackupView: View {
             case .failure: message = "无法读取所选文件，请确认文件已下载并可访问后重试。"
             }
         }
-        .fileExporter(isPresented: $exporting, document: document, contentType: .json, defaultFilename: "CardPilot-备份") { result in
+        .fileExporter(isPresented: $exporting, document: document, contentType: .json, defaultFilename: exportFilename) { result in
             switch result {
-            case .success: message = "备份已导出。"
+            case .success:
+                lastSuccessfulExport = Date().timeIntervalSince1970
+                message = "备份已导出。"
             case .failure: message = "备份未导出，请检查目标位置后重试。"
             }
         }
@@ -95,6 +112,22 @@ struct BackupView: View {
         .alert("备份与恢复", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
             Button("好", role: .cancel) { message = nil }
         } message: { Text(message ?? "") }
+    }
+
+    private var lastExportDate: Date? {
+        guard lastSuccessfulExport.isFinite,
+              (0...253_402_300_799).contains(lastSuccessfulExport),
+              lastSuccessfulExport != 0 else { return nil }
+        return Date(timeIntervalSince1970: lastSuccessfulExport)
+    }
+
+    private func filename(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return "CardPilot-备份-\(formatter.string(from: date))"
     }
 
     private func load(_ url: URL) {
