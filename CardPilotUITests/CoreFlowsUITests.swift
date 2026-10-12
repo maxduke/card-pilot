@@ -564,8 +564,13 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(selectedOriginal)
         captureScreenshot("最大字号原消费选择列表")
         try auditAccessibility(for: [.textClipped])
+        // This sheet has no save footer; the covered editor's AX button still exists.
+        app.swipeUp()
         let alternate = app.buttons["2026年10月09日 · UI Alternate Original · 65.5 HKD"]
-        reveal(alternate, fullyVisible: true)
+        XCTAssertTrue(alternate.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(alternate.frame.minY, app.navigationBars["选择原消费"].frame.maxY)
+        XCTAssertLessThan(alternate.frame.maxY, app.frame.maxY - 40)
+        XCTAssertTrue(alternate.isHittable)
         assertTouchTarget(alternate)
         tap(alternate)
         reveal(summary, fullyVisible: true)
