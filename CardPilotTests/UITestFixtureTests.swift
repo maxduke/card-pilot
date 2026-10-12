@@ -143,6 +143,29 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertNil(transactions.first { $0.merchant == "UI Unlinked Refund" }?.originalTransaction)
     }
 
+    func testRefundIdentityFixtureRestoresDistinctOriginalAmountsCurrenciesAndStatuses() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .refundIdentity)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+        XCTAssertEqual(transactions.count, 2)
+        let original = try XCTUnwrap(transactions.first { $0.merchant == "星河百货中心生活用品与家居电器联合专柜" })
+        let alternate = try XCTUnwrap(transactions.first { $0.merchant == "UI Alternate Original" })
+        XCTAssertEqual(original.card.id, alternate.card.id)
+        XCTAssertEqual(original.card.account.limitCurrencyCode, "HKD")
+        XCTAssertTrue(transactions.allSatisfy { $0.kind == .purchase && $0.originalTransaction == nil && $0.refunds.isEmpty })
+        XCTAssertEqual(original.transactionOn, 20261010)
+        XCTAssertEqual(original.amount, Decimal(string: "100.25"))
+        XCTAssertEqual(original.currencyCode, "CNY")
+        XCTAssertEqual(original.status, .reversed)
+        XCTAssertEqual(alternate.transactionOn, 20261009)
+        XCTAssertEqual(alternate.amount, Decimal(string: "65.5"))
+        XCTAssertEqual(alternate.currencyCode, "HKD")
+        XCTAssertEqual(alternate.status, .active)
+    }
+
     func testTransactionFilterFixtureRestoresDistinctDatesCurrenciesAndStatuses() throws {
         for rawDate in [20240229, 20270101, 20270131] {
             let today = try LocalDate(rawValue: rawDate)

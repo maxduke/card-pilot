@@ -1473,10 +1473,17 @@ struct TransactionEditorForm: View {
                     }
                 }
                 .accessibilityIdentifier("transaction.original")
-                if originalTransactions.first(where: { $0.id == originalTransactionID })?.status == .reversed {
-                    Text("原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。")
+                if let original = originalTransactions.first(where: { $0.id == originalTransactionID }) {
+                    Text("原消费：\(transactionLabel(original)) · 状态：\(original.status == .reversed ? "已冲正" : "有效")")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("transaction.original.summary")
+                    if original.status == .reversed {
+                        Text("原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 if originalTransactions.isEmpty {
                     Text("当前卡片暂无可关联的原消费，可稍后在详情中补充。")

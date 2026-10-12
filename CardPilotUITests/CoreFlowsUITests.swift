@@ -420,6 +420,11 @@ final class CoreFlowsUITests: XCTestCase {
         let original = app.buttons["transaction.original"]
         reveal(original)
         XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Original Purchase"))
+        let originalSummary = app.staticTexts["transaction.original.summary"]
+        reveal(originalSummary, fullyVisible: true)
+        XCTAssertTrue(originalSummary.label.contains("UI Original Purchase"))
+        XCTAssertTrue(originalSummary.label.contains("100 CNY"))
+        XCTAssertTrue(originalSummary.label.contains("状态：有效"))
         captureScreenshot("从原消费记录退款")
         enter("20", into: amount)
         enter("UI Second Refund", into: app.textFields["商户（可选）"])
@@ -455,6 +460,77 @@ final class CoreFlowsUITests: XCTestCase {
             reveal(row)
             XCTAssertTrue(row.label.contains(amountText))
         }
+    }
+
+    func testRefundOriginalSummaryUpdatesWithSelectionAndClearsWhenCardChanges() {
+        let merchant = "星河百货中心生活用品与家居电器联合专柜"
+        launch("refundIdentity")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.\(merchant)"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
+        XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        let summary = app.staticTexts["transaction.original.summary"]
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
+        captureScreenshot("完整原消费摘要")
+        enter("7.25", into: app.textFields["transactionAmount"])
+        reveal(summary, fullyVisible: true)
+        XCTAssertTrue(summary.label.contains("100.25 CNY"))
+        XCTAssertFalse(summary.label.contains("7.25"))
+
+        let original = app.buttons["transaction.original"]
+        tap(original)
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Alternate Original")).firstMatch)
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月09日 · UI Alternate Original · 65.5 HKD · 状态：有效")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        XCTAssertFalse(app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"].exists)
+        captureScreenshot("切换原消费后的摘要")
+        tap(original)
+        tap(app.buttons["不关联原消费（可选）"])
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
+        XCTAssertFalse(summary.exists)
+        tap(original)
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", merchant)).firstMatch)
+        reveal(summary, fullyVisible: true)
+        XCTAssertTrue(summary.label.contains(merchant))
+        XCTAssertTrue(summary.label.contains("状态：已冲正"))
+        selectTransactionCard("UI Primary")
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
+        XCTAssertTrue(app.staticTexts["当前卡片暂无可关联的原消费，可稍后在详情中补充。"].exists)
+        XCTAssertFalse(summary.exists)
+        selectTransactionCard("UI Foreign")
+        reveal(original, fullyVisible: true)
+        XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
+        XCTAssertFalse(summary.exists)
+        reveal(app.textFields["transactionAmount"], scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "7.25")
+        XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+    }
+
+    func testLongRefundOriginalSummaryAtLargestTextSize() throws {
+        let merchant = "星河百货中心生活用品与家居电器联合专柜"
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("refundIdentity")
+        openCard("UI Foreign")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.\(merchant)"])
+        let recordRefund = app.buttons["transaction.recordRefund"]
+        reveal(recordRefund, fullyVisible: true)
+        tap(recordRefund)
+        let summary = app.staticTexts["transaction.original.summary"]
+        reveal(summary, fullyVisible: true)
+        XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        captureScreenshot("最大字号完整原消费摘要")
+        try auditAccessibility(for: [.textClipped])
     }
 
     func testLinkedRefundExcessAmountsRequireConfirmationAndRetainOriginal() {
@@ -514,6 +590,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "17")
         XCTAssertTrue(app.segmentedControls.buttons["消费"].isSelected)
         XCTAssertFalse(app.buttons["transaction.original"].exists)
+        XCTAssertFalse(app.staticTexts["transaction.original.summary"].exists)
         tap(app.buttons["关闭"])
         tap(app.buttons["保留草稿并关闭"])
         tap(recordRefund)

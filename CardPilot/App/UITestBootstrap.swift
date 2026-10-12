@@ -12,6 +12,7 @@ enum UITestBootstrap {
         case promotionOverview
         case dashboardActions
         case linkedRefunds
+        case refundIdentity
         case transactionFilters
         case accountHistory
         case futureRules
@@ -158,6 +159,17 @@ enum UITestBootstrap {
             context.insert(Transaction(
                 card: sibling, kind: .refund, transactionOn: today.rawValue,
                 amount: 15, currencyCode: "CNY", merchant: "UI Unlinked Refund"
+            ))
+        }
+        if scenario == .refundIdentity {
+            context.insert(Transaction(
+                card: foreignCard, transactionOn: 20261010,
+                amount: Decimal(string: "100.25")!, currencyCode: "CNY",
+                merchant: "星河百货中心生活用品与家居电器联合专柜", status: .reversed
+            ))
+            context.insert(Transaction(
+                card: foreignCard, transactionOn: 20261009,
+                amount: Decimal(string: "65.5")!, currencyCode: "HKD", merchant: "UI Alternate Original"
             ))
         }
         if scenario == .transactionFilters {
