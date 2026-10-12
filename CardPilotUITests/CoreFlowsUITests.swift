@@ -260,8 +260,15 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["放弃修改"])
         app.terminate()
         app.launch()
-        openPromotion("UI Created Promotion")
-        XCTAssertTrue(app.navigationBars["UI Created Promotion"].exists)
+        tap(app.tabBars.buttons["促销"])
+        let createdPromotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Created Promotion")).firstMatch
+        reveal(createdPromotion)
+        assertTouchTarget(createdPromotion)
+        // This row also has a context menu. Specify a single short press when
+        // reopening the saved value, then wait for the actual detail page.
+        createdPromotion.press(forDuration: 0.05)
+        XCTAssertTrue(app.navigationBars["UI Created Promotion"].waitForExistence(timeout: 10))
+        captureScreenshot("促销校验后原值读回")
     }
 
     func testPromotionSectionNavigationSupportsLargestTextSize() {
@@ -1722,6 +1729,8 @@ final class CoreFlowsUITests: XCTestCase {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
+        let geometryTolerance: CGFloat = 0.001
+        var geometryDescription = "Element missing"
         for _ in 0..<8 {
             // Lazy Form rows disappear from the accessibility tree offscreen.
             // A known first-row control must be approached from the top.
@@ -1739,7 +1748,9 @@ final class CoreFlowsUITests: XCTestCase {
                 if needsUnobscuredFrame {
                     let bottom = contentBottom
                     viewportBottom = bottom
-                    frameIsVisible = frameIsVisible && targetFrame.minY >= contentTop && targetFrame.maxY < bottom
+                    geometryDescription = "minY=\(targetFrame.minY), top=\(contentTop), maxY=\(targetFrame.maxY), bottom=\(bottom)"
+                    // A row can meet the bar at a subpixel AX rounding boundary.
+                    frameIsVisible = frameIsVisible && targetFrame.minY + geometryTolerance >= contentTop && targetFrame.maxY < bottom
                 }
                 // Querying hittability for a footer-clipped text field can throw
                 // an XCTest activation-point error before it can return false.
@@ -1747,7 +1758,7 @@ final class CoreFlowsUITests: XCTestCase {
                 if frameIsVisible && element.isHittable { return }
                 // After dismissing an editor, a previously visible row can be above
                 // the viewport. Always swiping up would move it farther out of reach.
-                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY < contentTop
+                targetIsAbove = !targetFrame.isEmpty && targetFrame.minY + geometryTolerance < contentTop
                 if !targetFrame.isEmpty && needsUnobscuredFrame {
                     let bottom = viewportBottom ?? contentBottom
                     viewportBottom = bottom
@@ -1776,6 +1787,6 @@ final class CoreFlowsUITests: XCTestCase {
                 start.press(forDuration: 0.05, thenDragTo: end)
             }
         }
-        XCTFail("Expected an unobscured element: \(element)")
+        XCTFail("Expected an unobscured element: \(element). \(geometryDescription)")
     }
 }
