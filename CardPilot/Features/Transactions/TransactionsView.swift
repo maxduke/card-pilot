@@ -898,6 +898,11 @@ private struct TransactionFilterSheet: View {
 }
 
 struct TransactionEditorForm: View {
+    private enum InputField: Hashable {
+        case amount
+        case allocation(UUID)
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let transaction: Transaction?
@@ -905,7 +910,7 @@ struct TransactionEditorForm: View {
     let promotions: [Promotion]
     let transactions: [Transaction]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @FocusState private var amountIsFocused: Bool
+    @FocusState private var focusedInput: InputField?
     @ScaledMetric(relativeTo: .caption) private var stepIndicatorSize = 28
 
     @AppStorage("cardPilot.lastUsedCardID") private var lastUsedCardID = ""
@@ -1207,7 +1212,7 @@ struct TransactionEditorForm: View {
                         }
                     }
                     Button {
-                        amountIsFocused = false
+                        focusedInput = nil
                         if editorStep == 0 && needsPromotionConfirmation {
                             continueToPromotionConfirmation()
                         } else {
@@ -1234,7 +1239,7 @@ struct TransactionEditorForm: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase != .active { persistDraft() }
             }
-            .task { if transaction == nil { amountIsFocused = true } }
+            .task { if transaction == nil { focusedInput = .amount } }
             .onChange(of: cardID) { _, _ in
                 if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
                     originalTransactionID = Self.noOriginalTransactionID
@@ -1279,6 +1284,14 @@ struct TransactionEditorForm: View {
                         Button("关闭", action: closeNewTransaction)
                     } else {
                         EditorCancelButton()
+                    }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    if focusedInput != nil {
+                        Spacer()
+                        Button("收起键盘") { focusedInput = nil }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("transaction.keyboard.dismiss")
                     }
                 }
             }
@@ -1433,7 +1446,7 @@ struct TransactionEditorForm: View {
                     .monospacedDigit()
                     .keyboardType(amountFormat.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
                     .environment(\.locale, amountFormat.locale)
-                    .focused($amountIsFocused)
+                    .focused($focusedInput, equals: .amount)
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("交易金额")
@@ -1472,7 +1485,7 @@ struct TransactionEditorForm: View {
             if kind == .refund {
                 let original = originalTransactions.first { $0.id == originalTransactionID }
                 Button {
-                    amountIsFocused = false
+                    focusedInput = nil
                     showingOriginalPicker = true
                 } label: {
                     HStack {
@@ -1543,7 +1556,7 @@ struct TransactionEditorForm: View {
                 Label("本笔不计入活动", systemImage: "tag.slash")
                     .foregroundStyle(.secondary)
                 Button("手动选择活动") {
-                    amountIsFocused = false
+                    focusedInput = nil
                     continueToPromotionConfirmation()
                 }
                 .disabled(!isAmountPositive)
@@ -1603,7 +1616,7 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             } else if let selectedCard {
                 Button {
-                    amountIsFocused = false
+                    focusedInput = nil
                     showingCardPicker = true
                 } label: {
                     HStack(spacing: 12) {
@@ -1638,7 +1651,7 @@ struct TransactionEditorForm: View {
                 .accessibilityIdentifier("transactionCardPicker")
             } else {
                 Button("选择其他卡片", systemImage: "creditcard") {
-                    amountIsFocused = false
+                    focusedInput = nil
                     showingCardPicker = true
                 }
                 .accessibilityHint("草稿中的卡片已不可用，请重新选择")
@@ -1723,6 +1736,7 @@ struct TransactionEditorForm: View {
                             )
                             .keyboardType(amountFormat.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
                             .environment(\.locale, amountFormat.locale)
+                            .focused($focusedInput, equals: .allocation(promotion.id))
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             .padding(.leading, 24)

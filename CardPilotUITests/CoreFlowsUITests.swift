@@ -383,6 +383,137 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号报名与资格详情")
     }
 
+    func testNumericKeyboardDismissalPreservesDraftAndSavedAmounts() {
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+
+        let amount = app.textFields["transactionAmount"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        enter("125.50", into: amount)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        captureScreenshot("交易金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertTrue(app.navigationBars["添加交易"].exists)
+
+        // An ordinary text field must not show an inert numeric-only action.
+        enter("UI Keyboard", into: app.textFields["商户（可选）"])
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
+
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "125.5")
+        replaceText("100.25", in: allocation)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        captureScreenshot("促销计入金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertTrue(app.navigationBars["添加交易"].exists)
+        XCTAssertTrue(app.buttons["saveTransaction"].isEnabled)
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["记一笔"])
+        XCTAssertTrue(app.buttons["继续草稿"].waitForExistence(timeout: 10))
+        tap(app.buttons["继续草稿"])
+        let restored = app.textFields["allocation.amount.UI Spend"]
+        reveal(restored)
+        XCTAssertEqual(restored.value as? String, "100.25")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["添加交易"].waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        let saved = app.buttons["transaction.UI Keyboard"]
+        reveal(saved)
+        XCTAssertTrue(saved.label.contains("125.5 CNY"))
+        XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Keyboard").count, 1)
+        tap(saved)
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Spend", "100.25 CNY"
+        )).firstMatch.waitForExistence(timeout: 10))
+    }
+
+    func testNumericKeyboardDismissalAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+
+        let amount = app.textFields["transactionAmount"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        let navigationBar = app.navigationBars["添加交易"]
+        enter("125.50", into: amount)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        captureScreenshot("最大字号交易金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertTrue(navigationBar.exists)
+
+        let save = app.buttons["saveTransaction"]
+        XCTAssertTrue(save.isHittable)
+        assertTouchTarget(save)
+        XCTAssertTrue(app.frame.contains(save.frame))
+        save.tap()
+        let back = app.buttons["返回修改交易"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        replaceText("100.25", in: allocation)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        captureScreenshot("最大字号促销计入金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertTrue(navigationBar.exists)
+
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertTrue(back.isHittable)
+        XCTAssertTrue(save.isHittable)
+        XCTAssertTrue(save.isEnabled)
+        assertTouchTarget(save)
+        XCTAssertTrue(app.frame.contains(back.frame))
+        XCTAssertTrue(app.frame.contains(save.frame))
+        XCTAssertLessThanOrEqual(back.frame.maxY, save.frame.minY)
+        captureScreenshot("最大字号收起键盘后促销确认")
+    }
+
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
         launch("core")
         openCard("UI Primary")
