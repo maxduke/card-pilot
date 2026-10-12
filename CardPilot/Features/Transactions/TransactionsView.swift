@@ -1476,10 +1476,19 @@ struct TransactionEditorForm: View {
                     }
                     .pickerStyle(.inline)
                 } label: {
-                    Label(original == nil ? "选择原消费（可选）" : "更改原消费", systemImage: "chevron.up.chevron.down")
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    HStack {
+                        Text(original == nil ? "选择原消费（可选）" : "更改原消费")
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .accessibilityHidden(true)
+                    }
+                    .font(.body)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.borderless)
                 .accessibilityValue(original.map(transactionLabel) ?? "不关联原消费（可选）")
                 .accessibilityIdentifier("transaction.original")
                 if let original {

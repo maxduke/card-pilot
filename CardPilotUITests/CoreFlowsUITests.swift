@@ -485,7 +485,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         let original = app.buttons["transaction.original"]
         tap(original)
-        let alternate = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Alternate Original")).firstMatch
+        let alternate = app.buttons["2026年10月09日 · UI Alternate Original · 65.5 HKD"]
         XCTAssertTrue(alternate.waitForExistence(timeout: 10))
         captureScreenshot("原消费选择菜单")
         tap(alternate)
@@ -500,7 +500,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("不关联原消费"))
         XCTAssertFalse(summary.exists)
         tap(original)
-        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", merchant)).firstMatch)
+        tap(app.buttons["2026年10月10日 · \(merchant) · 100.25 CNY"])
         reveal(summary, fullyVisible: true)
         XCTAssertTrue(summary.label.contains(merchant))
         XCTAssertTrue(summary.label.contains("状态：已冲正"))
