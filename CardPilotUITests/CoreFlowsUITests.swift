@@ -553,7 +553,12 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, back.frame.minY)
         try app.performAccessibilityAudit(for: .textClipped)
-        reveal(allocation, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentHeader: progress)
+        // The audit can leave an empty viewport at the old end of the Form;
+        // its next layout returns to the beginning. Establish that known anchor
+        // before searching forward for the later, lazy allocation row.
+        reveal(app.staticTexts["本笔交易"], scrollTowardTopWhenMissing: true,
+               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
         XCTAssertEqual(allocation.value as? String, "100.25")
         XCTAssertFalse(allocation.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(allocation.frame))
@@ -1480,7 +1485,17 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(status, fullyVisible: true)
         assertTouchTarget(status)
         tap(status)
-        tap(app.buttons["未还款"])
+        let statusNavigation = app.navigationBars["还款状态"]
+        XCTAssertTrue(statusNavigation.waitForExistence(timeout: 10))
+        let unpaid = app.buttons["未还款"]
+        reveal(unpaid, fullyVisible: true)
+        assertTouchTarget(unpaid)
+        captureScreenshot("最大字号账期状态选择")
+        unpaid.tap()
+        if statusNavigation.exists {
+            tap(statusNavigation.buttons.element(boundBy: 0))
+        }
+        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
         let count = app.staticTexts["account.history.count"]
         reveal(count)
         XCTAssertEqual(count.label, "共 1 个账期")
@@ -1508,7 +1523,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["account.history.clear"].exists)
     }
 
-    func testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize() {
+    func testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("accountHistory")
         openCard("UI Shared")
@@ -1526,7 +1541,16 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(status, fullyVisible: true)
         assertTouchTarget(status)
         tap(status)
-        tap(app.buttons["已还款"])
+        let statusNavigation = app.navigationBars["还款状态"]
+        XCTAssertTrue(statusNavigation.waitForExistence(timeout: 10))
+        let paid = app.buttons["已还款"]
+        reveal(paid, fullyVisible: true)
+        assertTouchTarget(paid)
+        paid.tap()
+        if statusNavigation.exists {
+            tap(statusNavigation.buttons.element(boundBy: 0))
+        }
+        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
         let count = app.staticTexts["account.history.count"]
         reveal(count)
         XCTAssertEqual(count.label, "共 0 个账期")
@@ -1534,6 +1558,7 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(empty, fullyVisible: true)
         XCTAssertTrue(empty.exists)
         captureScreenshot("最大字号已还账期空结果")
+        try app.performAccessibilityAudit(for: .textClipped)
         let clear = app.buttons["account.history.clear"]
         reveal(clear, scrollTowardTopWhenMissing: true, fullyVisible: true)
         assertTouchTarget(clear)
