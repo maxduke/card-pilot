@@ -1,6 +1,6 @@
 # UX 第十五批：交易金额键盘退出 · 2026-10-13
 
-基于第十四批已验证主线 `b6bdaf7`，处理 O13 中交易表单的数字键盘退出路径。[PR #37](https://github.com/maxduke/card-pilot/pull/37) 的最终完整原生 CI 和十二张当前 HEAD 截图已验收，并合并为 `ba083d8`。合并后的 main 发现既有系统备份面板就绪用例失败，正在进行[交付补修](ux-native-backup-picker-readiness-2026-10-13.md)；第十五批仍待完整主线门槛通过。下文保留各轮真实失败和修复证据。
+基于第十四批已验证主线 `b6bdaf7`，处理 O13 中交易表单的数字键盘退出路径。[PR #37](https://github.com/maxduke/card-pilot/pull/37) 的最终完整原生 CI 和十二张当前 HEAD 截图已验收，并合并为 `ba083d8`。合并后出现的既有备份面板就绪失败已由 [PR #38](https://github.com/maxduke/card-pilot/pull/38) 修复；补修的完整 PR CI、十六张当前 HEAD 截图及合并提交 `f7263e1` 的完整 main 验证均通过，第十五批已完成交付。下文保留各轮真实失败和修复证据。
 
 ## 行为
 
@@ -96,5 +96,11 @@ HEAD `779fd064e892ae9cd431d957555f398b9dfa089e` 的 [完整原生 CI](https://gi
 最终 HEAD `3d6ac6081695cfece4e8c8c81a93976e1e50a969` 的 [完整 PR workflow](https://github.com/maxduke/card-pilot/actions/runs/38387314950) 通过 218 项单元／集成测试和全部 45 项 UI 测试，零失败、零跳过，产物为 `11809312594`。十二张该 HEAD 的原生截图已实际逐张检查：两个字号的键盘和输入、完整步骤说明、收起后的金额及固定操作区、原消费选择和关联退款、账期状态选择和日期查询、同时完整可见的空状态标题与说明均通过。完整空状态阅读区域的准备已通过审计，但先前报告没有关联元素，不能据此声称已唯一识别其内部原因。
 
 PR 已合并为 `ba083d87d9884edd2193fd0abb8091a73bd58aea`；[main workflow](https://github.com/maxduke/card-pilot/actions/runs/38393566901) 因既有备份文件选择器就绪检查失败而未通过，其余测试通过。原工作区未同步至这一未验证主线。[系统面板就绪补修记录](ux-native-backup-picker-readiness-2026-10-13.md) 说明证据、保持原有总等待预算的调整及完整交付门槛。
+
+## 完成交付
+
+补修 HEAD `8f16f44d2223fb25671fdf0e92d772438863e53f` 的 [完整 PR workflow](https://github.com/maxduke/card-pilot/actions/runs/38402345605) 通过 218 项单元／集成测试和 45 项 UI 测试，零失败、零跳过，产物为 `11820503193`。该 HEAD 的十二张本批截图及四张备份截图已实际逐张检查并批准合并。
+
+[PR #38](https://github.com/maxduke/card-pilot/pull/38) 合并为 `f7263e118cee7dbb1387f3841552aecf8d89eb39`；该提交的 [完整 main workflow](https://github.com/maxduke/card-pilot/actions/runs/38412074291) 同样通过 218＋45，零失败、零跳过，产物为 `11825847749`，结果为 `TEST SUCCEEDED`。无适用的待完成审查或未解决可操作发现。原干净 main 已快进至这一验证提交，随后开始第十六批字段反馈。真机验收边界保留。
 
 本批仅处理交易表单的两个数字输入类型。其他编辑器的数字键盘、首个错误字段定位，以及真机、外接键盘和 VoiceOver 操作仍按 O13／O21 逐项验收。

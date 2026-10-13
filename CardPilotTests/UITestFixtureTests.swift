@@ -99,6 +99,26 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertNil(corePromotion.perTransactionThreshold)
     }
 
+    func testAllocationFeedbackFixtureRestoresOrderedCandidatesWithoutSavedAllocations() throws {
+        let today = try LocalDate(rawValue: 20261231)
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .allocationFeedback, today: today)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let promotions = try restored.mainContext.fetch(FetchDescriptor<Promotion>())
+            .sorted { $0.endOn < $1.endOn }
+        XCTAssertEqual(promotions.map(\.title), ["UI Spend", "UI Second", "UI Middle 1", "UI Middle 2", "UI Middle 3", "UI Last"])
+        XCTAssertEqual(Set(promotions.map(\.endOn)).count, 6)
+        for promotion in promotions {
+            XCTAssertEqual(promotion.eligibleCards.map(\.productName), ["UI Primary"])
+            XCTAssertTrue(promotion.allocations.isEmpty)
+            XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(
+                promotion, transactionAmount: Decimal(string: "125.50")!, transactionCurrencyCode: "CNY"
+            ))
+        }
+    }
+
     func testPromotionOverviewFixtureRestoresDistinctProgressModes() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         try UITestBootstrap.seed(container.mainContext, scenario: .promotionOverview)
