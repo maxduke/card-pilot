@@ -742,7 +742,14 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(save)
         assertTouchTarget(back)
         captureScreenshot("最大字号计入金额错误定位")
-        try app.performAccessibilityAudit(for: [.textClipped])
+        try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+            let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+            let attachment = XCTAttachment(string: details)
+            attachment.name = "计入金额完整裁切审计元素"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            return false
+        }
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {

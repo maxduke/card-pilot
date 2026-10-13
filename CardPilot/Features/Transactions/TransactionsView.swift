@@ -1197,8 +1197,6 @@ struct TransactionEditorForm: View {
                         }
                     }
                     .scrollDismissesKeyboard(.immediately)
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
                         Divider()
                         if editorStep == 1 {
@@ -1231,7 +1229,7 @@ struct TransactionEditorForm: View {
                         .disabled(!isAmountPositive || selectedCard == nil)
                         .accessibilityIdentifier("saveTransaction")
                     }
-                    .background(.bar)
+                    .background(.bar, ignoresSafeAreaEdges: .bottom)
                 }
                 .onAppear {
                     initializePromotions()
@@ -1748,6 +1746,7 @@ struct TransactionEditorForm: View {
                     .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
                     .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
                     if selectedPromotionIDs.contains(promotion.id) {
+                        let warning = qualificationWarning(for: promotion)
                         // A separate Form row gives native scrolling a target
                         // that fits even when the activity title is very tall.
                         VStack(alignment: .leading, spacing: 7) {
@@ -1765,14 +1764,19 @@ struct TransactionEditorForm: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .accessibilityIdentifier("allocation.error.\(promotion.title)")
                             }
-                            if let warning = qualificationWarning(for: promotion) {
-                                Text(warning)
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                            }
                         }
                         .padding(.leading, 24)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityLabel(promotion.title)
+                        .listRowSeparator(warning == nil ? .visible : .hidden, edges: .bottom)
                         .id(InputField.allocation(promotion.id))
+                        if let warning {
+                            Text(warning)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 24)
+                        }
                     }
                     if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
                         Text("需补入账日期，不会自动勾选。")
@@ -1783,6 +1787,7 @@ struct TransactionEditorForm: View {
                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !inheritedPromotionIDs.isEmpty {
                     Text("已带入原消费已有的促销分配，即使活动已结束也会保留。")
                         .font(.caption)
@@ -2044,7 +2049,7 @@ struct TransactionEditorForm: View {
         for promotion in selectedPromotions {
             guard let amount = positiveAllocationAmount(for: promotion.id) else {
                 showingAllocationErrors = true
-                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
+                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .center)
                 return
             }
             parsedAmounts[promotion.id] = amount
