@@ -54,9 +54,7 @@ struct AccountCycleHistoryView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         } icon: {
                             Image(systemName: "calendar.badge.exclamationmark")
-                                .accessibilityHidden(true)
                         }
-                        .accessibilityElement(children: .contain)
                     } description: {
                         Text("可调整年份、月份或还款状态。")
                             .fixedSize(horizontal: false, vertical: true)

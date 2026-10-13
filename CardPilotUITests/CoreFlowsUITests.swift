@@ -1557,6 +1557,16 @@ final class CoreFlowsUITests: XCTestCase {
         let empty = app.staticTexts["没有匹配账期"]
         reveal(empty, fullyVisible: true)
         XCTAssertTrue(empty.exists)
+        let explanation = app.staticTexts["可调整年份、月份或还款状态。"]
+        reveal(explanation, fullyVisible: true)
+        XCTAssertTrue(explanation.exists)
+        let navigationBar = app.navigationBars["全部账期"]
+        for text in [empty, explanation] {
+            XCTAssertFalse(text.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(text.frame))
+            XCTAssertGreaterThanOrEqual(text.frame.minY + 0.001, navigationBar.frame.maxY)
+            XCTAssertLessThanOrEqual(text.frame.maxY, contentBottom)
+        }
         captureScreenshot("最大字号已还账期空结果")
         do {
             let originalContinueAfterFailure = continueAfterFailure
