@@ -1558,7 +1558,19 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(empty, fullyVisible: true)
         XCTAssertTrue(empty.exists)
         captureScreenshot("最大字号已还账期空结果")
-        try app.performAccessibilityAudit(for: .textClipped)
+        do {
+            let originalContinueAfterFailure = continueAfterFailure
+            continueAfterFailure = true
+            defer { continueAfterFailure = originalContinueAfterFailure }
+            try app.performAccessibilityAudit(for: .textClipped) { issue in
+                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+                let attachment = XCTAttachment(string: details)
+                attachment.name = "账期空结果文字审计元素"
+                attachment.lifetime = .keepAlways
+                self.add(attachment)
+                return false
+            }
+        }
         let clear = app.buttons["account.history.clear"]
         reveal(clear, scrollTowardTopWhenMissing: true, fullyVisible: true)
         assertTouchTarget(clear)
