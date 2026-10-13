@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountCycleHistoryView: View {
     let account: CreditCardAccount
     @Environment(\.currentDay) private var currentDay
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var year: Int?
     @State private var month: Int?
     @State private var status: AccountCycleHistoryStatus = .all
@@ -29,13 +30,11 @@ struct AccountCycleHistoryView: View {
                 }
                 .pickerStyle(.menu)
                 .accessibilityIdentifier("account.history.month")
-                Picker("还款状态", selection: $status) {
-                    ForEach(AccountCycleHistoryStatus.allCases, id: \.self) { status in
-                        Text(status.title).tag(status)
-                    }
+                if dynamicTypeSize.isAccessibilitySize {
+                    statusPicker.pickerStyle(.navigationLink)
+                } else {
+                    statusPicker.pickerStyle(.menu)
                 }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("account.history.status")
                 if year != nil || month != nil || status != .all {
                     Button("清除筛选") {
                         year = nil
@@ -48,8 +47,18 @@ struct AccountCycleHistoryView: View {
             }
             Section {
                 if results.isEmpty {
-                    ContentUnavailableView("没有匹配账期", systemImage: "calendar.badge.exclamationmark",
-                                           description: Text("可调整年份、月份或还款状态。"))
+                    ContentUnavailableView {
+                        Label {
+                            Text("没有匹配账期")
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "calendar.badge.exclamationmark")
+                        }
+                    } description: {
+                        Text("可调整年份、月份或还款状态。")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 } else {
                     ForEach(results, id: \.cycleKey) { cycle in
                         NavigationLink {
@@ -71,6 +80,15 @@ struct AccountCycleHistoryView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("全部账期")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var statusPicker: some View {
+        Picker("还款状态", selection: $status) {
+            ForEach(AccountCycleHistoryStatus.allCases, id: \.self) { status in
+                Text(status.title).tag(status)
+            }
+        }
+        .accessibilityIdentifier("account.history.status")
     }
 }
 

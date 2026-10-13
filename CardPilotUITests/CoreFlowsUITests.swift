@@ -383,6 +383,202 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号报名与资格详情")
     }
 
+    func testNumericKeyboardDismissalPreservesDraftAndSavedAmounts() {
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+
+        let amount = app.textFields["transactionAmount"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        enter("125.50", into: amount)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        captureScreenshot("交易金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertTrue(app.navigationBars["添加交易"].exists)
+
+        // An ordinary text field must not show an inert numeric-only action.
+        enter("UI Keyboard", into: app.textFields["商户（可选）"])
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
+
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation)
+        XCTAssertEqual(allocation.value as? String, "125.5")
+        replaceText("100.25", in: allocation)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        captureScreenshot("促销计入金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertTrue(app.navigationBars["添加交易"].exists)
+        XCTAssertTrue(app.buttons["saveTransaction"].isEnabled)
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["记一笔"])
+        XCTAssertTrue(app.buttons["继续草稿"].waitForExistence(timeout: 10))
+        tap(app.buttons["继续草稿"])
+        let restored = app.textFields["allocation.amount.UI Spend"]
+        reveal(restored)
+        XCTAssertEqual(restored.value as? String, "100.25")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["添加交易"].waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        let saved = app.buttons["transaction.UI Keyboard"]
+        reveal(saved)
+        XCTAssertTrue(saved.label.contains("125.5 CNY"))
+        XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Keyboard").count, 1)
+        tap(saved)
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Spend", "100.25 CNY"
+        )).firstMatch.waitForExistence(timeout: 10))
+    }
+
+    func testNumericKeyboardDismissalAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+
+        let amount = app.textFields["transactionAmount"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        let navigationBar = app.navigationBars["添加交易"]
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        XCTAssertTrue(progress.waitForExistence(timeout: 10))
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress)
+        amount.tap()
+        amount.typeText("125.50")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertEqual(progress.label, "第 1 步，共 2 步：交易信息")
+        XCTAssertTrue(app.frame.contains(progress.frame))
+        // Typing can scroll a field under the fixed header as the keyboard opens.
+        // Check the whole field before the screenshot, without a dismissing drag.
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertFalse(amount.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(amount.frame))
+        XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(amount.frame.maxY, contentBottom)
+        XCTAssertTrue(amount.isHittable)
+        captureScreenshot("最大字号交易金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertTrue(navigationBar.exists)
+
+        let save = app.buttons["saveTransaction"]
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
+        try app.performAccessibilityAudit(for: .textClipped)
+        // The native audit can move the Form's viewport. Restore the tested
+        // field and recheck the editor after the audit before continuing.
+        reveal(amount, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertFalse(amount.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(amount.frame))
+        XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(amount.frame.maxY, contentBottom)
+        XCTAssertTrue(amount.isHittable)
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
+        XCTAssertTrue(save.isHittable)
+        assertTouchTarget(save)
+        XCTAssertTrue(app.frame.contains(save.frame))
+        save.tap()
+        let back = app.buttons["返回修改交易"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        allocation.tap()
+        let oldAllocationValue = allocation.value as? String ?? ""
+        allocation.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldAllocationValue.count) + "100.25")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertEqual(progress.label, "第 2 步，共 2 步：确认促销")
+        XCTAssertTrue(app.frame.contains(progress.frame))
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertFalse(allocation.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(allocation.frame))
+        XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, contentBottom)
+        XCTAssertTrue(allocation.isHittable)
+        captureScreenshot("最大字号促销计入金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertTrue(navigationBar.exists)
+
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertTrue(back.isHittable)
+        XCTAssertTrue(save.isHittable)
+        XCTAssertTrue(save.isEnabled)
+        assertTouchTarget(save)
+        XCTAssertTrue(app.frame.contains(back.frame))
+        XCTAssertTrue(app.frame.contains(save.frame))
+        XCTAssertLessThanOrEqual(back.frame.maxY, save.frame.minY)
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, back.frame.minY)
+        try app.performAccessibilityAudit(for: .textClipped)
+        // The audit can leave an empty viewport at the old end of the Form;
+        // its next layout returns to the beginning. Establish that known anchor
+        // before searching forward for the later, lazy allocation row.
+        reveal(app.staticTexts["本笔交易"], scrollTowardTopWhenMissing: true,
+               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(allocation.value as? String, "100.25")
+        XCTAssertFalse(allocation.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(allocation.frame))
+        XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, contentBottom)
+        XCTAssertTrue(allocation.isHittable)
+        XCTAssertTrue(navigationBar.exists)
+        XCTAssertTrue(back.isHittable)
+        XCTAssertTrue(save.isHittable)
+        XCTAssertTrue(save.isEnabled)
+        assertTouchTarget(save)
+        XCTAssertTrue(app.frame.contains(progress.frame))
+        XCTAssertTrue(app.frame.contains(back.frame))
+        XCTAssertTrue(app.frame.contains(save.frame))
+        XCTAssertLessThanOrEqual(back.frame.maxY, save.frame.minY)
+        XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(progress.frame.maxY, back.frame.minY)
+        captureScreenshot("最大字号收起键盘后促销确认")
+    }
+
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
         launch("core")
         openCard("UI Primary")
@@ -443,6 +639,13 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(allocation)
         XCTAssertEqual(allocation.value as? String, "20")
         tap(app.buttons["saveTransaction"])
+        // The confirmation changes the detail's viewport and can evict a lazy
+        // refund row between exists and frame. Close it before locating the row.
+        let feedback = app.buttons["transaction.saveFeedback"]
+        XCTAssertTrue(feedback.waitForExistence(timeout: 10))
+        XCTAssertEqual(feedback.label, "已记录退款 20 CNY · 计入 1 个活动")
+        feedback.tap()
+        XCTAssertTrue(feedback.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
         let related = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.related."))
         let second = related.matching(NSPredicate(format: "label CONTAINS %@", "UI Second Refund")).firstMatch
@@ -1282,13 +1485,20 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(status, fullyVisible: true)
         assertTouchTarget(status)
         tap(status)
-        tap(app.buttons["已还款"])
+        let statusNavigation = app.navigationBars["还款状态"]
+        XCTAssertTrue(statusNavigation.waitForExistence(timeout: 10))
+        let unpaid = app.buttons["未还款"]
+        reveal(unpaid, fullyVisible: true)
+        assertTouchTarget(unpaid)
+        captureScreenshot("最大字号账期状态选择")
+        unpaid.tap()
+        if statusNavigation.exists {
+            tap(statusNavigation.buttons.element(boundBy: 0))
+        }
+        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
         let count = app.staticTexts["account.history.count"]
         reveal(count)
-        XCTAssertEqual(count.label, "共 0 个账期")
-        reveal(app.staticTexts["没有匹配账期"])
-        tap(status, scrollTowardTopWhenMissing: true)
-        tap(app.buttons["未还款"])
+        XCTAssertEqual(count.label, "共 1 个账期")
         let row = app.buttons["account.history.cycle.\(future.key)"]
         reveal(row, fullyVisible: true)
         assertTouchTarget(row)
@@ -1311,6 +1521,73 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(count)
         XCTAssertEqual(count.label, "共 23 个账期")
         XCTAssertFalse(app.buttons["account.history.clear"].exists)
+    }
+
+    func testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("accountHistory")
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, fullyVisible: true)
+        assertTouchTarget(history)
+        tap(history)
+        let future = accountHistoryMonth(offset: 5)
+        tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
+        tap(app.buttons[future.year])
+        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
+        tap(app.buttons[future.month])
+        let status = app.buttons["account.history.status"]
+        reveal(status, fullyVisible: true)
+        assertTouchTarget(status)
+        tap(status)
+        let statusNavigation = app.navigationBars["还款状态"]
+        XCTAssertTrue(statusNavigation.waitForExistence(timeout: 10))
+        let paid = app.buttons["已还款"]
+        reveal(paid, fullyVisible: true)
+        assertTouchTarget(paid)
+        paid.tap()
+        if statusNavigation.exists {
+            tap(statusNavigation.buttons.element(boundBy: 0))
+        }
+        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
+        let count = app.staticTexts["account.history.count"]
+        reveal(count)
+        XCTAssertEqual(count.label, "共 0 个账期")
+        let empty = app.staticTexts["没有匹配账期"]
+        reveal(empty, fullyVisible: true)
+        XCTAssertTrue(empty.exists)
+        let explanation = app.staticTexts["可调整年份、月份或还款状态。"]
+        reveal(explanation, fullyVisible: true)
+        XCTAssertTrue(explanation.exists)
+        let navigationBar = app.navigationBars["全部账期"]
+        for text in [empty, explanation] {
+            XCTAssertFalse(text.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(text.frame))
+            XCTAssertGreaterThanOrEqual(text.frame.minY + 0.001, navigationBar.frame.maxY)
+            XCTAssertLessThanOrEqual(text.frame.maxY, contentBottom)
+        }
+        captureScreenshot("最大字号已还账期空结果")
+        do {
+            let originalContinueAfterFailure = continueAfterFailure
+            continueAfterFailure = true
+            defer { continueAfterFailure = originalContinueAfterFailure }
+            try app.performAccessibilityAudit(for: .textClipped) { issue in
+                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+                let attachment = XCTAttachment(string: details)
+                attachment.name = "账期空结果文字审计元素"
+                attachment.lifetime = .keepAlways
+                self.add(attachment)
+                return false
+            }
+        }
+        let clear = app.buttons["account.history.clear"]
+        reveal(clear, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        assertTouchTarget(clear)
+        clear.tap()
+        reveal(count)
+        XCTAssertEqual(count.label, "共 23 个账期")
+        XCTAssertFalse(clear.exists)
     }
 
     private func accountHistoryMonth(offset: Int) -> (key: Int, year: String, month: String) {
@@ -1724,7 +2001,8 @@ final class CoreFlowsUITests: XCTestCase {
         _ element: XCUIElement,
         scrollTowardTopWhenMissing: Bool = false,
         fullyVisible: Bool = false,
-        navigationBar: XCUIElement? = nil
+        navigationBar: XCUIElement? = nil,
+        contentHeader: XCUIElement? = nil
     ) {
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
@@ -1742,7 +2020,11 @@ final class CoreFlowsUITests: XCTestCase {
             if element.exists || element.waitForExistence(timeout: 2) {
                 let targetFrame = element.frame
                 let needsUnobscuredFrame = fullyVisible || element.elementType == .textField
-                let contentTop = needsUnobscuredFrame ? (navigationBar ?? app.navigationBars.firstMatch).frame.maxY : frame.minY + 110
+                var contentTop = needsUnobscuredFrame ? (navigationBar ?? app.navigationBars.firstMatch).frame.maxY : frame.minY + 110
+                if needsUnobscuredFrame, let contentHeader, contentHeader.exists {
+                    // The editor's fixed step summary also obscures scrolled rows.
+                    contentTop = max(contentTop, contentHeader.frame.maxY)
+                }
                 var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
                 settlesAtDestination = needsUnobscuredFrame && frameIsVisible
                 if needsUnobscuredFrame {
