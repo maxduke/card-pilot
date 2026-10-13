@@ -1197,6 +1197,7 @@ struct TransactionEditorForm: View {
                         }
                     }
                     .scrollDismissesKeyboard(.immediately)
+                    .accessibilityIdentifier("transaction.form")
                     VStack(spacing: 0) {
                         Divider()
                         if editorStep == 1 {
@@ -1738,25 +1739,42 @@ struct TransactionEditorForm: View {
                             Text(promotion.title)
                                 .font(.subheadline.weight(.medium))
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(promotionSummary(promotion))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Text(promotionSummary(promotion))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
-                    .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                    .listRowSeparator(dynamicTypeSize.isAccessibilitySize || selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                    if dynamicTypeSize.isAccessibilitySize {
+                        // A long title and its summary can exceed the entire
+                        // viewport together. Let each native row scroll fully
+                        // into view without reducing either text's size.
+                        Text(promotionSummary(promotion))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                    }
                     if selectedPromotionIDs.contains(promotion.id) {
                         let warning = qualificationWarning(for: promotion)
                         // A separate Form row gives native scrolling a target
                         // that fits even when the activity title is very tall.
                         VStack(alignment: .leading, spacing: 7) {
+                            Text("计入金额（\(promotion.progressCurrencyCode)）")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                             TextField(
-                                "计入金额（\(promotion.progressCurrencyCode)）",
+                                "0\(amountFormat.decimalSeparator)00",
                                 text: amountBinding(promotion.id)
                             )
                             .keyboardType(amountFormat.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
+                            .textFieldStyle(.plain)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
@@ -1766,8 +1784,6 @@ struct TransactionEditorForm: View {
                             }
                         }
                         .padding(.leading, 24)
-                        .accessibilityElement(children: .contain)
-                        .accessibilityLabel(promotion.title)
                         .listRowSeparator(warning == nil ? .visible : .hidden, edges: .bottom)
                         .id(InputField.allocation(promotion.id))
                         if let warning {

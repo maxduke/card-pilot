@@ -465,6 +465,8 @@ final class CoreFlowsUITests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         let dismissal = app.buttons["transaction.keyboard.dismiss"]
         let navigationBar = app.navigationBars["添加交易"]
+        let form = app.collectionViews["transaction.form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 10))
         reveal(amount, navigationBar: navigationBar, contentHeader: progress)
@@ -485,7 +487,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
         XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(amount.frame.maxY, contentBottom)
+        XCTAssertLessThanOrEqual(amount.frame.maxY, min(contentBottom, form.frame.maxY))
         XCTAssertTrue(amount.isHittable)
         captureScreenshot("最大字号交易金额键盘收起入口")
         dismissal.tap()
@@ -505,7 +507,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
         XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(amount.frame.maxY, contentBottom)
+        XCTAssertLessThanOrEqual(amount.frame.maxY, min(contentBottom, form.frame.maxY))
         XCTAssertTrue(amount.isHittable)
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
@@ -533,7 +535,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(allocation.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(allocation.frame))
         XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(allocation.frame.maxY, contentBottom)
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, min(contentBottom, form.frame.maxY))
         XCTAssertTrue(allocation.isHittable)
         captureScreenshot("最大字号促销计入金额键盘收起入口")
         dismissal.tap()
@@ -564,7 +566,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(allocation.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(allocation.frame))
         XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(allocation.frame.maxY, contentBottom)
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, min(contentBottom, form.frame.maxY))
         XCTAssertTrue(allocation.isHittable)
         XCTAssertTrue(navigationBar.exists)
         XCTAssertTrue(back.isHittable)
@@ -594,9 +596,14 @@ final class CoreFlowsUITests: XCTestCase {
         let secondError = allocationError("UI Second")
         replaceText("0", in: first)
         XCTAssertFalse(firstError.exists)
+        // Dismiss before searching for the next lazy row. A drag that both
+        // dismisses the keyboard and scrolls can jump past that adjacent row.
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         replaceText("0", in: second)
         XCTAssertFalse(secondError.exists)
-        let dismissal = app.buttons["transaction.keyboard.dismiss"]
         XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
         dismissal.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -795,6 +802,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(amount.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
+               navigationBar: app.navigationBars["添加交易"],
+               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         let original = app.buttons["transaction.original"]
         reveal(original)
@@ -1071,6 +1081,9 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(recordRefund)
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
+        reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
+               navigationBar: app.navigationBars["添加交易"],
+               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         let original = app.buttons["transaction.original"]
         reveal(original, fullyVisible: true)
@@ -1185,6 +1198,8 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(restored.value as? String, "100")
         tap(app.buttons["返回修改交易"])
         XCTAssertEqual(app.textFields["transactionAmount"].value as? String, "125")
+        reveal(app.textFields["商户（可选）"],
+               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
         XCTAssertEqual(app.textFields["商户（可选）"].value as? String, "UI Draft")
         tap(app.buttons["saveTransaction"])
         tap(app.buttons["saveTransaction"])
@@ -2098,7 +2113,9 @@ final class CoreFlowsUITests: XCTestCase {
         let amount = app.textFields["allocation.amount.\(title)"]
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         let top = max(app.navigationBars["添加交易"].frame.maxY, progress.frame.maxY)
-        let bottom = contentBottom
+        let form = app.collectionViews["transaction.form"]
+        XCTAssertTrue(form.exists)
+        let bottom = min(contentBottom, form.frame.maxY)
         for element in [amount, error] {
             let frame = element.frame
             XCTAssertFalse(frame.isEmpty)
