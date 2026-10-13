@@ -1740,6 +1740,7 @@ struct TransactionEditorForm: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(promotion.title)
                                     .font(.subheadline.weight(.medium))
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Text(promotionSummary(promotion))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -1764,6 +1765,7 @@ struct TransactionEditorForm: View {
                                 }
                             }
                             .padding(.leading, 24)
+                            .id(InputField.allocation(promotion.id))
                             if let warning = qualificationWarning(for: promotion) {
                                 Text(warning)
                                     .font(.caption)
@@ -1777,7 +1779,7 @@ struct TransactionEditorForm: View {
                                 .foregroundStyle(.orange)
                         }
                     }
-                    .id(InputField.allocation(promotion.id))
+                    .id(promotion.id)
                 }
                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
@@ -2043,7 +2045,12 @@ struct TransactionEditorForm: View {
         for promotion in selectedPromotions {
             guard let amount = positiveAllocationAmount(for: promotion.id) else {
                 showingAllocationErrors = true
-                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
+                let promotionID = promotion.id
+                // Reveal the lazy row, then align its updated amount/error block.
+                scrollProxy.scrollTo(promotionID, anchor: .top)
+                DispatchQueue.main.async {
+                    scrollProxy.scrollTo(InputField.allocation(promotionID), anchor: .center)
+                }
                 return
             }
             parsedAmounts[promotion.id] = amount

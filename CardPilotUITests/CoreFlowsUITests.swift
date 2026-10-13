@@ -4,6 +4,7 @@ import UIKit
 @MainActor
 final class CoreFlowsUITests: XCTestCase {
     private var app: XCUIApplication!
+    private let allocationFeedbackFirstTitle = "星河信用卡境内外旅行住宿与日常消费累计达标返现活动"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -587,9 +588,9 @@ final class CoreFlowsUITests: XCTestCase {
         enter("UI Allocation Feedback", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
 
-        let first = app.textFields["allocation.amount.UI Spend"]
+        let first = app.textFields["allocation.amount.\(allocationFeedbackFirstTitle)"]
         let second = app.textFields["allocation.amount.UI Second"]
-        let firstError = allocationError("UI Spend")
+        let firstError = allocationError(allocationFeedbackFirstTitle)
         let secondError = allocationError("UI Second")
         replaceText("0", in: first)
         XCTAssertFalse(firstError.exists)
@@ -601,14 +602,14 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
 
         reveal(app.textFields["allocation.amount.UI Last"])
-        XCTAssertFalse(first.exists && !first.frame.isEmpty && app.frame.contains(first.frame))
+        assertAllocationAmountOutsideContent(first)
         app.buttons["saveTransaction"].tap()
-        assertAllocationErrorVisible("UI Spend")
+        assertAllocationErrorVisible(allocationFeedbackFirstTitle)
         XCTAssertEqual(first.value as? String, "0")
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         captureScreenshot("首个计入金额错误定位")
         app.buttons["saveTransaction"].tap()
-        assertAllocationErrorVisible("UI Spend")
+        assertAllocationErrorVisible(allocationFeedbackFirstTitle)
 
         replaceText("100.25", in: first)
         XCTAssertTrue(firstError.waitForNonExistence(timeout: 5))
@@ -635,7 +636,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Allocation Feedback").count, 1)
         tap(saved)
         let firstSaved = app.staticTexts.matching(NSPredicate(
-            format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Spend", "100.25 CNY"
+            format: "label CONTAINS %@ AND label CONTAINS %@", "促销 \(allocationFeedbackFirstTitle)", "100.25 CNY"
         )).firstMatch
         reveal(firstSaved)
         let secondSaved = app.staticTexts.matching(NSPredicate(
@@ -706,7 +707,7 @@ final class CoreFlowsUITests: XCTestCase {
         amount.tap()
         amount.typeText("125.50")
         tap(app.buttons["saveTransaction"])
-        let first = app.textFields["allocation.amount.UI Spend"]
+        let first = app.textFields["allocation.amount.\(allocationFeedbackFirstTitle)"]
         reveal(first, navigationBar: navigationBar, contentHeader: progress)
         first.tap()
         let oldValue = first.value as? String ?? ""
@@ -716,12 +717,12 @@ final class CoreFlowsUITests: XCTestCase {
         dismissal.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         reveal(app.textFields["allocation.amount.UI Last"], navigationBar: navigationBar, contentHeader: progress)
-        XCTAssertFalse(first.exists && !first.frame.isEmpty && app.frame.contains(first.frame))
+        assertAllocationAmountOutsideContent(first)
         app.buttons["saveTransaction"].tap()
-        assertAllocationErrorVisible("UI Spend")
+        assertAllocationErrorVisible(allocationFeedbackFirstTitle)
         XCTAssertEqual(first.value as? String, "0")
         XCTAssertFalse(app.keyboards.firstMatch.exists)
-        let error = allocationError("UI Spend")
+        let error = allocationError(allocationFeedbackFirstTitle)
         XCTAssertEqual(error.label, "错误：计入金额应为大于 0 的数字。")
         let save = app.buttons["saveTransaction"]
         let back = app.buttons["返回修改交易"]
@@ -1102,7 +1103,19 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(summary.waitForExistence(timeout: 10))
         XCTAssertTrue(summary.label.contains("1.5 CNY"))
         XCTAssertTrue(summary.label.contains("UI Locale"))
-        tap(app.buttons["继续草稿"])
+        let continueDraft = app.buttons["继续草稿"]
+        var previousFrame: CGRect?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard continueDraft.exists else { return false }
+            let frame = continueDraft.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty && frame == previousFrame
+                && self.app.frame.contains(frame) && continueDraft.isHittable
+        }, object: continueDraft)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        assertTouchTarget(continueDraft)
+        tap(continueDraft)
+        XCTAssertTrue(app.navigationBars["添加交易"].waitForExistence(timeout: 10))
         let restored = app.textFields["allocation.amount.UI Spend"]
         reveal(restored)
         XCTAssertEqual(restored.value as? String, "1,250")
@@ -2038,7 +2051,15 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func allocationError(_ title: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "allocation.error.\(title)").firstMatch
+        app.staticTexts.matching(identifier: "allocation.error.\(title)").firstMatch
+    }
+
+    private func assertAllocationAmountOutsideContent(_ amount: XCUIElement) {
+        guard amount.exists else { return }
+        let frame = amount.frame
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let top = max(app.navigationBars["添加交易"].frame.maxY, progress.frame.maxY)
+        XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= top && frame.maxY <= contentBottom)
     }
 
     private func assertAllocationErrorVisible(_ title: String) {
@@ -2054,8 +2075,8 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertTrue(app.frame.contains(frame))
             XCTAssertGreaterThanOrEqual(frame.minY + 0.001, top)
             XCTAssertLessThanOrEqual(frame.maxY, bottom)
-            XCTAssertTrue(element.isHittable)
         }
+        XCTAssertTrue(amount.isHittable)
     }
 
     private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {

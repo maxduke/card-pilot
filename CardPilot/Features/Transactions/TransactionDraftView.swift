@@ -43,7 +43,9 @@ struct TransactionEditorView: View {
                                 Button("继续草稿") {
                                     resumedDraft = pendingDraft
                                     ready = true
-                                }.buttonStyle(.borderedProminent)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
                             }
                             if loadFailed { Button("重试") { load() } }
                             Button("丢弃草稿并新建", role: .destructive) {

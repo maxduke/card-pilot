@@ -6,6 +6,8 @@ import SwiftData
 /// No production store or persistent device preferences are removed or replaced.
 @MainActor
 enum UITestBootstrap {
+    static let allocationFeedbackFirstTitle = "星河信用卡境内外旅行住宿与日常消费累计达标返现活动"
+
     enum Scenario: String {
         case empty
         case core
@@ -74,7 +76,8 @@ enum UITestBootstrap {
             promotion.perTransactionThreshold = 100
         }
         if scenario == .allocationFeedback {
-            for (index, title) in ["UI Second", "UI Middle 1", "UI Middle 2", "UI Middle 3", "UI Last"].enumerated() {
+            promotion.title = allocationFeedbackFirstTitle
+            for (index, title) in ["UI Second", "UI Middle 1", "UI Middle 2", "UI Middle 3", "UI Middle 4", "UI Middle 5", "UI Last"].enumerated() {
                 context.insert(Promotion(
                     title: title, startOn: promotion.startOn,
                     endOn: today.addingDays(31 + index).rawValue,
