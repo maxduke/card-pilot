@@ -617,9 +617,19 @@ final class CoreFlowsUITests: XCTestCase {
         assertAllocationErrorVisible("UI Second")
         captureScreenshot("下一项计入金额错误定位")
         let selection = app.switches["allocation.toggle.UI Second"]
-        tap(selection)
+        // SwiftUI exposes the labelled Toggle and its actual native switch.
+        // Activate the switch rather than the centre of the label container.
+        let control = selection.switches.firstMatch
+        reveal(control, fullyVisible: true, navigationBar: app.navigationBars["添加交易"],
+               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
+        XCTAssertEqual(selection.value as? String, "1")
+        control.tap()
+        XCTAssertTrue(second.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(selection.value as? String, "0")
         XCTAssertTrue(secondError.waitForNonExistence(timeout: 5))
-        tap(selection)
+        control.tap()
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        XCTAssertEqual(selection.value as? String, "1")
         XCTAssertEqual(second.value as? String, "0")
         replaceText("75.5", in: second)
         XCTAssertTrue(secondError.waitForNonExistence(timeout: 5))
@@ -956,7 +966,20 @@ final class CoreFlowsUITests: XCTestCase {
         tap(recordRefund)
         enter("70", into: app.textFields["transactionAmount"])
         enter("UI Excess Refund", into: app.textFields["商户（可选）"])
-        tap(app.buttons["saveTransaction"])
+        let continueButton = app.buttons["saveTransaction"]
+        var previousFrame: CGRect?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard continueButton.exists else { return false }
+            let frame = continueButton.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty && frame == previousFrame
+                && self.app.frame.contains(frame) && continueButton.isEnabled && continueButton.isHittable
+        }, object: continueButton)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        XCTAssertEqual(continueButton.label, "继续确认促销")
+        assertTouchTarget(continueButton)
+        continueButton.tap()
+        XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
         let allocation = app.textFields["allocation.amount.UI Spend"]
         reveal(allocation)
         XCTAssertEqual(allocation.value as? String, "60")

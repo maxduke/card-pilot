@@ -1735,51 +1735,50 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(visiblePromotions, id: \.id) { promotion in
-                    VStack(alignment: .leading, spacing: 7) {
-                        Toggle(isOn: promotionBinding(promotion.id)) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(promotion.title)
-                                    .font(.subheadline.weight(.medium))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text(promotionSummary(promotion))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    Toggle(isOn: promotionBinding(promotion.id)) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(promotion.title)
+                                .font(.subheadline.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(promotionSummary(promotion))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
-                        if selectedPromotionIDs.contains(promotion.id) {
-                            VStack(alignment: .leading, spacing: 7) {
-                                TextField(
-                                    "计入金额（\(promotion.progressCurrencyCode)）",
-                                    text: amountBinding(promotion.id)
-                                )
-                                .keyboardType(amountFormat.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
-                                .environment(\.locale, amountFormat.locale)
-                                .focused($focusedInput, equals: .allocation(promotion.id))
-                                .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
-                                .accessibilityIdentifier("allocation.amount.\(promotion.title)")
-                                if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
-                                    InlineErrorView(message: "计入金额应为大于 0 的数字。")
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .accessibilityIdentifier("allocation.error.\(promotion.title)")
-                                }
+                    }
+                    .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
+                    .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                    if selectedPromotionIDs.contains(promotion.id) {
+                        // A separate Form row gives native scrolling a target
+                        // that fits even when the activity title is very tall.
+                        VStack(alignment: .leading, spacing: 7) {
+                            TextField(
+                                "计入金额（\(promotion.progressCurrencyCode)）",
+                                text: amountBinding(promotion.id)
+                            )
+                            .keyboardType(amountFormat.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
+                            .environment(\.locale, amountFormat.locale)
+                            .focused($focusedInput, equals: .allocation(promotion.id))
+                            .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
+                            .accessibilityIdentifier("allocation.amount.\(promotion.title)")
+                            if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
+                                InlineErrorView(message: "计入金额应为大于 0 的数字。")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("allocation.error.\(promotion.title)")
                             }
-                            .padding(.leading, 24)
-                            .id(InputField.allocation(promotion.id))
                             if let warning = qualificationWarning(for: promotion) {
                                 Text(warning)
                                     .font(.caption)
                                     .foregroundStyle(.orange)
-                                    .padding(.leading, 24)
                             }
                         }
-                        if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
-                            Text("需补入账日期，不会自动勾选。")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
+                        .padding(.leading, 24)
+                        .id(InputField.allocation(promotion.id))
                     }
-                    .id(promotion.id)
+                    if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
+                        Text("需补入账日期，不会自动勾选。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
@@ -2045,12 +2044,7 @@ struct TransactionEditorForm: View {
         for promotion in selectedPromotions {
             guard let amount = positiveAllocationAmount(for: promotion.id) else {
                 showingAllocationErrors = true
-                let promotionID = promotion.id
-                // Reveal the lazy row, then align its updated amount/error block.
-                scrollProxy.scrollTo(promotionID, anchor: .top)
-                DispatchQueue.main.async {
-                    scrollProxy.scrollTo(InputField.allocation(promotionID), anchor: .center)
-                }
+                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
                 return
             }
             parsedAmounts[promotion.id] = amount
