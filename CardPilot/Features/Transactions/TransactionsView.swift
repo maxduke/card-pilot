@@ -2065,7 +2065,7 @@ struct TransactionEditorForm: View {
         for promotion in selectedPromotions {
             guard let amount = positiveAllocationAmount(for: promotion.id) else {
                 showingAllocationErrors = true
-                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .center)
+                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
                 return
             }
             parsedAmounts[promotion.id] = amount
