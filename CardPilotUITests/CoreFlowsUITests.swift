@@ -1828,9 +1828,11 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(export)
         tap(export)
         let picker = app.otherElements["Browse View (Picker)"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 20))
         let filename = picker.textFields.firstMatch
-        XCTAssertTrue(filename.waitForExistence(timeout: 15))
+        // Wait for the actual control using the existing combined 20s + 15s
+        // readiness budget; a cold system picker can appear after the first 20s.
+        XCTAssertTrue(filename.waitForExistence(timeout: 35))
+        XCTAssertTrue(picker.exists)
         // The native picker exposes an abbreviated value until editing starts.
         // Focus the real filename field without changing the proposed name.
         filename.tap()
