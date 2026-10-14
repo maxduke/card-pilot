@@ -13,19 +13,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, error_stack, decorative_icon, input_ideal_height]
+        order: [baseline_first, input_first]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Apply isolated presentation variant
+      - name: Apply first controlled variant
+        if: always()
         env:
-          VARIANT: ${{ matrix.variant }}
+          VARIANT: ${{ matrix.order == 'baseline_first' && 'baseline' || 'input_ideal_height' }}
         run: |
+          git restore CardPilot/Features/Transactions/TransactionsView.swift CardPilot/Features/Shared/Formatting.swift
           python3 .github/diagnostics/allocation_variant.py "$VARIANT"
           git diff --check
-          git diff > diagnostic.patch
-      - name: Targeted native diagnostic (not the required full suite)
+          mkdir -p first
+          git diff > first/diagnostic.patch
+          echo "$VARIANT" > first/variant.txt
+      - name: Native first comparison (diagnostic only)
+        if: always()
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
@@ -34,26 +40,63 @@ jobs:
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
-            -resultBundlePath TestResults.xcresult \
+            -resultBundlePath first/TestResults.xcresult \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee diagnostic.log
-      - name: Export native summary
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee first/diagnostic.log
+      - name: Export first native summary
         if: always()
-        run: xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
-      - name: Preserve original native evidence
+        run: xcrun xcresulttool get test-results summary --path first/TestResults.xcresult > first/summary.json
+      - name: Preserve first original native evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-diagnostic-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            TestResults.xcresult
-            diagnostic.log
-            diagnostic.patch
-            summary.json
+          name: allocation-crossover-${{ matrix.order }}-first-${{ github.run_id }}-${{ github.run_attempt }}
+          path: first/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Apply second controlled variant
+        if: always()
+        env:
+          VARIANT: ${{ matrix.order == 'baseline_first' && 'input_ideal_height' || 'baseline' }}
+        run: |
+          git restore CardPilot/Features/Transactions/TransactionsView.swift CardPilot/Features/Shared/Formatting.swift
+          python3 .github/diagnostics/allocation_variant.py "$VARIANT"
+          git diff --check
+          mkdir -p second
+          git diff > second/diagnostic.patch
+          echo "$VARIANT" > second/variant.txt
+      - name: Native second comparison (diagnostic only)
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilot \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -resultBundlePath second/TestResults.xcresult \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee second/diagnostic.log
+      - name: Export second native summary
+        if: always()
+        run: xcrun xcresulttool get test-results summary --path second/TestResults.xcresult > second/summary.json
+      - name: Preserve second original native evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: allocation-crossover-${{ matrix.order }}-second-${{ github.run_id }}-${{ github.run_attempt }}
+          path: second/
           retention-days: 7
           if-no-files-found: error
