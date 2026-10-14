@@ -1682,8 +1682,14 @@ final class CoreFlowsUITests: XCTestCase {
     func testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("accountHistory")
-        openCard("UI Shared")
-        tap(app.buttons["card.account"])
+        tap(app.tabBars.buttons["卡片"])
+        // Both fixture cards share this account. Use its existing direct row
+        // so this history flow spends its time on history rather than card navigation.
+        let sharedAccount = app.buttons.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "尾号 1234", "尾号 5678"
+        )).firstMatch
+        tap(sharedAccount)
+        XCTAssertTrue(app.navigationBars["账户详情"].waitForExistence(timeout: 10))
         let history = app.buttons["account.cycleHistory"]
         reveal(history, fullyVisible: true)
         assertTouchTarget(history)
