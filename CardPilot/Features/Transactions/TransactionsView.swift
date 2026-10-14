@@ -940,6 +940,7 @@ struct TransactionEditorForm: View {
     @State private var showingCardPicker = false
     @State private var showingOriginalPicker = false
     @State private var errorMessage: String?
+    @State private var showingAllocationErrors = false
     @State private var overRefundWarningMessage: String?
 
     let draftStore: TransactionDraftStore
@@ -1170,154 +1171,155 @@ struct TransactionEditorForm: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
-                Form {
-                    if editorStep == 0 {
-                        basicTransactionSections
-                    } else {
-                        promotionConfirmationSections
-                    }
-                    if !invalidPromotionIDs.isEmpty {
-                        Section("草稿活动需要重新确认") {
-                            Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
-                            Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
-                        }
-                    }
-                    if draftWriteError {
-                        Section {
-                            Text("草稿未能保存到设备，请保持此页面并重试。")
-                            Button("重试保存草稿") { persistDraft(force: true) }
-                        }
-                    }
-                    if let errorMessage {
-                        InlineErrorView(message: errorMessage)
-                    }
-                }
-                .scrollDismissesKeyboard(.immediately)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            ScrollViewReader { scrollProxy in
                 VStack(spacing: 0) {
-                    Divider()
-                    if editorStep == 1 {
-                        Button("返回修改交易") { editorStep = 0 }
-                            .font(.footnote.weight(.medium))
-                            .padding(.top, 8)
-                        if !confirmationWarnings.isEmpty {
-                            Label(confirmationWarnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
-                                .font(.footnote)
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal)
-                                .padding(.top, 8)
-                        }
-                    }
-                    Button {
-                        focusedInput = nil
-                        if editorStep == 0 && needsPromotionConfirmation {
-                            continueToPromotionConfirmation()
+                    if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
+                    Form {
+                        if editorStep == 0 {
+                            basicTransactionSections
                         } else {
-                            save()
+                            promotionConfirmationSections
                         }
-                    } label: {
-                        Text(editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存")
-                            .frame(maxWidth: .infinity)
+                        if !invalidPromotionIDs.isEmpty {
+                            Section("草稿活动需要重新确认") {
+                                Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
+                                Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
+                            }
+                        }
+                        if draftWriteError {
+                            Section {
+                                Text("草稿未能保存到设备，请保持此页面并重试。")
+                                Button("重试保存草稿") { persistDraft(force: true) }
+                            }
+                        }
+                        if let errorMessage {
+                            InlineErrorView(message: errorMessage)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .disabled(!isAmountPositive || selectedCard == nil)
-                    .accessibilityIdentifier("saveTransaction")
+                    .scrollDismissesKeyboard(.immediately)
+                    .accessibilityIdentifier("transaction.form")
+                    VStack(spacing: 0) {
+                        Divider()
+                        if editorStep == 1 {
+                            Button("返回修改交易") { editorStep = 0 }
+                                .font(.footnote.weight(.medium))
+                                .padding(.top, 8)
+                            if !confirmationWarnings.isEmpty {
+                                Label(confirmationWarnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
+                                    .font(.footnote)
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal)
+                                    .padding(.top, 8)
+                            }
+                        }
+                        Button {
+                            focusedInput = nil
+                            if editorStep == 0 && needsPromotionConfirmation {
+                                continueToPromotionConfirmation()
+                            } else {
+                                save(scrollProxy: scrollProxy)
+                            }
+                        } label: {
+                            Text(editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .disabled(!isAmountPositive || selectedCard == nil)
+                        .accessibilityIdentifier("saveTransaction")
+                    }
+                    .background(.bar, ignoresSafeAreaEdges: .bottom)
                 }
-                .background(.bar)
-            }
-            .onAppear {
-                initializePromotions()
-                if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
-            }
-            .onChange(of: draftSnapshot) { _, _ in persistDraft() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active { persistDraft() }
-            }
-            .task { if transaction == nil { focusedInput = .amount } }
-            .onChange(of: cardID) { _, _ in
-                if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
-                    originalTransactionID = Self.noOriginalTransactionID
+                .onAppear {
+                    initializePromotions()
+                    if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
                 }
-                // A card supplies a default only while a fresh form has no amount or explicit currency.
-                // Restored drafts already own their currency, even when the amount is incomplete.
-                if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
-                   amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   let selectedCard {
-                    currencyCode = selectedCard.account.limitCurrencyCode
+                .onChange(of: draftSnapshot) { _, _ in persistDraft() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase != .active { persistDraft() }
+                }
+                .task { if transaction == nil { focusedInput = .amount } }
+                .onChange(of: cardID) { _, _ in
+                    if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
+                        originalTransactionID = Self.noOriginalTransactionID
+                    }
+                    // A card supplies a default only while a fresh form has no amount or explicit currency.
+                    // Restored drafts already own their currency, even when the amount is incomplete.
+                    if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
+                       amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let selectedCard {
+                        currencyCode = selectedCard.account.limitCurrencyCode
+                        refreshDefaultAllocationAmounts()
+                    }
+                    refreshCandidates()
+                }
+                .onChange(of: showingInactiveCards) { _, showing in
+                    guard !showing, selectedCard?.status == .inactive else { return }
+                    cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
+                }
+                .onChange(of: kind) { _, _ in
+                    refreshCandidates()
                     refreshDefaultAllocationAmounts()
                 }
-                refreshCandidates()
-            }
-            .onChange(of: showingInactiveCards) { _, showing in
-                guard !showing, selectedCard?.status == .inactive else { return }
-                cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
-            }
-            .onChange(of: kind) { _, _ in
-                refreshCandidates()
-                refreshDefaultAllocationAmounts()
-            }
-            .onChange(of: originalTransactionID) { _, _ in
-                refreshCandidates()
-                refreshDefaultAllocationAmounts()
-            }
-            .onChange(of: transactionDate) { _, _ in refreshCandidates() }
-            .onChange(of: postingDate) { _, _ in refreshCandidates() }
-            .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
-            .onChange(of: amountText) { _, _ in
-                refreshCandidates()
-                refreshDefaultAllocationAmounts()
-            }
-            .onChange(of: currencyCode) { _, _ in
-                refreshCandidates()
-                refreshDefaultAllocationAmounts()
-            }
-            .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if transaction == nil {
-                        Button("关闭", action: closeNewTransaction)
-                    } else {
-                        EditorCancelButton()
+                .onChange(of: originalTransactionID) { _, _ in
+                    refreshCandidates()
+                    refreshDefaultAllocationAmounts()
+                }
+                .onChange(of: transactionDate) { _, _ in refreshCandidates() }
+                .onChange(of: postingDate) { _, _ in refreshCandidates() }
+                .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
+                .onChange(of: amountText) { _, _ in
+                    refreshCandidates()
+                    refreshDefaultAllocationAmounts()
+                }
+                .onChange(of: currencyCode) { _, _ in
+                    refreshCandidates()
+                    refreshDefaultAllocationAmounts()
+                }
+                .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        if transaction == nil {
+                            Button("关闭", action: closeNewTransaction)
+                        } else {
+                            EditorCancelButton()
+                        }
+                    }
+                    ToolbarItemGroup(placement: .keyboard) {
+                        if focusedInput != nil {
+                            Spacer()
+                            Button("收起键盘") { focusedInput = nil }
+                                .frame(minWidth: 44, minHeight: 44)
+                                .accessibilityIdentifier("transaction.keyboard.dismiss")
+                        }
                     }
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    if focusedInput != nil {
-                        Spacer()
-                        Button("收起键盘") { focusedInput = nil }
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityIdentifier("transaction.keyboard.dismiss")
+                .confirmationDialog("未完成的交易", isPresented: $showingDraftClose, titleVisibility: .visible) {
+                    Button("保留草稿并关闭") {
+                        persistDraft(force: true)
+                        if !draftWriteError { dismiss() }
                     }
+                    Button("丢弃草稿", role: .destructive) {
+                        do {
+                            try draftStore.clear()
+                            draftFinished = true
+                            dismiss()
+                        } catch { draftWriteError = true }
+                    }
+                    Button("继续编辑", role: .cancel) {}
                 }
-            }
-            .confirmationDialog("未完成的交易", isPresented: $showingDraftClose, titleVisibility: .visible) {
-                Button("保留草稿并关闭") {
-                    persistDraft(force: true)
-                    if !draftWriteError { dismiss() }
+                .alert("退款超出可退范围", isPresented: Binding(
+                    get: { overRefundWarningMessage != nil },
+                    set: { if !$0 { overRefundWarningMessage = nil } }
+                )) {
+                    Button("取消", role: .cancel) {}
+                    Button("仍然保存", role: .destructive) { save(allowingOverRefund: true, scrollProxy: scrollProxy) }
+                } message: {
+                    Text(overRefundWarningMessage ?? "")
                 }
-                Button("丢弃草稿", role: .destructive) {
-                    do {
-                        try draftStore.clear()
-                        draftFinished = true
-                        dismiss()
-                    } catch { draftWriteError = true }
-                }
-                Button("继续编辑", role: .cancel) {}
-            }
-            .alert("退款超出可退范围", isPresented: Binding(
-                get: { overRefundWarningMessage != nil },
-                set: { if !$0 { overRefundWarningMessage = nil } }
-            )) {
-                Button("取消", role: .cancel) {}
-                Button("仍然保存", role: .destructive) { save(allowingOverRefund: true) }
-            } message: {
-                Text(overRefundWarningMessage ?? "")
             }
         }
         // Keep the picker presenter outside lazy Form rows so scrolling cannot
@@ -1732,45 +1734,76 @@ struct TransactionEditorForm: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(visiblePromotions, id: \.id) { promotion in
-                    VStack(alignment: .leading, spacing: 7) {
-                        Toggle(isOn: promotionBinding(promotion.id)) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(promotion.title)
-                                    .font(.subheadline.weight(.medium))
+                    Toggle(isOn: promotionBinding(promotion.id)) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(promotion.title)
+                                .font(.subheadline.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            if !dynamicTypeSize.isAccessibilitySize {
                                 Text(promotionSummary(promotion))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
-                        if selectedPromotionIDs.contains(promotion.id) {
+                    }
+                    .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
+                    .listRowSeparator(dynamicTypeSize.isAccessibilitySize || selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                    if dynamicTypeSize.isAccessibilitySize {
+                        // A long title and its summary can exceed the entire
+                        // viewport together. Let each native row scroll fully
+                        // into view without reducing either text's size.
+                        Text(promotionSummary(promotion))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                    }
+                    if selectedPromotionIDs.contains(promotion.id) {
+                        let warning = qualificationWarning(for: promotion)
+                        // A separate Form row gives native scrolling a target
+                        // that fits even when the activity title is very tall.
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("计入金额（\(promotion.progressCurrencyCode)）")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                             TextField(
-                                "计入金额（\(promotion.progressCurrencyCode)）",
+                                "0\(amountFormat.decimalSeparator)00",
                                 text: amountBinding(promotion.id)
                             )
                             .keyboardType(amountFormat.decimalSeparator == Locale.current.decimalSeparator ? .decimalPad : .numbersAndPunctuation)
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
+                            .textFieldStyle(.plain)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
-                            .padding(.leading, 24)
-                            if let warning = qualificationWarning(for: promotion) {
-                                Text(warning)
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                                    .padding(.leading, 24)
+                            if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
+                                InlineErrorView(message: "计入金额应为大于 0 的数字。")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("allocation.error.\(promotion.title)")
                             }
                         }
-                        if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
-                            Text("需补入账日期，不会自动勾选。")
+                        .padding(.leading, 24)
+                        .listRowSeparator(warning == nil ? .visible : .hidden, edges: .bottom)
+                        .id(InputField.allocation(promotion.id))
+                        if let warning {
+                            Text(warning)
                                 .font(.caption)
                                 .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 24)
                         }
+                    }
+                    if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
+                        Text("需补入账日期，不会自动勾选。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
                     }
                 }
                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !inheritedPromotionIDs.isEmpty {
                     Text("已带入原消费已有的促销分配，即使活动已结束也会保留。")
                         .font(.caption)
@@ -1891,6 +1924,12 @@ struct TransactionEditorForm: View {
         )
     }
 
+    private func positiveAllocationAmount(for id: UUID) -> Decimal? {
+        guard let amount = CardPilotUI.decimal(allocationAmounts[id] ?? "", format: amountFormat),
+              amount > .zero else { return nil }
+        return amount
+    }
+
     private func initializePromotions() {
         guard !didInitializePromotions else { return }
         if transaction == nil {
@@ -1972,8 +2011,9 @@ struct TransactionEditorForm: View {
         return "\(CardPilotUI.dateText(transaction.transactionOn)) · \(merchant) · \(CardPilotUI.amountText(transaction.amount, currencyCode: transaction.currencyCode))"
     }
 
-    private func save(allowingOverRefund: Bool = false) {
+    private func save(allowingOverRefund: Bool = false, scrollProxy: ScrollViewProxy) {
         guard !draftFinished else { return }
+        errorMessage = nil
         if transaction == nil {
             do {
                 let id = draftID
@@ -2020,11 +2060,12 @@ struct TransactionEditorForm: View {
             return
         }
         let original = kind == .refund ? originalTransactions.first(where: { $0.id == originalTransactionID }) : nil
-        let selectedPromotions = promotions.filter { selectedPromotionIDs.contains($0.id) }
+        let selectedPromotions = visiblePromotions.filter { selectedPromotionIDs.contains($0.id) }
         var parsedAmounts: [UUID: Decimal] = [:]
         for promotion in selectedPromotions {
-            guard let amount = CardPilotUI.decimal(allocationAmounts[promotion.id] ?? "", format: amountFormat), amount > .zero else {
-                errorMessage = "活动“\(promotion.title)”的计入金额应为大于 0 的数字。"
+            guard let amount = positiveAllocationAmount(for: promotion.id) else {
+                showingAllocationErrors = true
+                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
                 return
             }
             parsedAmounts[promotion.id] = amount
