@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 variant = sys.argv[1]
-assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack')
+assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack', 'input_ideal_height')
 if variant == 'stable_rows':
     path = Path('CardPilot/Features/Transactions/TransactionsView.swift')
     source = path.read_text()
@@ -70,3 +70,13 @@ if variant in ('error_text', 'error_stack'):
         }
 '''
     path.write_text(source.replace(old, new, 1))
+
+if variant == 'input_ideal_height':
+    path = Path('CardPilot/Features/Transactions/TransactionsView.swift')
+    source = path.read_text()
+    marker = '    private var promotionSection: some View {'
+    before, section = source.split(marker, 1)
+    old = '                            .textFieldStyle(.plain)'
+    assert section.count(old) == 1
+    section = section.replace(old, old + '\n                            .fixedSize(horizontal: false, vertical: true)', 1)
+    path.write_text(before + marker + section)
