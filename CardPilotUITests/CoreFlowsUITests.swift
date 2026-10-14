@@ -627,7 +627,7 @@ final class CoreFlowsUITests: XCTestCase {
         // SwiftUI exposes the labelled Toggle and its actual native switch.
         // Activate the switch rather than the centre of the label container.
         let control = selection.switches.firstMatch
-        reveal(control, fullyVisible: true, navigationBar: app.navigationBars["添加交易"],
+        reveal(control, scrollTowardTopWhenMissing: true, fullyVisible: true, navigationBar: app.navigationBars["添加交易"],
                contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
         XCTAssertEqual(selection.value as? String, "1")
         control.tap()
