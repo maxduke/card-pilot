@@ -512,9 +512,14 @@ struct InlineErrorView: View {
     let message: String
 
     var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle")
-            .font(.footnote)
-            .foregroundStyle(.red)
-            .accessibilityLabel("错误：\(message)")
+        Label {
+            Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle")
+        }
+        .font(.footnote)
+        .foregroundStyle(.red)
+        .accessibilityLabel("错误：\(message)")
     }
 }

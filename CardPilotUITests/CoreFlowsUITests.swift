@@ -500,9 +500,12 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
         try app.performAccessibilityAudit(for: .textClipped)
-        // The native audit can move the Form's viewport. Restore the tested
-        // field and recheck the editor after the audit before continuing.
-        reveal(amount, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentHeader: progress)
+        // The audit changes Dynamic Type and can return the Form to the top,
+        // where the lazy amount row is below the viewport. Establish the known
+        // card row before searching forward for the amount again.
+        reveal(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true,
+               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress)
         XCTAssertEqual(amount.value as? String, "125.50")
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
@@ -749,12 +752,27 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(save)
         assertTouchTarget(back)
         captureScreenshot("最大字号计入金额错误定位")
+        let beforeAudit = XCTAttachment(string: app.debugDescription)
+        beforeAudit.name = "计入金额裁切审计前层级"
+        beforeAudit.lifetime = .keepAlways
+        add(beforeAudit)
         try app.performAccessibilityAudit(for: [.textClipped]) { issue in
             let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
             let attachment = XCTAttachment(string: details)
             attachment.name = "计入金额完整裁切审计元素"
             attachment.lifetime = .keepAlways
             self.add(attachment)
+            // An issue can have no associated element. Preserve the live
+            // callback context as well as the later teardown state, without
+            // scrolling, querying hit points, or dismissing any audit issue.
+            let screenshot = XCTAttachment(screenshot: self.app.screenshot())
+            screenshot.name = "计入金额裁切审计回调画面"
+            screenshot.lifetime = .keepAlways
+            self.add(screenshot)
+            let hierarchy = XCTAttachment(string: self.app.debugDescription)
+            hierarchy.name = "计入金额裁切审计回调层级"
+            hierarchy.lifetime = .keepAlways
+            self.add(hierarchy)
             return false
         }
     }
