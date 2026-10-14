@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, stable_rows, decorative_icon]
+        variant: [error_text, error_stack, decorative_icon]
     steps:
       - uses: actions/checkout@v5
         with:

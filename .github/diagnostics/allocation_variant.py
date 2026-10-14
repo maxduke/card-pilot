@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 variant = sys.argv[1]
-assert variant in ('baseline', 'stable_rows', 'decorative_icon')
+assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack')
 if variant == 'stable_rows':
     path = Path('CardPilot/Features/Transactions/TransactionsView.swift')
     source = path.read_text()
@@ -45,3 +45,28 @@ if variant == 'decorative_icon':
     assert error.count(old) == 1
     error = error.replace(old, old + '\n                .accessibilityHidden(true)', 1)
     path.write_text(before + marker + error)
+
+if variant in ('error_text', 'error_stack'):
+    path = Path('CardPilot/Features/Shared/Formatting.swift')
+    source = path.read_text()
+    old = '''        Label {
+            Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle")
+        }
+'''
+    assert source.count(old) == 1
+    if variant == 'error_text':
+        new = '''        Text(message)
+            .fixedSize(horizontal: false, vertical: true)
+'''
+    else:
+        new = '''        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .accessibilityHidden(true)
+            Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+'''
+    path.write_text(source.replace(old, new, 1))
