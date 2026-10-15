@@ -1,4 +1,4 @@
-name: Allocation native content scope diagnostics (never delivery)
+name: Allocation native text attribution diagnostics (never delivery)
 
 on:
   workflow_dispatch:
@@ -13,19 +13,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [valid_baseline, no_search, no_background]
+        variant: [identified_baseline, short_input_label, short_visible_title]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Isolate content in the valid form state
+      - name: Identify native text and preserve audit metadata
         env:
-          SCOPE: ${{ matrix.scope }}
+          VARIANT: ${{ matrix.variant }}
         run: |
           python3 .github/diagnostics/allocation_audit_stage.py valid_form
-          python3 .github/diagnostics/allocation_audit_scope.py "$SCOPE"
-          printf '%s\n' "$SCOPE" > scope.txt
-          printf '%s\n' 'Base application, unit and UI test sources: PR40 HEAD 8d75a3a3653a8f78de33c47fcb310b183f9afb70. All scopes use identical valid-form diagnostic test code; only the recorded content exclusion varies.' > source.txt
+          python3 .github/diagnostics/allocation_audit_metadata.py
+          python3 .github/diagnostics/allocation_text_identity.py "$VARIANT"
+          printf '%s\n' "$VARIANT" > variant.txt
+          printf '%s\n' 'Base source: PR40 HEAD 8d75a3a3653a8f78de33c47fcb310b183f9afb70. Identical valid-form test and read-only audit metadata capture in all variants; repeated text IDs and exact text variant recorded in patch.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native diagnostic with full original prefix
@@ -57,12 +58,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-audit-scope-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-text-attribution-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
-            scope.txt
+            variant.txt
             source.txt
             diagnostic.patch
           retention-days: 7
