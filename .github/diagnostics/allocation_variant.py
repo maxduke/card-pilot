@@ -3,7 +3,17 @@ from pathlib import Path
 import sys
 
 variant = sys.argv[1]
-assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack', 'input_ideal_height', 'error_combined')
+assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack', 'input_ideal_height', 'error_combined', 'form_step_identity')
+if variant == 'form_step_identity':
+    path = Path('CardPilot/Features/Transactions/TransactionsView.swift')
+    source = path.read_text()
+    old = '''                    .scrollDismissesKeyboard(.immediately)
+                    .accessibilityIdentifier("transaction.form")'''
+    assert source.count(old) == 1
+    new = '''                    .scrollDismissesKeyboard(.immediately)
+                    .id(editorStep)
+                    .accessibilityIdentifier("transaction.form")'''
+    path.write_text(source.replace(old, new, 1))
 if variant == 'error_combined':
     path = Path('CardPilot/Features/Shared/Formatting.swift')
     source = path.read_text()

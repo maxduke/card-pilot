@@ -1,4 +1,4 @@
-name: Allocation native prefix diagnostics (never delivery)
+name: Allocation native form identity diagnostics (never delivery)
 
 on:
   workflow_dispatch:
@@ -13,31 +13,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cohort: [paid-empty-history, other-history]
+        variant: [baseline, form_step_identity]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Native diagnostic with original source and preceding tests
-        shell: bash
+      - name: Apply form identity variant
         env:
-          COHORT: ${{ matrix.cohort }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          python3 .github/diagnostics/allocation_variant.py "$VARIANT"
+          printf '%s\n' "$VARIANT" > variant.txt
+          printf '%s\n' 'Base application, unit and UI test sources: PR40 HEAD 28dbcada5e311c3bf0fffaa683f276586858e9da.' > source.txt
+          git diff --check
+          git diff > diagnostic.patch
+      - name: Native diagnostic with full original prefix
+        shell: bash
         run: |
           set -o pipefail
-          printf '%s\n' "$COHORT" > cohort.txt
-          printf '%s\n' 'Application, unit and UI test sources match PR40 HEAD 28dbcada5e311c3bf0fffaa683f276586858e9da.' > source.txt
-          prefix_tests=()
-          if [[ "$COHORT" == paid-empty-history ]]; then
-            prefix_tests+=(
-              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize
-            )
-          else
-            prefix_tests+=(
-              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters
-              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards
-              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize
-            )
-          fi
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
           xcodebuild test \
             -project CardPilot.xcodeproj \
@@ -49,7 +42,10 @@ jobs:
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
             -only-testing:CardPilotTests \
-            "${prefix_tests[@]}" \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee diagnostic.log
@@ -60,12 +56,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-prefix-${{ matrix.cohort }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-form-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
-            cohort.txt
+            variant.txt
             source.txt
+            diagnostic.patch
           retention-days: 7
           if-no-files-found: error
