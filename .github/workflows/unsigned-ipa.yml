@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cohort: [units-and-additional, full-prefix]
+        cohort: [paid-empty-history, other-history]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -27,12 +27,15 @@ jobs:
           printf '%s\n' "$COHORT" > cohort.txt
           printf '%s\n' 'Application, unit and UI test sources match PR40 HEAD 28dbcada5e311c3bf0fffaa683f276586858e9da.' > source.txt
           prefix_tests=()
-          if [[ "$COHORT" == full-prefix ]]; then
+          if [[ "$COHORT" == paid-empty-history ]]; then
+            prefix_tests+=(
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize
+            )
+          else
             prefix_tests+=(
               -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters
               -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards
               -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize
-              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize
             )
           fi
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
