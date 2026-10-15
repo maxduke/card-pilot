@@ -1196,6 +1196,7 @@ struct TransactionEditorForm: View {
                             InlineErrorView(message: errorMessage)
                         }
                     }
+                    .animation(nil, value: dynamicTypeSize)
                     .scrollDismissesKeyboard(.immediately)
                     .accessibilityIdentifier("transaction.form")
                     VStack(spacing: 0) {
@@ -1775,6 +1776,7 @@ struct TransactionEditorForm: View {
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
                             .textFieldStyle(.plain)
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {

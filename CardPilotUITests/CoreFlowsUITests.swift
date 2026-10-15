@@ -456,6 +456,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testNumericKeyboardDismissalAtLargestTextSize() throws {
+        // Both font audits mutate the lazy Form's layout. Include restoring
+        // and checking each screen within the workflow's existing maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("core")
         openCard("UI Primary")
@@ -500,9 +503,12 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
         try app.performAccessibilityAudit(for: .textClipped)
-        // The native audit can move the Form's viewport. Restore the tested
-        // field and recheck the editor after the audit before continuing.
-        reveal(amount, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentHeader: progress)
+        // The audit changes Dynamic Type and can return the Form to the top,
+        // where the lazy amount row is below the viewport. Establish the known
+        // card row before searching forward for the amount again.
+        reveal(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true,
+               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress)
         XCTAssertEqual(amount.value as? String, "125.50")
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
@@ -749,12 +755,27 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(save)
         assertTouchTarget(back)
         captureScreenshot("最大字号计入金额错误定位")
+        let beforeAudit = XCTAttachment(string: app.debugDescription)
+        beforeAudit.name = "计入金额裁切审计前层级"
+        beforeAudit.lifetime = .keepAlways
+        add(beforeAudit)
         try app.performAccessibilityAudit(for: [.textClipped]) { issue in
             let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
             let attachment = XCTAttachment(string: details)
             attachment.name = "计入金额完整裁切审计元素"
             attachment.lifetime = .keepAlways
             self.add(attachment)
+            // An issue can have no associated element. Preserve the live
+            // callback context as well as the later teardown state, without
+            // scrolling, querying hit points, or dismissing any audit issue.
+            let screenshot = XCTAttachment(screenshot: self.app.screenshot())
+            screenshot.name = "计入金额裁切审计回调画面"
+            screenshot.lifetime = .keepAlways
+            self.add(screenshot)
+            let hierarchy = XCTAttachment(string: self.app.debugDescription)
+            hierarchy.name = "计入金额裁切审计回调层级"
+            hierarchy.lifetime = .keepAlways
+            self.add(hierarchy)
             return false
         }
     }
@@ -1067,8 +1088,7 @@ final class CoreFlowsUITests: XCTestCase {
     func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
-        openCard("UI Shared")
-        tap(app.buttons["card.transactions"])
+        tap(app.tabBars.buttons["交易"])
         tap(app.buttons["transaction.UI Unlinked Refund"])
         reveal(app.staticTexts["未关联原消费"])
         XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
@@ -1081,6 +1101,9 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(recordRefund)
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
+        enter("10", into: app.textFields["transactionAmount"])
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
                navigationBar: app.navigationBars["添加交易"],
                contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
@@ -1092,7 +1115,6 @@ final class CoreFlowsUITests: XCTestCase {
         let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
         reveal(reversedMessage, fullyVisible: true)
         captureScreenshot("最大字号已冲正原消费退款说明")
-        enter("10", into: app.textFields["transactionAmount"])
         enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
         let feedback = app.buttons["transaction.saveFeedback"]
@@ -1358,7 +1380,23 @@ final class CoreFlowsUITests: XCTestCase {
         let amount = app.textFields["transactionAmount"]
         tap(amount)
         amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "79")
-        tap(app.buttons["saveTransaction"])
+        XCTAssertEqual(amount.value as? String, "79")
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let save = app.buttons["saveTransaction"]
+        var previousSaveFrame: CGRect?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard save.exists, save.isEnabled else { return false }
+            let frame = save.frame
+            defer { previousSaveFrame = frame }
+            return !frame.isEmpty && frame == previousSaveFrame
+                && self.app.frame.contains(frame) && save.isHittable
+        }, object: save)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        save.tap()
+        XCTAssertTrue(app.navigationBars["编辑交易"].waitForNonExistence(timeout: 10))
         XCTAssertTrue(feedback.waitForExistence(timeout: 10))
         XCTAssertEqual(feedback.label, "交易已更新 · 79 CNY · 未计入活动")
         XCTAssertEqual(app.buttons.matching(identifier: "transaction.saveFeedback").count, 1)
@@ -1754,7 +1792,9 @@ final class CoreFlowsUITests: XCTestCase {
         let future = accountHistoryMonth(offset: 5)
         tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[future.year])
-        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
+        let month = app.buttons["account.history.month"]
+        reveal(month, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        month.tap()
         tap(app.buttons[future.month])
         let status = app.buttons["account.history.status"]
         reveal(status, fullyVisible: true)
@@ -1904,6 +1944,7 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
+        executionTimeAllowance = 240
         launch("core")
         openCard("UI Primary")
         // SwiftUI also propagates the identifier to the combined header row.
@@ -2191,18 +2232,28 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(options.waitForExistence(timeout: 10))
         let option = options.buttons["编辑\(section)"]
         XCTAssertTrue(option.waitForExistence(timeout: 10))
-        // Wait for the native dialog's action to settle before one selection.
-        // Keep the dismissal and editor assertions; do not retry the action.
+        // Native dialog actions can have invalid AX activation points despite
+        // visible frames. Select one stable, enabled action at its real center.
         var previousFrame: CGRect?
+        var selectionPoint: CGVector?
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard option.exists else { return false }
             let frame = option.frame
             defer { previousFrame = frame }
-            return !frame.isEmpty && frame == previousFrame
-                && options.frame.contains(frame) && option.isHittable
+            let applicationFrame = self.app.frame
+            guard !frame.isEmpty && frame == previousFrame,
+                  applicationFrame.contains(frame), options.frame.contains(frame),
+                  option.isEnabled else { return false }
+            selectionPoint = CGVector(dx: frame.midX - applicationFrame.minX,
+                                      dy: frame.midY - applicationFrame.minY)
+            return true
         }, object: option)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
-        option.tap()
+        guard let selectionPoint else {
+            XCTFail("Expected a stable, enabled promotion edit action")
+            return
+        }
+        app.coordinate(withNormalizedOffset: .zero).withOffset(selectionPoint).tap()
         let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: options)
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
         XCTAssertTrue(app.navigationBars["编辑促销"].waitForExistence(timeout: 10))
