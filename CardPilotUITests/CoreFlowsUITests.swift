@@ -156,12 +156,27 @@ final class CoreFlowsUITests: XCTestCase {
         launch("core")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
+        let threshold = app.textFields["累计达标门槛（可选）"]
+        replaceText("125.50", in: threshold)
+        let dismissal = app.buttons["promotion.keyboard.dismiss"]
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        assertTouchTarget(dismissal)
+        captureScreenshot("促销金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(threshold.value as? String, "125.50")
+        XCTAssertTrue(app.navigationBars["编辑促销"].exists)
         let additionalAmounts = app.buttons["其他金额条件（可选）"]
         let cap = app.textFields["累计计入上限（可选）"]
         let perTransaction = app.textFields["单笔计入门槛（可选）"]
         XCTAssertFalse(cap.exists)
         tap(additionalAmounts)
         enter("0", into: cap)
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(cap.value as? String, "0")
         tap(additionalAmounts, scrollTowardTopWhenMissing: true)
         XCTAssertFalse(cap.exists)
         tap(app.buttons["promotion.editor.save"])
@@ -169,7 +184,15 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(cap)
         XCTAssertTrue(cap.isHittable)
         replaceText("5000", in: cap)
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(cap.value as? String, "5000")
         enter("100", into: perTransaction)
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(perTransaction.value as? String, "100")
         tap(additionalAmounts, scrollTowardTopWhenMissing: true)
         // Saving from another section must retain the collapsed amount bindings.
         selectPromotionEditorSection("报名与规则")
@@ -180,6 +203,8 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
+        reveal(threshold)
+        XCTAssertEqual(threshold.value as? String, "125.5")
         // Saved optional rules open automatically, even when they were
         // collapsed before Save. Their bindings never clear hidden values.
         reveal(cap)
@@ -187,6 +212,9 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "100")
         captureScreenshot("促销金额规则说明")
+        tap(app.textFields["活动标题"], scrollTowardTopWhenMissing: true)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(dismissal.exists)
         tap(app.navigationBars["编辑促销"].buttons["取消"])
         XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
@@ -196,12 +224,81 @@ final class CoreFlowsUITests: XCTestCase {
         launch("promotionAmounts")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
+        let cap = app.textFields["累计计入上限（可选）"]
+        replaceText("5000.25", in: cap)
+        let dismissal = app.buttons["promotion.keyboard.dismiss"]
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        assertTouchTarget(dismissal)
+        XCTAssertTrue(dismissal.isHittable)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertGreaterThanOrEqual(cap.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
+        XCTAssertLessThanOrEqual(cap.frame.maxY, dismissal.frame.minY)
+        captureScreenshot("最大字号促销金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(cap.value as? String, "5000.25")
+        XCTAssertTrue(app.navigationBars["编辑促销"].exists)
         let explanation = app.staticTexts["例如仅前 5,000 CNY 可计入：这是上限，不是必须达到的金额。"]
         reveal(explanation, fullyVisible: true)
         XCTAssertTrue(explanation.isHittable)
         XCTAssertGreaterThanOrEqual(explanation.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
         XCTAssertLessThan(explanation.frame.maxY, app.frame.maxY - 40)
         captureScreenshot("最大字号促销金额规则说明")
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openPromotion("UI Spend")
+        openPromotionEditor("基本信息")
+        reveal(cap)
+        XCTAssertEqual(cap.value as? String, "5000.25")
+    }
+
+    func testPromotionNumericKeyboardAtLargestTextSizePreservesSavedRules() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("promotionOverview")
+        openPromotion("UI Available")
+        openPromotionEditor("基本信息")
+        let limit = app.textFields["优惠笔数上限"]
+        replaceText("5", in: limit)
+        let dismissal = app.buttons["promotion.keyboard.dismiss"]
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        assertTouchTarget(dismissal)
+        XCTAssertTrue(dismissal.isHittable)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertGreaterThanOrEqual(limit.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
+        XCTAssertLessThanOrEqual(limit.frame.maxY, dismissal.frame.minY)
+        captureScreenshot("最大字号促销笔数键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(limit.value as? String, "5")
+
+        let amount = app.textFields["单笔满足金额（可选）"]
+        enter("125.50", into: amount)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        assertTouchTarget(dismissal)
+        XCTAssertGreaterThanOrEqual(amount.frame.minY, app.navigationBars["编辑促销"].frame.maxY)
+        XCTAssertLessThanOrEqual(amount.frame.maxY, dismissal.frame.minY)
+        captureScreenshot("最大字号促销单笔金额键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "125.50")
+        XCTAssertTrue(app.navigationBars["编辑促销"].exists)
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Available"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Available")
+        openPromotionEditor("基本信息")
+        reveal(limit)
+        XCTAssertEqual(limit.value as? String, "5")
+        reveal(amount)
+        XCTAssertEqual(amount.value as? String, "125.5")
+        captureScreenshot("最大字号促销数字规则保存读回")
     }
 
     func testPromotionOptionalRuleNotesPersistWhenCollapsed() {

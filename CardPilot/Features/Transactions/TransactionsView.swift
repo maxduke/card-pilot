@@ -1289,8 +1289,8 @@ struct TransactionEditorForm: View {
                             EditorCancelButton()
                         }
                     }
-                    ToolbarItemGroup(placement: .keyboard) {
-                        if focusedInput != nil {
+                    if focusedInput != nil {
+                        ToolbarItemGroup(placement: .keyboard) {
                             Spacer()
                             Button("收起键盘") { focusedInput = nil }
                                 .frame(minWidth: 44, minHeight: 44)
