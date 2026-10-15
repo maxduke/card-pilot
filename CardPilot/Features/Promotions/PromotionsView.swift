@@ -852,8 +852,8 @@ private struct PromotionEditorView: View {
                             .accessibilityIdentifier("promotion.editor.advance")
                     }
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    if focusedNumericField != nil {
+                if focusedNumericField != nil {
+                    ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
                         Button("收起键盘") { focusedNumericField = nil }
                             .frame(minWidth: 44, minHeight: 44)
