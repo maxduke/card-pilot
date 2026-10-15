@@ -1085,8 +1085,7 @@ final class CoreFlowsUITests: XCTestCase {
     func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
-        openCard("UI Shared")
-        tap(app.buttons["card.transactions"])
+        tap(app.tabBars.buttons["交易"])
         tap(app.buttons["transaction.UI Unlinked Refund"])
         reveal(app.staticTexts["未关联原消费"])
         XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
@@ -1099,6 +1098,7 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(recordRefund)
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
+        enter("10", into: app.textFields["transactionAmount"])
         reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
                navigationBar: app.navigationBars["添加交易"],
                contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
@@ -1110,7 +1110,6 @@ final class CoreFlowsUITests: XCTestCase {
         let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
         reveal(reversedMessage, fullyVisible: true)
         captureScreenshot("最大字号已冲正原消费退款说明")
-        enter("10", into: app.textFields["transactionAmount"])
         enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
         let feedback = app.buttons["transaction.saveFeedback"]
