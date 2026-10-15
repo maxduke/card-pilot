@@ -1102,6 +1102,8 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
         enter("10", into: app.textFields["transactionAmount"])
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
                navigationBar: app.navigationBars["添加交易"],
                contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
@@ -1942,6 +1944,7 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBillingSchedulesSupportAccessibleTextAndNavigationTargets() throws {
+        executionTimeAllowance = 240
         launch("core")
         openCard("UI Primary")
         // SwiftUI also propagates the identifier to the combined header row.
@@ -2229,18 +2232,28 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(options.waitForExistence(timeout: 10))
         let option = options.buttons["编辑\(section)"]
         XCTAssertTrue(option.waitForExistence(timeout: 10))
-        // Wait for the native dialog's action to settle before one selection.
-        // Keep the dismissal and editor assertions; do not retry the action.
+        // Native dialog actions can have invalid AX activation points despite
+        // visible frames. Select one stable, enabled action at its real center.
         var previousFrame: CGRect?
+        var selectionPoint: CGVector?
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard option.exists else { return false }
             let frame = option.frame
             defer { previousFrame = frame }
-            return !frame.isEmpty && frame == previousFrame
-                && options.frame.contains(frame) && option.isHittable
+            let applicationFrame = self.app.frame
+            guard !frame.isEmpty && frame == previousFrame,
+                  applicationFrame.contains(frame), options.frame.contains(frame),
+                  option.isEnabled else { return false }
+            selectionPoint = CGVector(dx: frame.midX - applicationFrame.minX,
+                                      dy: frame.midY - applicationFrame.minY)
+            return true
         }, object: option)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
-        option.tap()
+        guard let selectionPoint else {
+            XCTFail("Expected a stable, enabled promotion edit action")
+            return
+        }
+        app.coordinate(withNormalizedOffset: .zero).withOffset(selectionPoint).tap()
         let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: options)
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
         XCTAssertTrue(app.navigationBars["编辑促销"].waitForExistence(timeout: 10))
