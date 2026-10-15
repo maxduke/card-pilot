@@ -1196,6 +1196,7 @@ struct TransactionEditorForm: View {
                             InlineErrorView(message: errorMessage)
                         }
                     }
+                    .animation(nil, value: dynamicTypeSize)
                     .scrollDismissesKeyboard(.immediately)
                     .accessibilityIdentifier("transaction.form")
                     VStack(spacing: 0) {
