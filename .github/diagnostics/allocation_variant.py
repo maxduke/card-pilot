@@ -3,7 +3,16 @@ from pathlib import Path
 import sys
 
 variant = sys.argv[1]
-assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack', 'input_ideal_height')
+assert variant in ('baseline', 'stable_rows', 'decorative_icon', 'error_text', 'error_stack', 'input_ideal_height', 'error_combined')
+if variant == 'error_combined':
+    path = Path('CardPilot/Features/Shared/Formatting.swift')
+    source = path.read_text()
+    marker = 'struct InlineErrorView: View {'
+    before, error = source.split(marker, 1)
+    old = '        .accessibilityLabel("错误：\\(message)")'
+    assert error.count(old) == 1
+    error = error.replace(old, '        .accessibilityElement(children: .combine)\n' + old, 1)
+    path.write_text(before + marker + error)
 if variant == 'stable_rows':
     path = Path('CardPilot/Features/Transactions/TransactionsView.swift')
     source = path.read_text()

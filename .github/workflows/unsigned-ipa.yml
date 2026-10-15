@@ -13,16 +13,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, mask_background, mask_promotion_labels, mask_caption_explanation]
+        variant: [baseline, error_combined]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Apply non-shipping diagnostic AX mask
+      - name: Apply native error element variant
         env:
           VARIANT: ${{ matrix.variant }}
         run: |
-          python3 .github/diagnostics/allocation_mask.py "$VARIANT"
+          python3 .github/diagnostics/allocation_variant.py "$VARIANT"
+          printf '%s\n' "$VARIANT" > variant.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native diagnostic with real preceding case
@@ -41,20 +42,22 @@ jobs:
             -maximum-test-execution-time-allowance 240 \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorsLocateFirstInvalidAndClearWhenCorrectedOrDeselected \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee diagnostic.log
       - name: Export native summary
         if: always()
         run: xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
-      - name: Preserve original native evidence and exact mask
+      - name: Preserve original native evidence and exact variant
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-mask-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-error-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             diagnostic.patch
             summary.json
-            mask.txt
+            variant.txt
           retention-days: 7
           if-no-files-found: error
