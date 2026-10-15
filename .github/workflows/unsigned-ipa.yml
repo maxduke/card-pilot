@@ -1,4 +1,4 @@
-name: Allocation native layout transition diagnostics (never delivery)
+name: Allocation transition validation and clipping control (never delivery)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [layout_baseline, form_font_identity, flexible_confirmation_text]
+        variant: [identity_preserves_input, identity_clipping_control, animation_preserves_input]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -22,9 +22,9 @@ jobs:
         env:
           VARIANT: ${{ matrix.variant }}
         run: |
-          python3 .github/diagnostics/allocation_layout_transition.py "$VARIANT"
+          python3 .github/diagnostics/allocation_transition_validation.py "$VARIANT"
           printf '%s\n' "$VARIANT" > variant.txt
-          printf '%s\n' 'Base source: PR40 HEAD 8d75a3a3653a8f78de33c47fcb310b183f9afb70. Original invalid-form test is unchanged in all variants, including the one complete unfiltered audit. No text substitutions or metadata transforms.' > source.txt
+          printf '%s\n' 'Base source: PR40 HEAD 8d75a3a3653a8f78de33c47fcb310b183f9afb70. Original invalid input and every original assertion and complete unfiltered audit retained. Two real candidates add post-audit input/error checks. Control intentionally clips one visible diagnostic label and is expected to fail the complete audit. No ignored issues.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native diagnostic with full original prefix
@@ -66,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-layout-transition-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-transition-control-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
