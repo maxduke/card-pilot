@@ -687,6 +687,13 @@ enum PromotionCreationActions {
 }
 
 private struct PromotionEditorView: View {
+    private enum NumericField: Hashable {
+        case qualificationThreshold
+        case qualifyingCap
+        case perTransactionThreshold
+        case benefitTransactionCap
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -728,6 +735,7 @@ private struct PromotionEditorView: View {
     @State private var showingOrganizerPicker = false
     @State private var showingCardPicker = false
     @State private var errorMessage: String?
+    @FocusState private var focusedNumericField: NumericField?
     @Query private var allPromotions: [Promotion]
 
     init(promotion: Promotion?, banks: [Bank], networks: [CardNetwork], cards: [Card], initialStep: PromotionEditorStep = .basics) {
@@ -844,6 +852,14 @@ private struct PromotionEditorView: View {
                             .accessibilityIdentifier("promotion.editor.advance")
                     }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    if focusedNumericField != nil {
+                        Spacer()
+                        Button("收起键盘") { focusedNumericField = nil }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("promotion.keyboard.dismiss")
+                    }
+                }
             }
             .trackedSheet(isPresented: $showingOrganizerPicker) {
                 OrganizerSelectionView(
@@ -922,21 +938,26 @@ private struct PromotionEditorView: View {
                             .font(.subheadline)
                         TextField("正整数", text: $benefitTransactionCapText)
                             .keyboardType(.numberPad)
+                            .focused($focusedNumericField, equals: .benefitTransactionCap)
                             .accessibilityLabel("优惠笔数上限")
                         ruleExplanation("例如最多优惠 5 笔：这是可用次数上限，不是必须完成的笔数。")
                     }
                     amountRuleField("单笔满足金额（可选）", text: $perTransactionThresholdText,
+                                    field: .perTransactionThreshold,
                                     explanation: "例如每笔至少 \(CardPilotUI.amountText(100, currencyCode: currencyCode)) 才符合金额条件；留空表示不设单笔门槛。")
                     Text("每笔符合条件的消费计 1 笔；这里只记录已用笔数，不计算优惠金额。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     amountRuleField("累计达标门槛（可选）", text: $qualificationThresholdText,
+                                    field: .qualificationThreshold,
                                     explanation: "例如累计满 \(CardPilotUI.amountText(3000, currencyCode: currencyCode)) 才达标；留空表示只记录累计金额。")
                     DisclosureGroup(isExpanded: $showingAdditionalAmountRules) {
                         amountRuleField("累计计入上限（可选）", text: $qualifyingCapText,
+                                        field: .qualifyingCap,
                                         explanation: "例如仅前 \(CardPilotUI.amountText(5000, currencyCode: currencyCode)) 可计入：这是上限，不是必须达到的金额。")
                         amountRuleField("单笔计入门槛（可选）", text: $perTransactionThresholdText,
+                                        field: .perTransactionThreshold,
                                         explanation: "例如每笔至少 \(CardPilotUI.amountText(100, currencyCode: currencyCode)) 才符合金额条件；它不是累计达标门槛。")
                     } label: {
                         Text("其他金额条件（可选）")
@@ -959,12 +980,13 @@ private struct PromotionEditorView: View {
         }
     }
 
-    private func amountRuleField(_ title: String, text: Binding<String>, explanation: String) -> some View {
+    private func amountRuleField(_ title: String, text: Binding<String>, field: NumericField, explanation: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
                 .font(.subheadline)
             TextField("金额", text: text)
                 .keyboardType(.decimalPad)
+                .focused($focusedNumericField, equals: field)
                 .accessibilityLabel(title)
             ruleExplanation(explanation)
         }
