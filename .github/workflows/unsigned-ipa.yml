@@ -1,4 +1,4 @@
-name: Allocation native error layout diagnostics (never delivery)
+name: Allocation native audit stage diagnostics (never delivery)
 
 on:
   workflow_dispatch:
@@ -13,19 +13,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, error_stack]
+        stage: [detail_only, valid_form, invalid_form]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Apply error layout variant and record text metrics
+      - name: Select real screen to audit
         env:
-          VARIANT: ${{ matrix.variant }}
+          STAGE: ${{ matrix.stage }}
         run: |
-          python3 .github/diagnostics/allocation_variant.py "$VARIANT"
-          python3 .github/diagnostics/allocation_text_metrics.py
-          printf '%s\n' "$VARIANT" > variant.txt
-          printf '%s\n' 'Base application, unit and UI test sources: PR40 HEAD 28dbcada5e311c3bf0fffaa683f276586858e9da.' > source.txt
+          python3 .github/diagnostics/allocation_audit_stage.py "$STAGE"
+          printf '%s\n' "$STAGE" > stage.txt
+          printf '%s\n' 'Base application, unit and UI test sources: PR40 HEAD 8d75a3a3653a8f78de33c47fcb310b183f9afb70. Application source is unchanged in all stages.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native diagnostic with full original prefix
@@ -57,12 +56,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-error-layout-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-audit-stage-${{ matrix.stage }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
-            variant.txt
+            stage.txt
             source.txt
             diagnostic.patch
           retention-days: 7

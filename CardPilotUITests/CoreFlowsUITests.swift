@@ -1790,7 +1790,9 @@ final class CoreFlowsUITests: XCTestCase {
         let future = accountHistoryMonth(offset: 5)
         tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[future.year])
-        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
+        let month = app.buttons["account.history.month"]
+        reveal(month, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        month.tap()
         tap(app.buttons[future.month])
         let status = app.buttons["account.history.status"]
         reveal(status, fullyVisible: true)
