@@ -456,6 +456,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testNumericKeyboardDismissalAtLargestTextSize() throws {
+        // Both font audits mutate the lazy Form's layout. Include restoring
+        // and checking each screen within the workflow's existing maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("core")
         openCard("UI Primary")
@@ -1375,7 +1378,23 @@ final class CoreFlowsUITests: XCTestCase {
         let amount = app.textFields["transactionAmount"]
         tap(amount)
         amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "79")
-        tap(app.buttons["saveTransaction"])
+        XCTAssertEqual(amount.value as? String, "79")
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let save = app.buttons["saveTransaction"]
+        var previousSaveFrame: CGRect?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard save.exists, save.isEnabled else { return false }
+            let frame = save.frame
+            defer { previousSaveFrame = frame }
+            return !frame.isEmpty && frame == previousSaveFrame
+                && self.app.frame.contains(frame) && save.isHittable
+        }, object: save)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        save.tap()
+        XCTAssertTrue(app.navigationBars["编辑交易"].waitForNonExistence(timeout: 10))
         XCTAssertTrue(feedback.waitForExistence(timeout: 10))
         XCTAssertEqual(feedback.label, "交易已更新 · 79 CNY · 未计入活动")
         XCTAssertEqual(app.buttons.matching(identifier: "transaction.saveFeedback").count, 1)

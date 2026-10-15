@@ -520,6 +520,7 @@ struct InlineErrorView: View {
         }
         .font(.footnote)
         .foregroundStyle(.red)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("错误：\(message)")
     }
 }

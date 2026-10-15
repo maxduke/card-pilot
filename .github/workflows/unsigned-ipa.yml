@@ -1,4 +1,4 @@
-name: Allocation native diagnostics (never delivery)
+name: Allocation native prefix diagnostics (never delivery)
 
 on:
   workflow_dispatch:
@@ -9,27 +9,32 @@ permissions:
 jobs:
   diagnose:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, error_combined]
+        cohort: [units-and-additional, full-prefix]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Apply native error element variant
-        env:
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          python3 .github/diagnostics/allocation_variant.py "$VARIANT"
-          printf '%s\n' "$VARIANT" > variant.txt
-          git diff --check
-          git diff > diagnostic.patch
-      - name: Native diagnostic with real preceding case
+      - name: Native diagnostic with original source and preceding tests
         shell: bash
+        env:
+          COHORT: ${{ matrix.cohort }}
         run: |
           set -o pipefail
+          printf '%s\n' "$COHORT" > cohort.txt
+          printf '%s\n' 'Application, unit and UI test sources match PR40 HEAD 28dbcada5e311c3bf0fffaa683f276586858e9da.' > source.txt
+          prefix_tests=()
+          if [[ "$COHORT" == full-prefix ]]; then
+            prefix_tests+=(
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize
+            )
+          fi
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
           xcodebuild test \
             -project CardPilot.xcodeproj \
@@ -40,10 +45,10 @@ jobs:
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
+            -only-testing:CardPilotTests \
+            "${prefix_tests[@]}" \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorsLocateFirstInvalidAndClearWhenCorrectedOrDeselected \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee diagnostic.log
       - name: Export native summary
         if: always()
@@ -52,12 +57,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-error-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-prefix-${{ matrix.cohort }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
-            diagnostic.patch
             summary.json
-            variant.txt
+            cohort.txt
+            source.txt
           retention-days: 7
           if-no-files-found: error
