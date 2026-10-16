@@ -1,4 +1,4 @@
-name: Numeric keyboard visibility (diagnostic only)
+name: Numeric keyboard readback (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -16,24 +16,24 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: d84d132b874f5720ae1344ee2bb283710330f890
+          ref: ded078c3d37953aa515ea63b1a8244bf996a6334
           path: candidate
           persist-credentials: false
       - name: Apply the frozen app repair to the exact failed PR head
         working-directory: candidate
         run: |
-          git apply --check ../.github/diagnostics/numeric_keyboard_visibility.patch
-          git apply ../.github/diagnostics/numeric_keyboard_visibility.patch
+          git apply --check ../.github/diagnostics/numeric_keyboard_readback.patch
+          git apply ../.github/diagnostics/numeric_keyboard_readback.patch
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = {"CardPilot/Features/Cards/CardsView.swift", "CardPilot/Features/Promotions/PromotionsView.swift"}
+          expected = {"CardPilot/Features/Cards/CardsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"}
           actual = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Test all unit tests and five unchanged numeric keyboard flows
+      - name: Test all unit tests and three readback and navigation flows
         working-directory: candidate
         shell: bash
         run: |
@@ -50,10 +50,8 @@ jobs:
             -maximum-test-execution-time-allowance 240 \
             -only-testing:CardPilotTests \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardPreservesSavedValues \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountExplanationAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionNumericKeyboardAtLargestTextSizePreservesSavedRules \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../diagnostic.log
       - name: Export native summary
         if: always()
@@ -62,13 +60,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: numeric-keyboard-visibility-${{ github.run_id }}-${{ github.run_attempt }}
+          name: numeric-keyboard-readback-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            .github/diagnostics/numeric_keyboard_visibility.patch
+            .github/diagnostics/numeric_keyboard_readback.patch
           retention-days: 7
           if-no-files-found: error
