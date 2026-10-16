@@ -686,6 +686,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAllocationErrorsLocateFirstInvalidAndClearWhenCorrectedOrDeselected() {
+        // Corrections, reselection and readback after relaunch took 188.7s
+        // including teardown on native CI; keep the complete flow together.
+        executionTimeAllowance = 240
         launch("allocationFeedback")
         openCard("UI Primary")
         tap(app.buttons["card.addTransaction"])
@@ -875,6 +878,10 @@ final class CoreFlowsUITests: XCTestCase {
             self.add(hierarchy)
             return false
         }
+        let promotionTitle = app.switches["allocation.toggle.\(allocationFeedbackFirstTitle)"]
+        reveal(promotionTitle, scrollTowardTopWhenMissing: true, fullyVisible: true,
+               navigationBar: navigationBar, contentHeader: progress)
+        captureScreenshot("最大字号完整促销活动名称")
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {

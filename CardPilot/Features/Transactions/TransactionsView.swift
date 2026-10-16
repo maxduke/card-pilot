@@ -2067,7 +2067,12 @@ struct TransactionEditorForm: View {
         for promotion in selectedPromotions {
             guard let amount = positiveAllocationAmount(for: promotion.id) else {
                 showingAllocationErrors = true
-                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
+                // Give SwiftUI a chance to lay out the new error before scrolling.
+                let field = InputField.allocation(promotion.id)
+                Task { @MainActor in
+                    await Task.yield()
+                    scrollProxy.scrollTo(field, anchor: .top)
+                }
                 return
             }
             parsedAmounts[promotion.id] = amount
