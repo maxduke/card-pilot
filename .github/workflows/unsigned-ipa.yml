@@ -1,4 +1,4 @@
-name: Allocation Form row measurement (diagnostic only)
+name: Standalone native audit references (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -13,21 +13,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [existing-copy-natural, fresh-copy-fixed, fresh-copy-natural, original-natural]
+        scope: [root-one, root-many, sheet-many, sheet-clipped]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Compare retained and fresh Form row measurement
+      - name: Prepare independent stock Form references
         env:
           SCOPE: ${{ matrix.scope }}
         run: |
-          python3 .github/diagnostics/allocation_row_measurement.py "$SCOPE"
+          python3 .github/diagnostics/allocation_standalone_reference.py "$SCOPE"
           printf '%s\n' "$SCOPE" > scope.txt
-          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Three scopes run all original prechecks then retain identical static-copy rows in the existing/fresh Form with fixed/natural sizing. Original-natural keeps the complete original screen and original unmodified UI test, removing only seven vertical fixedSize overrides in promotionSection from launch. Original unfiltered audit retained. Reduced screens are not delivery evidence.' > source.txt
+          printf '%s\n' 'Independent framework reference only. ONE NEW diagnostic UI test per job, no unit/prior/business prefix. From launch a stock NavigationStack/Form shows one or eight caption Text rows, or a stock sheet Form shows eight rows or one intentionally clipped native UILabel. Original 49 UI cases and transaction source are untouched and are NOT run here. Full unfiltered audit retained; known control expected to fail. No delivery evidence.' > source.txt
           git diff --check
           git diff > diagnostic.patch
-      - name: Native original audit with full original prefix
+      - name: Run one independent diagnostic audit
         shell: bash
         run: |
           set -o pipefail
@@ -41,13 +41,7 @@ jobs:
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
-            -only-testing:CardPilotTests \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationReferenceClippingAudit \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee diagnostic.log
       - name: Export native summary
         if: always()
@@ -56,7 +50,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-row-measurement-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-reference-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
