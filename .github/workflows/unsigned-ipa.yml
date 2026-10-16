@@ -1,4 +1,4 @@
-name: Allocation promotion row isolation (diagnostic only)
+name: Allocation Form row measurement (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -13,18 +13,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [search, toggles, amounts, copy]
+        scope: [existing-copy-natural, fresh-copy-fixed, fresh-copy-natural, original-natural]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Isolate promotion row kinds after original checks
+      - name: Compare retained and fresh Form row measurement
         env:
           SCOPE: ${{ matrix.scope }}
         run: |
-          python3 .github/diagnostics/allocation_promotion_scope.py "$SCOPE"
+          python3 .github/diagnostics/allocation_row_measurement.py "$SCOPE"
           printf '%s\n' "$SCOPE" > scope.txt
-          printf '%s\n' 'Diagnostic isolation only; base PR42 719f6c9. All original invalid-input/error checks run first, then one native diagnostic action retains only promotion search, toggle/title rows, selected amount/error rows, or static summary/explanation rows. Header/footer and transaction summary are removed after original checks. Original unfiltered audit retained. Reduced screens are not delivery evidence.' > source.txt
+          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Three scopes run all original prechecks then retain identical static-copy rows in the existing/fresh Form with fixed/natural sizing. Original-natural keeps the complete original screen and original unmodified UI test, removing only seven vertical fixedSize overrides in promotionSection from launch. Original unfiltered audit retained. Reduced screens are not delivery evidence.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native original audit with full original prefix
@@ -56,7 +56,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-promotion-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-row-measurement-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
