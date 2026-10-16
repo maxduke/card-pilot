@@ -878,6 +878,10 @@ final class CoreFlowsUITests: XCTestCase {
             self.add(hierarchy)
             return false
         }
+        let promotionTitle = app.switches["allocation.toggle.\(allocationFeedbackFirstTitle)"]
+        reveal(promotionTitle, scrollTowardTopWhenMissing: true, fullyVisible: true,
+               navigationBar: navigationBar, contentHeader: progress)
+        captureScreenshot("最大字号完整促销活动名称")
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
