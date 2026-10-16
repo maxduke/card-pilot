@@ -1739,6 +1739,7 @@ struct TransactionEditorForm: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(promotion.title)
                                 .font(.subheadline.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
                             if !dynamicTypeSize.isAccessibilitySize {
                                 Text(promotionSummary(promotion))
                                     .font(.caption)
@@ -1755,6 +1756,7 @@ struct TransactionEditorForm: View {
                         Text(promotionSummary(promotion))
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                             .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
                     }
                     if selectedPromotionIDs.contains(promotion.id) {
@@ -1765,6 +1767,7 @@ struct TransactionEditorForm: View {
                             Text("计入金额（\(promotion.progressCurrencyCode)）")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                             TextField(
                                 "0\(amountFormat.decimalSeparator)00",
                                 text: amountBinding(promotion.id)
@@ -1773,10 +1776,12 @@ struct TransactionEditorForm: View {
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
                             .textFieldStyle(.plain)
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
                                 InlineErrorView(message: "计入金额应为大于 0 的数字。")
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .accessibilityIdentifier("allocation.error.\(promotion.title)")
                             }
                         }
@@ -1787,6 +1792,7 @@ struct TransactionEditorForm: View {
                             Text(warning)
                                 .font(.caption)
                                 .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.leading, 24)
                         }
                     }
@@ -1799,6 +1805,7 @@ struct TransactionEditorForm: View {
                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !inheritedPromotionIDs.isEmpty {
                     Text("已带入原消费已有的促销分配，即使活动已结束也会保留。")
                         .font(.caption)
@@ -2060,7 +2067,12 @@ struct TransactionEditorForm: View {
         for promotion in selectedPromotions {
             guard let amount = positiveAllocationAmount(for: promotion.id) else {
                 showingAllocationErrors = true
-                scrollProxy.scrollTo(InputField.allocation(promotion.id), anchor: .top)
+                // Give SwiftUI a chance to lay out the new error before scrolling.
+                let field = InputField.allocation(promotion.id)
+                Task { @MainActor in
+                    await Task.yield()
+                    scrollProxy.scrollTo(field, anchor: .top)
+                }
                 return
             }
             parsedAmounts[promotion.id] = amount
