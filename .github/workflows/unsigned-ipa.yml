@@ -1,4 +1,4 @@
-name: Allocation stable rows (diagnostic only)
+name: Allocation foreground isolation (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,14 +10,21 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [form, chrome, empty]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Apply exact stable row candidate
+      - name: Isolate foreground after original checks
+        env:
+          SCOPE: ${{ matrix.scope }}
         run: |
-          python3 .github/diagnostics/allocation_stable_rows.py
-          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Promotion summaries use separate native rows at every font size, keeping native row structure constant during font changes. Default body font inheritance restored. Original tests, assertions and audit origin unchanged. No observer, logging probe, font bridge, identity reset, font cap or audit filter.' > source.txt
+          python3 .github/diagnostics/allocation_foreground_scope.py "$SCOPE"
+          printf '%s\n' "$SCOPE" > scope.txt
+          printf '%s\n' 'Diagnostic isolation only; base PR42 719f6c9. Original invalid input, error geometry and business assertions run before a diagnostic-only native action removes foreground regions. Form-only, header/footer-only, and static empty modal are audited separately with the same unfiltered audit. No observer, font bridge or audit issue filtering. Reduced screens are not delivery evidence.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native original audit with full original prefix
@@ -49,12 +56,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-stable-rows-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-foreground-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             source.txt
+            scope.txt
             diagnostic.patch
           retention-days: 7
           if-no-files-found: error
