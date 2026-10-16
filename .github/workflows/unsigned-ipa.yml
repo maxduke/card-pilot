@@ -1,4 +1,4 @@
-name: Allocation scaled input candidate metrics (diagnostic only)
+name: Allocation scaled font candidate metrics (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
       - name: Attach public UIKit observer
         run: |
           python3 .github/diagnostics/allocation_native_metrics.py
-          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Scaled minimum line height and 44pt input target for search and allocation fields. Original app flow and all UI assertions/audits retained. Same public UIKit metrics observer; no filters, masks, identity resets or font caps.' > source.txt
+          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Body font size driven by ScaledMetric for search and allocation fields; original intrinsic sizing retained. All UI assertions/audits retained. Public UIKit metrics observer; no filters, masks, identity resets or font caps.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native original audit with full original prefix

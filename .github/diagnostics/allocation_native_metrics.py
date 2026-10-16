@@ -7,15 +7,15 @@ assert source.count('import SwiftUI\n') == 1
 source = source.replace('import SwiftUI\n', 'import SwiftUI\nimport UIKit\n', 1)
 marker = '    @ScaledMetric(relativeTo: .caption) private var stepIndicatorSize = 28\n'
 assert source.count(marker) == 1
-source = source.replace(marker, marker + '    @ScaledMetric(relativeTo: .body) private var textInputLineHeight: CGFloat = 22\n', 1)
+source = source.replace(marker, marker + '    @ScaledMetric(relativeTo: .body) private var textInputFontSize: CGFloat = 17\n', 1)
 marker = '            TextField("搜索其他促销", text: $promotionSearchText)\n'
 assert source.count(marker) == 1
-source = source.replace(marker, marker + '                .frame(minHeight: max(44, textInputLineHeight))\n', 1)
+source = source.replace(marker, marker + '                .font(.system(size: textInputFontSize))\n', 1)
 marker = '''                            .textFieldStyle(.plain)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\\(promotion.title)计入金额（\\(promotion.progressCurrencyCode)）")'''
 assert source.count(marker) == 1
-source = source.replace(marker, marker.replace('.fixedSize(horizontal: false, vertical: true)', '.frame(minHeight: max(44, textInputLineHeight))'), 1)
+source = source.replace(marker, marker.replace('                            .fixedSize(horizontal: false, vertical: true)', '                            .font(.system(size: textInputFontSize))\n                            .fixedSize(horizontal: false, vertical: true)'), 1)
 marker = '                    .accessibilityIdentifier("transaction.form")\n'
 assert source.count(marker) == 1
 source = source.replace(marker, marker + r'''
@@ -64,7 +64,7 @@ private struct AllocationNativeAuditProbe: UIViewRepresentable {
         }
         if let field = view as? UITextField {
             let textRect = field.textRect(forBounds: field.bounds)
-            print("AllocationNativeAuditProbe UITextField \(common) text=\(String(reflecting: field.text ?? "")) placeholder=\(String(reflecting: field.placeholder ?? "")) font=\(field.font?.pointSize ?? -1) lineHeight=\(field.font?.lineHeight ?? -1) textRect=\(textRect) editing=\(field.isEditing)")
+            print("AllocationNativeAuditProbe UITextField \(common) text=\(String(reflecting: field.text ?? "")) placeholder=\(String(reflecting: field.placeholder ?? "")) font=\(field.font?.pointSize ?? -1) lineHeight=\(field.font?.lineHeight ?? -1) textRect=\(textRect) editing=\(field.isEditing) adjustsForCategory=\(field.adjustsFontForContentSizeCategory) descriptorStyle=\(String(describing: field.font?.fontDescriptor.object(forKey: .textStyle)))")
         }
         let nextClip = view.clipsToBounds ? clip.intersection(rect) : clip
         for child in view.subviews {
