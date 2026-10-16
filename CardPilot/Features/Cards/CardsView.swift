@@ -421,9 +421,15 @@ private struct NetworkChoiceTile: View {
 }
 
 private struct CardOnboardingView: View {
+    private enum NumericField: Hashable {
+        case creditLimit
+        case lastFour
+    }
+
     @Environment(\.currentDay) private var currentDay
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @FocusState private var focusedNumericField: NumericField?
 
     let banks: [Bank]
     let accounts: [CreditCardAccount]
@@ -559,6 +565,14 @@ private struct CardOnboardingView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     EditorCancelButton()
+                }
+                if focusedNumericField != nil {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("收起键盘") { focusedNumericField = nil }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("onboarding.keyboard.dismiss")
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -791,6 +805,7 @@ private struct CardOnboardingView: View {
                 TextField("信用额度（可选）", text: $limitText)
                     .textFieldStyle(.roundedBorder)
                     .keyboardType(.decimalPad)
+                    .focused($focusedNumericField, equals: .creditLimit)
                 CurrencyPickerView(selection: $currencyCode)
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
@@ -833,6 +848,7 @@ private struct CardOnboardingView: View {
             TextField("末四位", text: $lastFour)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.numberPad)
+                .focused($focusedNumericField, equals: .lastFour)
                 .textContentType(.none)
             Text("卡组织组合")
                 .font(.subheadline.weight(.semibold))
