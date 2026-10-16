@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct TransactionsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -1721,8 +1722,12 @@ struct TransactionEditorForm: View {
 
     @ViewBuilder
     private var promotionSection: some View {
+        // Resolve the font with the same category that lays out these rows.
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let inputFont = Font.system(size: UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize)
         Section("促销分配") {
             TextField("搜索其他促销", text: $promotionSearchText)
+                .font(inputFont)
             if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label("本笔未计入促销", systemImage: "tag.slash")
                     .foregroundStyle(.secondary)
@@ -1776,6 +1781,7 @@ struct TransactionEditorForm: View {
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
                             .textFieldStyle(.plain)
+                            .font(inputFont)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
