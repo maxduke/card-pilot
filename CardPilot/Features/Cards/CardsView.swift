@@ -558,6 +558,7 @@ private struct CardOnboardingView: View {
                         }
                     }
                     .padding()
+                    .contentShape(Rectangle())
                 }
             }
             .navigationTitle("添加信用卡")
@@ -580,6 +581,7 @@ private struct CardOnboardingView: View {
                     if step != .bank {
                         Button("上一步") { previousStep() }
                             .buttonStyle(.bordered)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     Spacer()
                     Button(step == .card ? "完成" : "继续") { advance() }

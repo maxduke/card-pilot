@@ -782,41 +782,50 @@ private struct PromotionEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    if promotion == nil {
-                        editorStepIndicator
-                    } else {
-                        Picker("编辑内容", selection: $step) {
-                            ForEach(PromotionEditorStep.allCases) { item in
-                                Text(item.editingTitle).tag(item)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .accessibilityIdentifier("promotion.editor.section")
-                    }
-                }
-                if promotion?.seriesID != nil {
+            ScrollViewReader { scrollProxy in
+                Form {
                     Section {
-                        Picker("编辑范围", selection: $seriesEditScope) {
-                            Text("仅本期").tag(PromotionSeriesEditScope.thisOnly)
-                            Text("本期及以后").tag(PromotionSeriesEditScope.thisAndFuture)
+                        if promotion == nil {
+                            editorStepIndicator
+                        } else {
+                            Picker("编辑内容", selection: $step) {
+                                ForEach(PromotionEditorStep.allCases) { item in
+                                    Text(item.editingTitle).tag(item)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .accessibilityIdentifier("promotion.editor.section")
                         }
-                        Text("规则修改应用到所选范围；报名状态、报名日期和归档操作只修改本期。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    }
+                    if promotion?.seriesID != nil {
+                        Section {
+                            Picker("编辑范围", selection: $seriesEditScope) {
+                                Text("仅本期").tag(PromotionSeriesEditScope.thisOnly)
+                                Text("本期及以后").tag(PromotionSeriesEditScope.thisAndFuture)
+                            }
+                            Text("规则修改应用到所选范围；报名状态、报名日期和归档操作只修改本期。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let errorMessage {
+                        InlineErrorView(message: errorMessage)
+                    }
+                    switch step {
+                    case .basics:
+                        basicsStep
+                    case .eligibility:
+                        eligibilityStep
+                    case .rules:
+                        rulesStep
                     }
                 }
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
-                }
-                switch step {
-                case .basics:
-                    basicsStep
-                case .eligibility:
-                    eligibilityStep
-                case .rules:
-                    rulesStep
+                .onChange(of: focusedNumericField) { _, field in
+                    guard let field else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        scrollProxy.scrollTo(field, anchor: .top)
+                    }
                 }
             }
             // Fields live in editor state; changing sections starts at the top
@@ -942,6 +951,7 @@ private struct PromotionEditorView: View {
                             .accessibilityLabel("优惠笔数上限")
                         ruleExplanation("例如最多优惠 5 笔：这是可用次数上限，不是必须完成的笔数。")
                     }
+                    .id(NumericField.benefitTransactionCap)
                     amountRuleField("单笔满足金额（可选）", text: $perTransactionThresholdText,
                                     field: .perTransactionThreshold,
                                     explanation: "例如每笔至少 \(CardPilotUI.amountText(100, currencyCode: currencyCode)) 才符合金额条件；留空表示不设单笔门槛。")
@@ -990,6 +1000,7 @@ private struct PromotionEditorView: View {
                 .accessibilityLabel(title)
             ruleExplanation(explanation)
         }
+        .id(field)
     }
 
     private func ruleExplanation(_ text: String) -> some View {
