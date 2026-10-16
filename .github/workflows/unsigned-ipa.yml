@@ -1,4 +1,4 @@
-name: Allocation foreground isolation (diagnostic only)
+name: Allocation form isolation and clipping control (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -13,18 +13,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [form, chrome, empty]
+        scope: [summary, promotions, plain, control]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Isolate foreground after original checks
+      - name: Isolate Form contents after original checks
         env:
           SCOPE: ${{ matrix.scope }}
         run: |
-          python3 .github/diagnostics/allocation_foreground_scope.py "$SCOPE"
+          python3 .github/diagnostics/allocation_form_scope.py "$SCOPE"
           printf '%s\n' "$SCOPE" > scope.txt
-          printf '%s\n' 'Diagnostic isolation only; base PR42 719f6c9. Original invalid input, error geometry and business assertions run before a diagnostic-only native action removes foreground regions. Form-only, header/footer-only, and static empty modal are audited separately with the same unfiltered audit. No observer, font bridge or audit issue filtering. Reduced screens are not delivery evidence.' > source.txt
+          printf '%s\n' 'Diagnostic isolation only; base PR42 719f6c9. All original invalid-input/error checks run first, then one native diagnostic action audits transaction-summary sections, promotion section, a fresh plain Form, or a fresh Form with a known clipped native UILabel. Original unfiltered audit retained. Known clipped control is expected to fail. Reduced screens are not delivery evidence.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native original audit with full original prefix
@@ -56,7 +56,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-foreground-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-form-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
