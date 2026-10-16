@@ -341,7 +341,11 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
         launch("core")
-        tap(app.tabBars.buttons["促销"])
+        let promotionsTab = app.tabBars.buttons["促销"]
+        reveal(promotionsTab)
+        promotionsTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        XCTAssertTrue(promotionsTab.isSelected)
         tap(app.buttons["添加促销活动"])
         XCTAssertFalse(app.buttons["promotion.editor.section"].exists)
         XCTAssertFalse(app.buttons["promotion.editor.save"].exists)
@@ -2315,6 +2319,13 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         tap(app.tabBars.buttons["卡片"])
+        // Bank UUID ordering can put the saved card below several large rows.
+        // Use the existing card search before checking the complete saved row.
+        let search = app.searchFields["搜索银行、卡片或末四位"]
+        tap(search, scrollTowardTopWhenMissing: true)
+        search.typeText(cardName + "\n")
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(search.value as? String, cardName)
         let savedCard = app.buttons["card.\(cardName)"]
         reveal(savedCard, fullyVisible: true)
         XCTAssertTrue(savedCard.label.contains("0123"))

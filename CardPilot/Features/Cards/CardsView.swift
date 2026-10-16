@@ -586,6 +586,7 @@ private struct CardOnboardingView: View {
                     Spacer()
                     Button(step == .card ? "完成" : "继续") { advance() }
                         .buttonStyle(.borderedProminent)
+                        .fixedSize(horizontal: true, vertical: false)
                         .disabled(step == .bank && !bankIsReady)
                         .accessibilityIdentifier("onboarding.advance")
                 }
