@@ -1,4 +1,4 @@
-name: Allocation resolved body font metrics (diagnostic only)
+name: Allocation stable rows (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -14,10 +14,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Attach public UIKit observer
+      - name: Apply exact stable row candidate
         run: |
-          python3 .github/diagnostics/allocation_native_metrics.py
-          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Input font resolved from preferred body font for the SwiftUI DynamicTypeSize using public UIKit APIs; preserves original body point sizes including 53pt max. Original intrinsic sizing and all assertions/audits retained. Public UIKit metrics observer; no filters, masks, identity resets or font caps.' > source.txt
+          python3 .github/diagnostics/allocation_stable_rows.py
+          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Promotion summaries use separate native rows at every font size, keeping native row structure constant during font changes. Default body font inheritance restored. Original tests, assertions and audit origin unchanged. No observer, logging probe, font bridge, identity reset, font cap or audit filter.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native original audit with full original prefix
@@ -49,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-native-metrics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-stable-rows-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log

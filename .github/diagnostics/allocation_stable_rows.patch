@@ -1,0 +1,45 @@
+diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
+index 99124ae..319cfb6 100644
+--- a/CardPilot/Features/Transactions/TransactionsView.swift
++++ b/CardPilot/Features/Transactions/TransactionsView.swift
+@@ -1736,29 +1736,19 @@ struct TransactionEditorForm: View {
+             } else {
+                 ForEach(visiblePromotions, id: \.id) { promotion in
+                     Toggle(isOn: promotionBinding(promotion.id)) {
+-                        VStack(alignment: .leading, spacing: 3) {
+-                            Text(promotion.title)
+-                                .font(.subheadline.weight(.medium))
+-                                .fixedSize(horizontal: false, vertical: true)
+-                            if !dynamicTypeSize.isAccessibilitySize {
+-                                Text(promotionSummary(promotion))
+-                                    .font(.caption)
+-                                    .foregroundStyle(.secondary)
+-                            }
+-                        }
+-                    }
+-                    .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
+-                    .listRowSeparator(dynamicTypeSize.isAccessibilitySize || selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+-                    if dynamicTypeSize.isAccessibilitySize {
+-                        // A long title and its summary can exceed the entire
+-                        // viewport together. Let each native row scroll fully
+-                        // into view without reducing either text's size.
+-                        Text(promotionSummary(promotion))
+-                            .font(.caption)
+-                            .foregroundStyle(.secondary)
++                        Text(promotion.title)
++                            .font(.subheadline.weight(.medium))
+                             .fixedSize(horizontal: false, vertical: true)
+-                            .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                     }
++                    .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
++                    .listRowSeparator(.hidden, edges: .bottom)
++                    // Keep the same native rows while text size changes; long
++                    // titles and summaries can each scroll fully into view.
++                    Text(promotionSummary(promotion))
++                        .font(.caption)
++                        .foregroundStyle(.secondary)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+                     if selectedPromotionIDs.contains(promotion.id) {
+                         let warning = qualificationWarning(for: promotion)
+                         // A separate Form row gives native scrolling a target
