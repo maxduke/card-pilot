@@ -1,4 +1,4 @@
-name: Allocation scaled font candidate metrics (diagnostic only)
+name: Allocation resolved body font metrics (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
       - name: Attach public UIKit observer
         run: |
           python3 .github/diagnostics/allocation_native_metrics.py
-          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Body font size driven by ScaledMetric for search and allocation fields; original intrinsic sizing retained. All UI assertions/audits retained. Public UIKit metrics observer; no filters, masks, identity resets or font caps.' > source.txt
+          printf '%s\n' 'Diagnostic only; base PR42 719f6c9. Input font resolved from preferred body font for the SwiftUI DynamicTypeSize using public UIKit APIs; preserves original body point sizes including 53pt max. Original intrinsic sizing and all assertions/audits retained. Public UIKit metrics observer; no filters, masks, identity resets or font caps.' > source.txt
           git diff --check
           git diff > diagnostic.patch
       - name: Native original audit with full original prefix

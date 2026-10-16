@@ -5,17 +5,20 @@ path = Path('CardPilot/Features/Transactions/TransactionsView.swift')
 source = path.read_text()
 assert source.count('import SwiftUI\n') == 1
 source = source.replace('import SwiftUI\n', 'import SwiftUI\nimport UIKit\n', 1)
-marker = '    @ScaledMetric(relativeTo: .caption) private var stepIndicatorSize = 28\n'
+marker = '    private var promotionSection: some View {\n'
 assert source.count(marker) == 1
-source = source.replace(marker, marker + '    @ScaledMetric(relativeTo: .body) private var textInputFontSize: CGFloat = 17\n', 1)
+source = source.replace(marker, marker + '''        // Resolve the font with the same category that lays out these rows.
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let inputFont = Font.system(size: UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize)
+''', 1)
 marker = '            TextField("搜索其他促销", text: $promotionSearchText)\n'
 assert source.count(marker) == 1
-source = source.replace(marker, marker + '                .font(.system(size: textInputFontSize))\n', 1)
+source = source.replace(marker, marker + '                .font(inputFont)\n', 1)
 marker = '''                            .textFieldStyle(.plain)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\\(promotion.title)计入金额（\\(promotion.progressCurrencyCode)）")'''
 assert source.count(marker) == 1
-source = source.replace(marker, marker.replace('                            .fixedSize(horizontal: false, vertical: true)', '                            .font(.system(size: textInputFontSize))\n                            .fixedSize(horizontal: false, vertical: true)'), 1)
+source = source.replace(marker, marker.replace('                            .fixedSize(horizontal: false, vertical: true)', '                            .font(inputFont)\n                            .fixedSize(horizontal: false, vertical: true)'), 1)
 marker = '                    .accessibilityIdentifier("transaction.form")\n'
 assert source.count(marker) == 1
 source = source.replace(marker, marker + r'''
