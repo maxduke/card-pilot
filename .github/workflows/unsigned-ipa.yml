@@ -1,4 +1,4 @@
-name: Allocation audit issue metadata (diagnostic only)
+name: Allocation audit AX scopes (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [actual, positive-control]
+        scope: [toggles, amounts, copy, none]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -23,18 +23,16 @@ jobs:
           ref: 23bd9279df208dd6b31cb662faaa679f9c3d7ea4
           path: candidate
           persist-credentials: false
-      - name: Prepare bounded audit metadata observation
+      - name: Observe accessibility groups without removing visible content
         working-directory: candidate
         env:
           SCOPE: ${{ matrix.scope }}
         run: |
-          python3 ../.github/diagnostics/allocation_issue_metadata.py "$SCOPE"
+          python3 ../.github/diagnostics/allocation_accessibility_scope.py "$SCOPE"
           git diff --check
           python3 - <<'PYCODE'
           import os, subprocess
-          expected = {"CardPilotUITests/CoreFlowsUITests.swift"}
-          if os.environ["SCOPE"] == "positive-control":
-              expected.add("CardPilot/Features/Transactions/TransactionsView.swift")
+          expected = {"CardPilotUITests/CoreFlowsUITests.swift", "CardPilot/Features/Transactions/TransactionsView.swift"}
           actual = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
           assert actual == expected, actual
           PYCODE
@@ -70,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-audit-metadata-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-audit-ax-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
@@ -78,5 +76,6 @@ jobs:
             candidate-base.txt
             candidate.patch
             .github/diagnostics/allocation_issue_metadata.py
+            .github/diagnostics/allocation_accessibility_scope.py
           retention-days: 7
           if-no-files-found: error
