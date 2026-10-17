@@ -901,6 +901,7 @@ struct TransactionEditorForm: View {
     private enum InputField: Hashable {
         case amount
         case allocation(UUID)
+        case promotionSearch
     }
 
     @Environment(\.modelContext) private var modelContext
@@ -1172,132 +1173,10 @@ struct TransactionEditorForm: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { scrollProxy in
-                VStack(spacing: 0) {
-                    if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
-                    Form {
-                        if editorStep == 0 {
-                            basicTransactionSections
-                        } else {
-                            promotionConfirmationSections
-                        }
-                        if !invalidPromotionIDs.isEmpty {
-                            Section("草稿活动需要重新确认") {
-                                Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
-                                Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
-                            }
-                        }
-                        if draftWriteError {
-                            Section {
-                                Text("草稿未能保存到设备，请保持此页面并重试。")
-                                Button("重试保存草稿") { persistDraft(force: true) }
-                            }
-                        }
-                        if let errorMessage {
-                            InlineErrorView(message: errorMessage)
-                        }
-                    }
-                    .animation(nil, value: dynamicTypeSize)
-                    .scrollDismissesKeyboard(.immediately)
-                    .accessibilityIdentifier("transaction.form")
-                    VStack(spacing: 0) {
-                        Divider()
-                        if editorStep == 1 {
-                            Button("返回修改交易") { editorStep = 0 }
-                                .font(.footnote.weight(.medium))
-                                .padding(.top, 8)
-                            if !confirmationWarnings.isEmpty {
-                                Label(confirmationWarnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
-                                    .font(.footnote)
-                                    .foregroundStyle(.orange)
-                                    .padding(.horizontal)
-                                    .padding(.top, 8)
-                            }
-                        }
-                        Button {
-                            focusedInput = nil
-                            if editorStep == 0 && needsPromotionConfirmation {
-                                continueToPromotionConfirmation()
-                            } else {
-                                save(scrollProxy: scrollProxy)
-                            }
-                        } label: {
-                            Text(editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .disabled(!isAmountPositive || selectedCard == nil)
-                        .accessibilityIdentifier("saveTransaction")
-                    }
-                    .background(.bar, ignoresSafeAreaEdges: .bottom)
-                }
-                .onAppear {
-                    initializePromotions()
-                    if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
-                }
-                .onChange(of: draftSnapshot) { _, _ in persistDraft() }
-                .onChange(of: scenePhase) { _, phase in
-                    if phase != .active { persistDraft() }
-                }
-                .task { if transaction == nil { focusedInput = .amount } }
-                .onChange(of: cardID) { _, _ in
-                    if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
-                        originalTransactionID = Self.noOriginalTransactionID
-                    }
-                    // A card supplies a default only while a fresh form has no amount or explicit currency.
-                    // Restored drafts already own their currency, even when the amount is incomplete.
-                    if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
-                       amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                       let selectedCard {
-                        currencyCode = selectedCard.account.limitCurrencyCode
-                        refreshDefaultAllocationAmounts()
-                    }
-                    refreshCandidates()
-                }
-                .onChange(of: showingInactiveCards) { _, showing in
-                    guard !showing, selectedCard?.status == .inactive else { return }
-                    cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
-                }
-                .onChange(of: kind) { _, _ in
-                    refreshCandidates()
-                    refreshDefaultAllocationAmounts()
-                }
-                .onChange(of: originalTransactionID) { _, _ in
-                    refreshCandidates()
-                    refreshDefaultAllocationAmounts()
-                }
-                .onChange(of: transactionDate) { _, _ in refreshCandidates() }
-                .onChange(of: postingDate) { _, _ in refreshCandidates() }
-                .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
-                .onChange(of: amountText) { _, _ in
-                    refreshCandidates()
-                    refreshDefaultAllocationAmounts()
-                }
-                .onChange(of: currencyCode) { _, _ in
-                    refreshCandidates()
-                    refreshDefaultAllocationAmounts()
-                }
+                observedEditorContent(using: scrollProxy)
                 .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        if transaction == nil {
-                            Button("关闭", action: closeNewTransaction)
-                        } else {
-                            EditorCancelButton()
-                        }
-                    }
-                    if focusedInput != nil {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("收起键盘") { focusedInput = nil }
-                                .frame(minWidth: 44, minHeight: 44)
-                                .accessibilityIdentifier("transaction.keyboard.dismiss")
-                        }
-                    }
-                }
+                .toolbar { editorToolbar }
                 .confirmationDialog("未完成的交易", isPresented: $showingDraftClose, titleVisibility: .visible) {
                     Button("保留草稿并关闭") {
                         persistDraft(force: true)
@@ -1342,6 +1221,123 @@ struct TransactionEditorForm: View {
             originalTransactionSelection
         }
         .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
+    }
+
+    private func observedEditorContent(using scrollProxy: ScrollViewProxy) -> some View {
+        editorContent(using: scrollProxy)
+        .onAppear {
+            initializePromotions()
+            if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
+        }
+        .onChange(of: draftSnapshot) { _, _ in persistDraft() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { persistDraft() }
+        }
+        .task { if transaction == nil { focusedInput = .amount } }
+        .onChange(of: cardID) { _, _ in
+            if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
+                originalTransactionID = Self.noOriginalTransactionID
+            }
+            // A card supplies a default only while a fresh form has no amount or explicit currency.
+            // Restored drafts already own their currency, even when the amount is incomplete.
+            if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
+               amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let selectedCard {
+                currencyCode = selectedCard.account.limitCurrencyCode
+                refreshDefaultAllocationAmounts()
+            }
+            refreshCandidates()
+        }
+        .onChange(of: showingInactiveCards) { _, showing in
+            guard !showing, selectedCard?.status == .inactive else { return }
+            cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
+        }
+        .onChange(of: kind) { _, _ in
+            refreshCandidates()
+            refreshDefaultAllocationAmounts()
+        }
+        .onChange(of: originalTransactionID) { _, _ in
+            refreshCandidates()
+            refreshDefaultAllocationAmounts()
+        }
+        .onChange(of: transactionDate) { _, _ in refreshCandidates() }
+        .onChange(of: postingDate) { _, _ in refreshCandidates() }
+        .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
+        .onChange(of: amountText) { _, _ in
+            refreshCandidates()
+            refreshDefaultAllocationAmounts()
+        }
+        .onChange(of: currencyCode) { _, _ in
+            refreshCandidates()
+            refreshDefaultAllocationAmounts()
+        }
+    }
+
+    private func editorContent(using scrollProxy: ScrollViewProxy) -> some View {
+        VStack(spacing: 0) {
+            if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
+            Form {
+                if editorStep == 0 {
+                    basicTransactionSections
+                } else {
+                    promotionConfirmationSections
+                }
+                if !invalidPromotionIDs.isEmpty {
+                    Section("草稿活动需要重新确认") {
+                        Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
+                        Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
+                    }
+                }
+                if draftWriteError {
+                    Section {
+                        Text("草稿未能保存到设备，请保持此页面并重试。")
+                        Button("重试保存草稿") { persistDraft(force: true) }
+                    }
+                }
+                if let errorMessage {
+                    InlineErrorView(message: errorMessage)
+                }
+            }
+            .animation(nil, value: dynamicTypeSize)
+            .scrollDismissesKeyboard(.immediately)
+            .accessibilityIdentifier("transaction.form")
+            .onChange(of: focusedInput) { (_: InputField?, field: InputField?) in
+                revealPromotionSearch(field, using: scrollProxy)
+            }
+            VStack(spacing: 0) {
+                Divider()
+                if editorStep == 1 {
+                    Button("返回修改交易") { editorStep = 0 }
+                        .font(.footnote.weight(.medium))
+                        .padding(.top, 8)
+                    if !confirmationWarnings.isEmpty {
+                        Label(confirmationWarnings.joined(separator: " · "), systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                    }
+                }
+                Button {
+                    focusedInput = nil
+                    if editorStep == 0 && needsPromotionConfirmation {
+                        continueToPromotionConfirmation()
+                    } else {
+                        save(scrollProxy: scrollProxy)
+                    }
+                } label: {
+                    Text(editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .disabled(!isAmountPositive || selectedCard == nil)
+                .accessibilityIdentifier("saveTransaction")
+            }
+            .background(.bar, ignoresSafeAreaEdges: .bottom)
+        }
     }
 
     private var draftSnapshot: TransactionDraft {
@@ -1611,6 +1607,42 @@ struct TransactionEditorForm: View {
         promotionSection
     }
 
+    @ToolbarContentBuilder
+    private var editorToolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            if transaction == nil {
+                Button("关闭", action: closeNewTransaction)
+            } else {
+                EditorCancelButton()
+            }
+        }
+        if isNumericInputFocused {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("收起键盘") { focusedInput = nil }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityIdentifier("transaction.keyboard.dismiss")
+            }
+        }
+    }
+
+    private var isNumericInputFocused: Bool {
+        switch focusedInput {
+        case .amount?, .allocation?:
+            true
+        case .promotionSearch?, nil:
+            false
+        }
+    }
+
+    private func revealPromotionSearch(_ field: InputField?, using scrollProxy: ScrollViewProxy) {
+        guard field == .promotionSearch else { return }
+        Task { @MainActor in
+            await Task.yield()
+            scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
+        }
+    }
+
     private func continueToPromotionConfirmation() {
         guard selectedCard != nil else {
             errorMessage = "请选择卡片。"
@@ -1722,7 +1754,16 @@ struct TransactionEditorForm: View {
     @ViewBuilder
     private var promotionSection: some View {
         Section("促销分配") {
-            TextField("搜索其他促销", text: $promotionSearchText)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("搜索")
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                TextField("", text: $promotionSearchText)
+                    .focused($focusedInput, equals: .promotionSearch)
+                    .accessibilityLabel("搜索其他促销")
+                    .accessibilityIdentifier("allocation.search")
+            }
+            .id(InputField.promotionSearch)
             if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label("本笔未计入促销", systemImage: "tag.slash")
                     .foregroundStyle(.secondary)
@@ -1776,7 +1817,6 @@ struct TransactionEditorForm: View {
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
                             .textFieldStyle(.plain)
-                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {

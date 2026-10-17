@@ -494,6 +494,15 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号报名与资格详情")
     }
 
+    func testPromotionAllocationSearchPreservesSelectionAndAmount() {
+        verifyPromotionAllocationSearch(largestText: false)
+    }
+
+    func testPromotionAllocationSearchAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyPromotionAllocationSearch(largestText: true)
+    }
+
     func testNumericKeyboardDismissalPreservesDraftAndSavedAmounts() {
         launch("core")
         openCard("UI Primary")
@@ -1835,6 +1844,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize() throws {
+        // All history checks finished at 179.45s; teardown crossed 180s
+        // (run 39028286830). Keep the complete flow within the existing maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("accountHistory")
         tap(app.tabBars.buttons["卡片"])
@@ -2257,6 +2269,78 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(record.label.contains("2026"))
         captureScreenshot("最大字号已有导出记录")
         try auditAccessibility(for: [.textClipped])
+    }
+
+    private func verifyPromotionAllocationSearch(largestText: Bool) {
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("125.50", into: app.textFields["transactionAmount"])
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
+
+        let navigationBar = app.navigationBars["添加交易"]
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let form = app.collectionViews["transaction.form"]
+        let search = app.textFields["allocation.search"]
+        reveal(search, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(search.label, "搜索其他促销")
+        search.tap()
+        search.typeText("Spend")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertEqual(search.value as? String, "Spend")
+        XCTAssertFalse(search.frame.isEmpty)
+        XCTAssertTrue(search.isHittable)
+        XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+        XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
+        let searchLabel = app.staticTexts["搜索"]
+        XCTAssertTrue(searchLabel.exists)
+        XCTAssertGreaterThanOrEqual(searchLabel.frame.minY + 0.001, progress.frame.maxY)
+        XCTAssertLessThanOrEqual(searchLabel.frame.maxY, min(contentBottom, form.frame.maxY))
+        let prefix = largestText ? "最大字号" : ""
+        captureScreenshot("\(prefix)促销搜索键盘输入")
+
+        func dismissSearchKeyboard() {
+            // Use the existing Form's scroll-to-dismiss gesture in its gutter.
+            let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.75))
+            let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.25))
+            start.press(forDuration: 0.05, thenDragTo: end,
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        }
+        dismissSearchKeyboard()
+        reveal(app.staticTexts["促销分配"], scrollTowardTopWhenMissing: true, fullyVisible: true,
+               navigationBar: navigationBar, contentHeader: progress)
+        reveal(search, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(search.value as? String, "Spend")
+        XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, progress.frame.maxY)
+        XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
+        captureScreenshot("\(prefix)促销搜索输入后提示")
+
+        let selection = app.switches["allocation.toggle.UI Spend"]
+        let control = selection.switches.firstMatch
+        reveal(control, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(selection.value as? String, "1")
+        control.tap()
+        XCTAssertEqual(selection.value as? String, "0")
+        control.tap()
+        XCTAssertEqual(selection.value as? String, "1")
+        reveal(search, scrollTowardTopWhenMissing: true,
+               navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(search.value as? String, "Spend")
+        replaceText("", in: search)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertEqual(search.value as? String, "")
+        dismissSearchKeyboard()
+        let allocation = app.textFields["allocation.amount.UI Spend"]
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(allocation.value as? String, "125.5")
+        XCTAssertEqual(selection.value as? String, "1")
+        XCTAssertTrue(app.buttons["saveTransaction"].isEnabled)
+        captureScreenshot("\(prefix)促销搜索清空后保留计入金额")
     }
 
     private func verifyCardOnboardingNumericKeyboard(largestText: Bool) {
