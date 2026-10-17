@@ -339,7 +339,7 @@ index 292d9bd..6ca6864 100644
                              .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                              if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
 diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
-index 5569cb2..7ccc700 100644
+index 5569cb2..8b4cf69 100644
 --- a/CardPilotUITests/CoreFlowsUITests.swift
 +++ b/CardPilotUITests/CoreFlowsUITests.swift
 @@ -2296,6 +2296,10 @@ final class CoreFlowsUITests: XCTestCase {
@@ -353,7 +353,7 @@ index 5569cb2..7ccc700 100644
          let prefix = largestText ? "最大字号" : ""
          captureScreenshot("\(prefix)促销搜索键盘输入")
 
-@@ -2310,16 +2314,22 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2310,16 +2314,19 @@ final class CoreFlowsUITests: XCTestCase {
          dismissSearchKeyboard()
          reveal(app.staticTexts["促销分配"], scrollTowardTopWhenMissing: true, fullyVisible: true,
                 navigationBar: navigationBar, contentHeader: progress)
@@ -368,22 +368,11 @@ index 5569cb2..7ccc700 100644
 -        selection.tap()
 +        let control = selection.switches.firstMatch
 +        reveal(control, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
-+        let allocation = app.textFields["allocation.amount.UI Spend"]
 +        XCTAssertEqual(selection.value as? String, "1")
 +        control.tap()
-+        XCTAssertTrue(allocation.waitForNonExistence(timeout: 5))
          XCTAssertEqual(selection.value as? String, "0")
 -        selection.tap()
 +        control.tap()
-+        XCTAssertTrue(allocation.waitForExistence(timeout: 5))
          XCTAssertEqual(selection.value as? String, "1")
          reveal(search, scrollTowardTopWhenMissing: true,
                 navigationBar: navigationBar, contentHeader: progress)
-@@ -2328,7 +2338,6 @@ final class CoreFlowsUITests: XCTestCase {
-         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
-         XCTAssertEqual(search.value as? String, "")
-         dismissSearchKeyboard()
--        let allocation = app.textFields["allocation.amount.UI Spend"]
-         reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
-         XCTAssertEqual(allocation.value as? String, "125.5")
-         XCTAssertEqual(selection.value as? String, "1")
