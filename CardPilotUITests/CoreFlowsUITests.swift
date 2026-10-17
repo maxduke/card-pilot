@@ -1017,6 +1017,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        // The initial amount focus moves lazy rows while the keyboard opens.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let summary = app.staticTexts["transaction.original.summary"]
         reveal(summary, fullyVisible: true)
         XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
