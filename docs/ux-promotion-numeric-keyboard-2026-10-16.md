@@ -72,3 +72,7 @@ HEAD `9688626d61e1e5ce77ebd8b48c732c37ba7766b1` 的[完整 workflow](https://git
 回归在原审计通过后，额外将长活动名称完整显露于步骤说明与操作区之间，保留“最大字号完整促销活动名称”截图。原有全部业务、金额／错误边界、触摸区域与无过滤审计断言保留；仍为 49 项 UI，不改通用助手、工作流范围或时限。
 
 交付须当前补修 HEAD 的完整 PR 与合并主线 219＋49，零失败、零跳过、无超时或 runner 重启。原八张交易相关截图外，增加上述长名称图，共九张，由主代理实际逐张检查。观察器、独立对照、诊断操作、脚本及诊断 workflow 均只保留在诊断分支。
+
+## 最终验收
+
+补修 HEAD `bca63d3c5de215d30ecd15b758cc32698de6b3b0` 的[完整 PR workflow](https://github.com/maxduke/card-pilot/actions/runs/38936423337) 通过全部 219 项单元／集成与 49 项 UI，零失败、零跳过，无超时、重试或 runner 重启。九张当前 HEAD 原生截图已由主代理逐张检查，最大字号完整错误、金额原文和六行长活动名称均可见。随后 [PR #42](https://github.com/maxduke/card-pilot/pull/42) 合并为 `7d17eda263be7faa8626ad8170f0153d767dbc36`；该提交的[完整 main workflow](https://github.com/maxduke/card-pilot/actions/runs/38947269180) 同样通过 219＋49，零失败／零跳过，无超时、重试或 runner 重启。原干净 main 已快进至这一验证提交，第十七批交付完成。此前匿名报告的具体元素仍未确认，不能把本轮通过解释为已证明唯一根因。

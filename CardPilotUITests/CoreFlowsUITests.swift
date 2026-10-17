@@ -33,6 +33,15 @@ final class CoreFlowsUITests: XCTestCase {
         app = nil
     }
 
+    func testCardOnboardingNumericKeyboardPreservesSavedValues() {
+        verifyCardOnboardingNumericKeyboard(largestText: false)
+    }
+
+    func testCardOnboardingNumericKeyboardAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyCardOnboardingNumericKeyboard(largestText: true)
+    }
+
     func testCreateCardAndReopenDetails() {
         launch("empty")
         tap(app.tabBars.buttons["记一笔"])
@@ -332,7 +341,11 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
         launch("core")
-        tap(app.tabBars.buttons["促销"])
+        let promotionsTab = app.tabBars.buttons["促销"]
+        reveal(promotionsTab)
+        promotionsTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        XCTAssertTrue(promotionsTab.isSelected)
         tap(app.buttons["添加促销活动"])
         XCTAssertFalse(app.buttons["promotion.editor.section"].exists)
         XCTAssertFalse(app.buttons["promotion.editor.save"].exists)
@@ -2244,6 +2257,105 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(record.label.contains("2026"))
         captureScreenshot("最大字号已有导出记录")
         try auditAccessibility(for: [.textClipped])
+    }
+
+    private func verifyCardOnboardingNumericKeyboard(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        let cardName = "UI Keyboard Card"
+        launch("core")
+        tap(app.tabBars.buttons["卡片"])
+        tap(app.buttons["添加信用卡"])
+        let bank = app.buttons["bank.cn.icbc"]
+        reveal(bank, fullyVisible: true)
+        bank.tap()
+        XCTAssertTrue(app.staticTexts["设置账务规则"].waitForExistence(timeout: 10))
+
+        let navigationBar = app.navigationBars["添加信用卡"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["onboarding.keyboard.dismiss"]
+        let limit = app.textFields["信用额度（可选）"]
+        enter("0", into: limit)
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(limit.value as? String, "0")
+        XCTAssertTrue(app.staticTexts["设置账务规则"].exists)
+
+        replaceText("125.50", in: limit)
+        assertCardOnboardingKeyboardInput(limit)
+        captureScreenshot("\(prefix)添加卡片额度键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(limit.value as? String, "125.50")
+        XCTAssertTrue(navigationBar.exists)
+        tap(app.buttons["onboarding.advance"])
+        XCTAssertTrue(app.staticTexts["录入卡片"].waitForExistence(timeout: 10))
+        tap(app.buttons["上一步"])
+        XCTAssertTrue(app.staticTexts["设置账务规则"].waitForExistence(timeout: 10))
+        XCTAssertEqual(limit.value as? String, "125.50")
+        XCTAssertFalse(dismissal.exists)
+        tap(app.buttons["onboarding.advance"])
+
+        let productName = app.textFields["卡产品名称"]
+        enter(cardName, into: productName)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertFalse(dismissal.exists)
+        let lastFour = app.textFields["末四位"]
+        enter("0123", into: lastFour)
+        assertCardOnboardingKeyboardInput(lastFour)
+        captureScreenshot("\(prefix)添加卡片末四位键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(lastFour.value as? String, "0123")
+        XCTAssertEqual(productName.value as? String, cardName)
+        XCTAssertTrue(navigationBar.exists)
+        XCTAssertTrue(app.staticTexts["录入卡片"].exists)
+        tap(app.buttons["onboarding.advance"])
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["卡片"])
+        // Bank UUID ordering can put the saved card below several large rows.
+        // Use the existing card search before checking the complete saved row.
+        let search = app.searchFields["搜索银行、卡片或末四位"]
+        tap(search, scrollTowardTopWhenMissing: true)
+        search.typeText(cardName + "\n")
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(search.value as? String, cardName)
+        let savedCard = app.buttons["card.\(cardName)"]
+        reveal(savedCard, fullyVisible: true)
+        XCTAssertTrue(savedCard.label.contains("0123"))
+        XCTAssertEqual(app.buttons.matching(identifier: "card.\(cardName)").count, 1)
+        savedCard.tap()
+        tap(app.buttons["card.account"])
+        let savedLimit = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "信用额度", "125.5 CNY"
+        )).firstMatch
+        reveal(savedLimit, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        captureScreenshot("\(prefix)添加卡片保存读回")
+    }
+
+    private func assertCardOnboardingKeyboardInput(_ field: XCUIElement) {
+        let navigationBar = app.navigationBars["添加信用卡"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["onboarding.keyboard.dismiss"]
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
+        let footerTop = app.buttons["onboarding.advance"].frame.minY - 10
+        XCTAssertFalse(field.frame.isEmpty)
+        XCTAssertTrue(app.frame.contains(field.frame))
+        XCTAssertGreaterThanOrEqual(field.frame.minY + 0.001, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(field.frame.maxY, min(footerTop, dismissal.frame.minY, keyboard.frame.minY))
+        XCTAssertTrue(field.isHittable)
     }
 
     private func allocationError(_ title: String) -> XCUIElement {
