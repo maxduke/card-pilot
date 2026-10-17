@@ -1,5 +1,5 @@
 diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
-index 292d9bd..6db4802 100644
+index 292d9bd..6ca6864 100644
 --- a/CardPilot/Features/Transactions/TransactionsView.swift
 +++ b/CardPilot/Features/Transactions/TransactionsView.swift
 @@ -901,6 +901,7 @@ struct TransactionEditorForm: View {
@@ -312,23 +312,24 @@ index 292d9bd..6db4802 100644
      private func continueToPromotionConfirmation() {
          guard selectedCard != nil else {
              errorMessage = "请选择卡片。"
-@@ -1722,9 +1754,15 @@ struct TransactionEditorForm: View {
+@@ -1722,10 +1754,16 @@ struct TransactionEditorForm: View {
      @ViewBuilder
      private var promotionSection: some View {
          Section("促销分配") {
 -            LabeledContent("搜索其他促销") {
-+            VStack(alignment: .leading, spacing: 7) {
-+                Text("搜索其他促销")
++            HStack(alignment: .firstTextBaseline, spacing: 12) {
++                Text("搜索")
 +                    .foregroundStyle(.secondary)
-+                    .fixedSize(horizontal: false, vertical: true)
++                    .fixedSize()
                  TextField("", text: $promotionSearchText)
 +                    .focused($focusedInput, equals: .promotionSearch)
 +                    .accessibilityLabel("搜索其他促销")
                      .accessibilityIdentifier("allocation.search")
-+                    .id(InputField.promotionSearch)
              }
++            .id(InputField.promotionSearch)
              if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                  Label("本笔未计入促销", systemImage: "tag.slash")
+                     .foregroundStyle(.secondary)
 @@ -1779,7 +1817,6 @@ struct TransactionEditorForm: View {
                              .environment(\.locale, amountFormat.locale)
                              .focused($focusedInput, equals: .allocation(promotion.id))
@@ -337,3 +338,52 @@ index 292d9bd..6db4802 100644
                              .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                              .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                              if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
+diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
+index 5569cb2..7ccc700 100644
+--- a/CardPilotUITests/CoreFlowsUITests.swift
++++ b/CardPilotUITests/CoreFlowsUITests.swift
+@@ -2296,6 +2296,10 @@ final class CoreFlowsUITests: XCTestCase {
+         XCTAssertTrue(search.isHittable)
+         XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
+         XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
++        let searchLabel = app.staticTexts["搜索"]
++        XCTAssertTrue(searchLabel.exists)
++        XCTAssertGreaterThanOrEqual(searchLabel.frame.minY + 0.001, progress.frame.maxY)
++        XCTAssertLessThanOrEqual(searchLabel.frame.maxY, min(contentBottom, form.frame.maxY))
+         let prefix = largestText ? "最大字号" : ""
+         captureScreenshot("\(prefix)促销搜索键盘输入")
+
+@@ -2310,16 +2314,22 @@ final class CoreFlowsUITests: XCTestCase {
+         dismissSearchKeyboard()
+         reveal(app.staticTexts["促销分配"], scrollTowardTopWhenMissing: true, fullyVisible: true,
+                navigationBar: navigationBar, contentHeader: progress)
++        reveal(search, navigationBar: navigationBar, contentHeader: progress)
+         XCTAssertEqual(search.value as? String, "Spend")
+         XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, progress.frame.maxY)
+         XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
+         captureScreenshot("\(prefix)促销搜索输入后提示")
+
+         let selection = app.switches["allocation.toggle.UI Spend"]
+-        reveal(selection, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+-        selection.tap()
++        let control = selection.switches.firstMatch
++        reveal(control, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
++        let allocation = app.textFields["allocation.amount.UI Spend"]
++        XCTAssertEqual(selection.value as? String, "1")
++        control.tap()
++        XCTAssertTrue(allocation.waitForNonExistence(timeout: 5))
+         XCTAssertEqual(selection.value as? String, "0")
+-        selection.tap()
++        control.tap()
++        XCTAssertTrue(allocation.waitForExistence(timeout: 5))
+         XCTAssertEqual(selection.value as? String, "1")
+         reveal(search, scrollTowardTopWhenMissing: true,
+                navigationBar: navigationBar, contentHeader: progress)
+@@ -2328,7 +2338,6 @@ final class CoreFlowsUITests: XCTestCase {
+         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+         XCTAssertEqual(search.value as? String, "")
+         dismissSearchKeyboard()
+-        let allocation = app.textFields["allocation.amount.UI Spend"]
+         reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+         XCTAssertEqual(allocation.value as? String, "125.5")
+         XCTAssertEqual(selection.value as? String, "1")
