@@ -2296,6 +2296,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(search.isHittable)
         XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
         XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
+        let searchLabel = app.staticTexts["搜索"]
+        XCTAssertTrue(searchLabel.exists)
+        XCTAssertGreaterThanOrEqual(searchLabel.frame.minY + 0.001, progress.frame.maxY)
+        XCTAssertLessThanOrEqual(searchLabel.frame.maxY, min(contentBottom, form.frame.maxY))
         let prefix = largestText ? "最大字号" : ""
         captureScreenshot("\(prefix)促销搜索键盘输入")
 
@@ -2310,16 +2314,19 @@ final class CoreFlowsUITests: XCTestCase {
         dismissSearchKeyboard()
         reveal(app.staticTexts["促销分配"], scrollTowardTopWhenMissing: true, fullyVisible: true,
                navigationBar: navigationBar, contentHeader: progress)
+        reveal(search, navigationBar: navigationBar, contentHeader: progress)
         XCTAssertEqual(search.value as? String, "Spend")
         XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, progress.frame.maxY)
         XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
         captureScreenshot("\(prefix)促销搜索输入后提示")
 
         let selection = app.switches["allocation.toggle.UI Spend"]
-        reveal(selection, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
-        selection.tap()
+        let control = selection.switches.firstMatch
+        reveal(control, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        XCTAssertEqual(selection.value as? String, "1")
+        control.tap()
         XCTAssertEqual(selection.value as? String, "0")
-        selection.tap()
+        control.tap()
         XCTAssertEqual(selection.value as? String, "1")
         reveal(search, scrollTowardTopWhenMissing: true,
                navigationBar: navigationBar, contentHeader: progress)
