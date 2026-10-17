@@ -33,6 +33,24 @@ final class CoreFlowsUITests: XCTestCase {
         app = nil
     }
 
+    func testAccountEditorNumericKeyboardPreservesSavedLimit() {
+        verifyAccountEditorNumericKeyboard(largestText: false)
+    }
+
+    func testAccountEditorNumericKeyboardAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyAccountEditorNumericKeyboard(largestText: true)
+    }
+
+    func testCardEditorNumericKeyboardPreservesSavedLastFour() {
+        verifyCardEditorNumericKeyboard(largestText: false)
+    }
+
+    func testCardEditorNumericKeyboardAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyCardEditorNumericKeyboard(largestText: true)
+    }
+
     func testCardOnboardingNumericKeyboardPreservesSavedValues() {
         verifyCardOnboardingNumericKeyboard(largestText: false)
     }
@@ -2345,6 +2363,125 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(selection.value as? String, "1")
         XCTAssertTrue(app.buttons["saveTransaction"].isEnabled)
         captureScreenshot("\(prefix)促销搜索清空后保留计入金额")
+    }
+
+    private func verifyAccountEditorNumericKeyboard(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        launch("core")
+        tap(app.tabBars.buttons["卡片"])
+        let sharedAccount = app.buttons.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "尾号 1234", "尾号 5678"
+        )).firstMatch
+        tap(sharedAccount)
+        let details = app.navigationBars["账户详情"]
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
+        tap(details.buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑信用卡账户"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let form = app.collectionViews["account.editor.form"]
+        let limit = app.textFields["信用额度（可选）"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["account.keyboard.dismiss"]
+        enter("0", into: limit)
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(limit.value as? String, "0")
+
+        replaceText("125.50", in: limit)
+        assertEditorNumericKeyboardInput(limit, navigationBar: navigationBar, form: form, dismissal: dismissal)
+        captureScreenshot("\(prefix)账户额度键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(limit.value as? String, "125.50")
+        XCTAssertTrue(navigationBar.exists)
+
+        let notes = app.descendants(matching: .any).matching(identifier: "account.notes").firstMatch
+        reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        notes.tap()
+        notes.typeText("UI keyboard note")
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertFalse(dismissal.exists)
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let savedLimit = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "信用额度", "125.5 CNY"
+        )).firstMatch
+        reveal(savedLimit, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        captureScreenshot("\(prefix)账户额度保存读回")
+    }
+
+    private func verifyCardEditorNumericKeyboard(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        let editedName = "UI Keyboard Edited"
+        launch("core")
+        openCard("UI Primary")
+        tap(app.navigationBars["卡片详情"].buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑卡片"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let form = app.collectionViews["card.editor.form"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["card.keyboard.dismiss"]
+        let product = app.textFields["卡产品名称"]
+        replaceText(editedName, in: product)
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertFalse(dismissal.exists)
+        let lastFour = app.textFields["末四位"]
+        replaceText("0123", in: lastFour)
+        assertEditorNumericKeyboardInput(lastFour, navigationBar: navigationBar, form: form, dismissal: dismissal)
+        captureScreenshot("\(prefix)卡片末四位键盘收起入口")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(dismissal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(lastFour.value as? String, "0123")
+        XCTAssertTrue(navigationBar.exists)
+        reveal(product, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(product.value as? String, editedName)
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["卡片"])
+        let search = app.searchFields["搜索银行、卡片或末四位"]
+        tap(search, scrollTowardTopWhenMissing: true)
+        search.typeText("0123\n")
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(search.value as? String, "0123")
+        let savedCard = app.buttons["card.\(editedName)"]
+        reveal(savedCard, fullyVisible: true)
+        XCTAssertTrue(savedCard.label.contains("0123"))
+        XCTAssertTrue(savedCard.label.contains("Visa"))
+        XCTAssertEqual(app.buttons.matching(identifier: "card.\(editedName)").count, 1)
+        captureScreenshot("\(prefix)卡片末四位保存读回")
+    }
+
+    private func assertEditorNumericKeyboardInput(
+        _ field: XCUIElement,
+        navigationBar: XCUIElement,
+        form: XCUIElement,
+        dismissal: XCUIElement
+    ) {
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        XCTAssertEqual(dismissal.label, "收起键盘")
+        XCTAssertTrue(dismissal.isHittable)
+        assertTouchTarget(dismissal)
+        XCTAssertTrue(app.frame.contains(dismissal.frame))
+        XCTAssertGreaterThanOrEqual(dismissal.frame.minY, navigationBar.frame.maxY)
+        XCTAssertLessThanOrEqual(dismissal.frame.maxY, keyboard.frame.minY)
+        XCTAssertFalse(field.frame.isEmpty)
+        XCTAssertTrue(field.isHittable)
+        XCTAssertGreaterThanOrEqual(field.frame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
+        XCTAssertLessThanOrEqual(field.frame.maxY, min(form.frame.maxY, dismissal.frame.minY, keyboard.frame.minY))
     }
 
     private func verifyCardOnboardingNumericKeyboard(largestText: Bool) {
