@@ -912,8 +912,6 @@ struct TransactionEditorForm: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var focusedInput: InputField?
     @ScaledMetric(relativeTo: .caption) private var stepIndicatorSize = 28
-    // Keep one body line available while native input fonts change size.
-    @ScaledMetric(relativeTo: .body) private var promotionInputLineHeight = 22
 
     @AppStorage("cardPilot.lastUsedCardID") private var lastUsedCardID = ""
     @State private var cardID: UUID
@@ -1724,9 +1722,10 @@ struct TransactionEditorForm: View {
     @ViewBuilder
     private var promotionSection: some View {
         Section("促销分配") {
-            TextField("搜索其他促销", text: $promotionSearchText)
-                .font(.body)
-                .frame(minHeight: max(44, promotionInputLineHeight))
+            LabeledContent("搜索其他促销") {
+                TextField("", text: $promotionSearchText)
+                    .accessibilityLabel("搜索其他促销")
+            }
             if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label("本笔未计入促销", systemImage: "tag.slash")
                     .foregroundStyle(.secondary)
@@ -1780,8 +1779,7 @@ struct TransactionEditorForm: View {
                             .environment(\.locale, amountFormat.locale)
                             .focused($focusedInput, equals: .allocation(promotion.id))
                             .textFieldStyle(.plain)
-                            .font(.body)
-                            .frame(minHeight: max(44, promotionInputLineHeight))
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
