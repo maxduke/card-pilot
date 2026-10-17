@@ -53,14 +53,27 @@ jobs:
         if: always()
         shell: bash
         run: |
-          mkdir -p native-metrics
-          device_id=$(cat device-id.txt)
-          container_path=$(xcrun simctl get_app_container "$device_id" com.maxduke.CardPilot data)
-          cp -R "$container_path/Library/Caches/AllocationNativeEvidence/." native-metrics/
           python3 - <<'PYCODE'
           from pathlib import Path
-          import json
-          paths = list(Path('native-metrics').glob('*.jsonl'))
+          import json, shutil
+          # XCTest may shut down the destination or use a cloned simulator.
+          # App caches remain on disk; export them without requiring a boot.
+          developer = Path.home() / 'Library/Developer'
+          directories = [
+              path for path in developer.rglob('AllocationNativeEvidence')
+              if path.is_dir() and path.parent.name == 'Caches'
+          ]
+          output = Path('native-metrics')
+          output.mkdir(exist_ok=True)
+          manifest = []
+          for directory in directories:
+              for path in directory.glob('*.jsonl'):
+                  target = output / path.name
+                  assert not target.exists(), path
+                  shutil.copy2(path, target)
+                  manifest.append({'source': str(path), 'file': target.name})
+          (output / 'sources.json').write_text(json.dumps(manifest, indent=2))
+          paths = list(output.glob('*.jsonl'))
           assert paths, 'Native observer files are required evidence'
           total = 0
           for path in paths:
