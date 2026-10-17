@@ -1,4 +1,4 @@
-name: Allocation audit AX scopes (diagnostic only)
+name: Full native audit metadata (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -9,11 +9,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: macos-15
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        scope: [toggles, amounts, copy, none]
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
@@ -23,22 +19,22 @@ jobs:
           ref: 23bd9279df208dd6b31cb662faaa679f9c3d7ea4
           path: candidate
           persist-credentials: false
-      - name: Observe accessibility groups without removing visible content
+      - name: Attach raw audit metadata with the production app unchanged
         working-directory: candidate
         env:
-          SCOPE: ${{ matrix.scope }}
+          SCOPE: actual
         run: |
-          python3 ../.github/diagnostics/allocation_accessibility_scope.py "$SCOPE"
+          python3 ../.github/diagnostics/allocation_issue_metadata.py "$SCOPE"
           git diff --check
           python3 - <<'PYCODE'
           import os, subprocess
-          expected = {"CardPilotUITests/CoreFlowsUITests.swift", "CardPilot/Features/Transactions/TransactionsView.swift"}
+          expected = {"CardPilotUITests/CoreFlowsUITests.swift"}
           actual = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run the full original prefix and unchanged unfiltered audit
+      - name: Run the entire original native test plan with unchanged audits
         working-directory: candidate
         shell: bash
         run: |
@@ -53,13 +49,6 @@ jobs:
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
-            -only-testing:CardPilotTests \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../diagnostic.log
       - name: Export native summary
         if: always()
@@ -68,7 +57,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-audit-ax-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-audit-full-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
@@ -76,6 +65,5 @@ jobs:
             candidate-base.txt
             candidate.patch
             .github/diagnostics/allocation_issue_metadata.py
-            .github/diagnostics/allocation_accessibility_scope.py
           retention-days: 7
           if-no-files-found: error
