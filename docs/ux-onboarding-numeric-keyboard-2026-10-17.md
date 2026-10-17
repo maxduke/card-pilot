@@ -1,5 +1,7 @@
 # UX 第十八批：添加信用卡数字键盘退出 · 2026-10-17
 
+本批已通过 [PR #45](https://github.com/maxduke/card-pilot/pull/45) 完成最终补修并合并到 `17d035c42965216c9ace3cb354c84e2e6f61d0e7`。[最终 PR workflow](https://github.com/maxduke/card-pilot/actions/runs/39060784889) 与[合并主线 workflow](https://github.com/maxduke/card-pilot/actions/runs/39066447762) 均通过完整 219＋53，零失败／零跳过，无超时、重试或进程重启。二十四张应用检查点及九张补修原图已逐张验收，原工作区 main 已同步且干净。下文的待验证与失败说明是各轮实施记录。
+
 基于完成验证的主线 `7d17eda263be7faa8626ad8170f0153d767dbc36`，继续处理 O13 的表单键盘体验。
 
 ## 行为与范围

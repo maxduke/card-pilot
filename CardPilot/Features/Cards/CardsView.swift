@@ -1249,6 +1249,7 @@ struct AccountEditorView: View {
     let account: CreditCardAccount?
     let banks: [Bank]
 
+    @FocusState private var isLimitFocused: Bool
     @State private var bankID: UUID
     @State private var limitText: String
     @State private var currencyCode: String
@@ -1335,6 +1336,7 @@ struct AccountEditorView: View {
                     }
                     TextField("信用额度（可选）", text: $limitText)
                         .keyboardType(.decimalPad)
+                        .focused($isLimitFocused)
                     CurrencyPickerView(selection: $currencyCode)
                     Picker("状态", selection: $status) {
                         Text("使用中").tag(CreditCardAccountStatus.active)
@@ -1344,6 +1346,7 @@ struct AccountEditorView: View {
                         DatePicker("关闭日期", selection: $closedDate, displayedComponents: .date)
                     }
                     TextField("备注（可选）", text: $notes, axis: .vertical)
+                        .accessibilityIdentifier("account.notes")
                 }
 
                 Section(account == nil ? "账务规则" : "修改以后的账单规则") {
@@ -1417,10 +1420,20 @@ struct AccountEditorView: View {
                     InlineErrorView(message: errorMessage)
                 }
             }
+            .scrollDismissesKeyboard(.immediately)
+            .accessibilityIdentifier("account.editor.form")
             .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+                if isLimitFocused {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("收起键盘") { isLimitFocused = false }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("account.keyboard.dismiss")
+                    }
+                }
             }
         }
         .protectEdits(snapshot: editSnapshot)
@@ -1718,6 +1731,7 @@ struct CardEditorView: View {
     let accounts: [CreditCardAccount]
     let networks: [CardNetwork]
 
+    @FocusState private var isLastFourFocused: Bool
     @State private var accountID: UUID
     @State private var networkSelection: CardNetworkSelection
     @State private var customNetworkName: String
@@ -1779,6 +1793,7 @@ struct CardEditorView: View {
                     TextField("末四位", text: $lastFour)
                         .keyboardType(.numberPad)
                         .textContentType(.none)
+                        .focused($isLastFourFocused)
                     Picker("状态", selection: $status) {
                         Text("使用中").tag(CardStatus.active)
                         Text("停用").tag(CardStatus.inactive)
@@ -1792,10 +1807,20 @@ struct CardEditorView: View {
                     InlineErrorView(message: errorMessage)
                 }
             }
+            .scrollDismissesKeyboard(.immediately)
+            .accessibilityIdentifier("card.editor.form")
             .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+                if isLastFourFocused {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("收起键盘") { isLastFourFocused = false }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("card.keyboard.dismiss")
+                    }
+                }
             }
         }
         .protectEdits(snapshot: editSnapshot)
