@@ -1,5 +1,5 @@
 diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
-index 292d9bd..f0b2ba3 100644
+index 292d9bd..6db4802 100644
 --- a/CardPilot/Features/Transactions/TransactionsView.swift
 +++ b/CardPilot/Features/Transactions/TransactionsView.swift
 @@ -901,6 +901,7 @@ struct TransactionEditorForm: View {
@@ -10,7 +10,7 @@ index 292d9bd..f0b2ba3 100644
      }
 
      @Environment(\.modelContext) private var modelContext
-@@ -1172,67 +1173,7 @@ struct TransactionEditorForm: View {
+@@ -1172,132 +1173,10 @@ struct TransactionEditorForm: View {
      var body: some View {
          NavigationStack {
              ScrollViewReader { scrollProxy in
@@ -75,22 +75,53 @@ index 292d9bd..f0b2ba3 100644
 -                    }
 -                    .background(.bar, ignoresSafeAreaEdges: .bottom)
 -                }
-+                editorContent(using: scrollProxy)
-                 .onAppear {
-                     initializePromotions()
-                     if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
-@@ -1242,6 +1183,9 @@ struct TransactionEditorForm: View {
-                     if phase != .active { persistDraft() }
-                 }
-                 .task { if transaction == nil { focusedInput = .amount } }
-+                .onChange(of: focusedInput) { _, field in
-+                    revealPromotionSearch(field, using: scrollProxy)
-+                }
-                 .onChange(of: cardID) { _, _ in
-                     if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
-                         originalTransactionID = Self.noOriginalTransactionID
-@@ -1281,23 +1225,7 @@ struct TransactionEditorForm: View {
-                 }
+-                .onAppear {
+-                    initializePromotions()
+-                    if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
+-                }
+-                .onChange(of: draftSnapshot) { _, _ in persistDraft() }
+-                .onChange(of: scenePhase) { _, phase in
+-                    if phase != .active { persistDraft() }
+-                }
+-                .task { if transaction == nil { focusedInput = .amount } }
+-                .onChange(of: cardID) { _, _ in
+-                    if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
+-                        originalTransactionID = Self.noOriginalTransactionID
+-                    }
+-                    // A card supplies a default only while a fresh form has no amount or explicit currency.
+-                    // Restored drafts already own their currency, even when the amount is incomplete.
+-                    if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
+-                       amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+-                       let selectedCard {
+-                        currencyCode = selectedCard.account.limitCurrencyCode
+-                        refreshDefaultAllocationAmounts()
+-                    }
+-                    refreshCandidates()
+-                }
+-                .onChange(of: showingInactiveCards) { _, showing in
+-                    guard !showing, selectedCard?.status == .inactive else { return }
+-                    cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
+-                }
+-                .onChange(of: kind) { _, _ in
+-                    refreshCandidates()
+-                    refreshDefaultAllocationAmounts()
+-                }
+-                .onChange(of: originalTransactionID) { _, _ in
+-                    refreshCandidates()
+-                    refreshDefaultAllocationAmounts()
+-                }
+-                .onChange(of: transactionDate) { _, _ in refreshCandidates() }
+-                .onChange(of: postingDate) { _, _ in refreshCandidates() }
+-                .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
+-                .onChange(of: amountText) { _, _ in
+-                    refreshCandidates()
+-                    refreshDefaultAllocationAmounts()
+-                }
+-                .onChange(of: currencyCode) { _, _ in
+-                    refreshCandidates()
+-                    refreshDefaultAllocationAmounts()
+-                }
++                observedEditorContent(using: scrollProxy)
                  .navigationTitle(transaction == nil ? "添加交易" : "编辑交易")
                  .navigationBarTitleDisplayMode(.inline)
 -                .toolbar {
@@ -114,10 +145,60 @@ index 292d9bd..f0b2ba3 100644
                  .confirmationDialog("未完成的交易", isPresented: $showingDraftClose, titleVisibility: .visible) {
                      Button("保留草稿并关闭") {
                          persistDraft(force: true)
-@@ -1344,6 +1272,70 @@ struct TransactionEditorForm: View {
+@@ -1344,6 +1223,123 @@ struct TransactionEditorForm: View {
          .protectEdits(snapshot: editSnapshot, isReady: didInitializePromotions)
      }
 
++    private func observedEditorContent(using scrollProxy: ScrollViewProxy) -> some View {
++        editorContent(using: scrollProxy)
++        .onAppear {
++            initializePromotions()
++            if initialDraftSnapshot == nil { initialDraftSnapshot = draftSnapshot }
++        }
++        .onChange(of: draftSnapshot) { _, _ in persistDraft() }
++        .onChange(of: scenePhase) { _, phase in
++            if phase != .active { persistDraft() }
++        }
++        .task { if transaction == nil { focusedInput = .amount } }
++        .onChange(of: cardID) { _, _ in
++            if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
++                originalTransactionID = Self.noOriginalTransactionID
++            }
++            // A card supplies a default only while a fresh form has no amount or explicit currency.
++            // Restored drafts already own their currency, even when the amount is incomplete.
++            if transaction == nil, !isResumedDraft, !hasSelectedCurrency,
++               amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
++               let selectedCard {
++                currencyCode = selectedCard.account.limitCurrencyCode
++                refreshDefaultAllocationAmounts()
++            }
++            refreshCandidates()
++        }
++        .onChange(of: showingInactiveCards) { _, showing in
++            guard !showing, selectedCard?.status == .inactive else { return }
++            cardID = cards.first(where: { $0.status == .active })?.id ?? cardID
++        }
++        .onChange(of: kind) { _, _ in
++            refreshCandidates()
++            refreshDefaultAllocationAmounts()
++        }
++        .onChange(of: originalTransactionID) { _, _ in
++            refreshCandidates()
++            refreshDefaultAllocationAmounts()
++        }
++        .onChange(of: transactionDate) { _, _ in refreshCandidates() }
++        .onChange(of: postingDate) { _, _ in refreshCandidates() }
++        .onChange(of: hasPostingDate) { _, _ in refreshCandidates() }
++        .onChange(of: amountText) { _, _ in
++            refreshCandidates()
++            refreshDefaultAllocationAmounts()
++        }
++        .onChange(of: currencyCode) { _, _ in
++            refreshCandidates()
++            refreshDefaultAllocationAmounts()
++        }
++    }
++
 +    private func editorContent(using scrollProxy: ScrollViewProxy) -> some View {
 +        VStack(spacing: 0) {
 +            if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
@@ -146,6 +227,9 @@ index 292d9bd..f0b2ba3 100644
 +            .animation(nil, value: dynamicTypeSize)
 +            .scrollDismissesKeyboard(.immediately)
 +            .accessibilityIdentifier("transaction.form")
++            .onChange(of: focusedInput) { (_: InputField?, field: InputField?) in
++                revealPromotionSearch(field, using: scrollProxy)
++            }
 +            VStack(spacing: 0) {
 +                Divider()
 +                if editorStep == 1 {
@@ -185,7 +269,7 @@ index 292d9bd..f0b2ba3 100644
      private var draftSnapshot: TransactionDraft {
          var snapshot = TransactionDraft(id: draftID, cardID: cardID, kind: kind,
              transactionOn: CardPilotUI.rawDate(transactionDate), postingOn: CardPilotUI.rawDate(postingDate),
-@@ -1611,6 +1603,42 @@ struct TransactionEditorForm: View {
+@@ -1611,6 +1607,42 @@ struct TransactionEditorForm: View {
          promotionSection
      }
 
@@ -228,7 +312,7 @@ index 292d9bd..f0b2ba3 100644
      private func continueToPromotionConfirmation() {
          guard selectedCard != nil else {
              errorMessage = "请选择卡片。"
-@@ -1722,9 +1750,15 @@ struct TransactionEditorForm: View {
+@@ -1722,9 +1754,15 @@ struct TransactionEditorForm: View {
      @ViewBuilder
      private var promotionSection: some View {
          Section("促销分配") {
@@ -245,7 +329,7 @@ index 292d9bd..f0b2ba3 100644
              }
              if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                  Label("本笔未计入促销", systemImage: "tag.slash")
-@@ -1779,7 +1813,6 @@ struct TransactionEditorForm: View {
+@@ -1779,7 +1817,6 @@ struct TransactionEditorForm: View {
                              .environment(\.locale, amountFormat.locale)
                              .focused($focusedInput, equals: .allocation(promotion.id))
                              .textFieldStyle(.plain)
