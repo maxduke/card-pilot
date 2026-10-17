@@ -1724,7 +1724,7 @@ struct TransactionEditorForm: View {
         Section("促销分配") {
             LabeledContent("搜索其他促销") {
                 TextField("", text: $promotionSearchText)
-                    .accessibilityLabel("搜索其他促销")
+                    .accessibilityIdentifier("allocation.search")
             }
             if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label("本笔未计入促销", systemImage: "tag.slash")

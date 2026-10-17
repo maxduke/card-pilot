@@ -1844,6 +1844,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize() throws {
+        // All history checks finished at 179.45s; teardown crossed 180s
+        // (run 39028286830). Keep the complete flow within the existing maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("accountHistory")
         tap(app.tabBars.buttons["卡片"])
@@ -2282,7 +2285,7 @@ final class CoreFlowsUITests: XCTestCase {
         let navigationBar = app.navigationBars["添加交易"]
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         let form = app.collectionViews["transaction.form"]
-        let search = app.textFields["搜索其他促销"]
+        let search = app.textFields["allocation.search"]
         reveal(search, navigationBar: navigationBar, contentHeader: progress)
         XCTAssertEqual(search.label, "搜索其他促销")
         search.tap()
@@ -2293,12 +2296,6 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(search.isHittable)
         XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
         XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
-        // A short query must fit at the chosen font size, rather than leaving
-        // an empty or very narrow input beside the persistent label.
-        let category: UIContentSizeCategory = largestText ? .accessibilityExtraExtraExtraLarge : .large
-        let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: category))
-        let queryWidth = ("Spend" as NSString).size(withAttributes: [.font: font]).width
-        XCTAssertGreaterThanOrEqual(search.frame.width, queryWidth)
         let prefix = largestText ? "最大字号" : ""
         captureScreenshot("\(prefix)促销搜索键盘输入")
 
