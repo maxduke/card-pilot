@@ -1,4 +1,4 @@
-name: Allocation scaled input comparison (diagnostic only)
+name: Allocation exported native metrics (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,40 +10,35 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        scope: [baseline, scaled-inputs]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: 23bd9279df208dd6b31cb662faaa679f9c3d7ea4
+          ref: e177565d2dbc61f2ad5cd8631d8d4c25284acc94
           path: candidate
           persist-credentials: false
-      - name: Compare input bounds with passive native font metrics
+      - name: Add passive file-backed metrics to the failed production layout
         working-directory: candidate
-        env:
-          SCOPE: ${{ matrix.scope }}
         run: |
-          python3 ../.github/diagnostics/allocation_scaled_inputs.py "$SCOPE"
+          python3 ../.github/diagnostics/allocation_exported_metrics.py
           git diff --check
           python3 - <<'PYCODE'
-          import os, subprocess
-          expected = {"CardPilotUITests/CoreFlowsUITests.swift", "CardPilot/Features/Transactions/TransactionsView.swift"}
-          actual = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          import subprocess
+          expected = ["CardPilot/Features/Transactions/TransactionsView.swift"]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run the entire original native test plan with unchanged audits
+      - name: Run the entire unchanged native test plan
         working-directory: candidate
         shell: bash
         run: |
           set -o pipefail
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
+          printf '%s\n' "$device_id" > ../device-id.txt
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
@@ -54,6 +49,26 @@ jobs:
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../diagnostic.log
+      - name: Export persistent native measurements
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p native-metrics
+          device_id=$(cat device-id.txt)
+          container_path=$(xcrun simctl get_app_container "$device_id" com.maxduke.CardPilot data)
+          cp -R "$container_path/Library/Caches/AllocationNativeEvidence/." native-metrics/
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import json
+          paths = list(Path('native-metrics').glob('*.jsonl'))
+          assert paths, 'Native observer files are required evidence'
+          total = 0
+          for path in paths:
+              records = [json.loads(line) for line in path.read_text().splitlines()]
+              total += len(records)
+              print(path.name, len(records))
+          assert total > 0
+          PYCODE
       - name: Export native summary
         if: always()
         run: xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
@@ -61,15 +76,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-scaled-input-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-exported-metrics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            repair.patch
-            .github/diagnostics/allocation_issue_metadata.py
-            .github/diagnostics/allocation_scaled_inputs.py
+            native-metrics
+            .github/diagnostics/allocation_exported_metrics.py
+            .github/diagnostics/allocation_exported_metrics.swift
           retention-days: 7
           if-no-files-found: error
