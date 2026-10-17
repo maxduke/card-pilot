@@ -1,4 +1,4 @@
-name: Numeric keyboard readback (diagnostic only)
+name: Allocation audit issue metadata (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,30 +10,37 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [actual, positive-control]
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: ded078c3d37953aa515ea63b1a8244bf996a6334
+          ref: 23bd9279df208dd6b31cb662faaa679f9c3d7ea4
           path: candidate
           persist-credentials: false
-      - name: Apply the frozen app repair to the exact failed PR head
+      - name: Prepare bounded audit metadata observation
         working-directory: candidate
+        env:
+          SCOPE: ${{ matrix.scope }}
         run: |
-          git apply --check ../.github/diagnostics/numeric_keyboard_readback.patch
-          git apply ../.github/diagnostics/numeric_keyboard_readback.patch
+          python3 ../.github/diagnostics/allocation_issue_metadata.py "$SCOPE"
           git diff --check
           python3 - <<'PYCODE'
-          import subprocess
-          expected = {"CardPilot/Features/Cards/CardsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"}
+          import os, subprocess
+          expected = {"CardPilotUITests/CoreFlowsUITests.swift"}
+          if os.environ["SCOPE"] == "positive-control":
+              expected.add("CardPilot/Features/Transactions/TransactionsView.swift")
           actual = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Test all unit tests and three readback and navigation flows
+      - name: Run the full original prefix and unchanged unfiltered audit
         working-directory: candidate
         shell: bash
         run: |
@@ -49,9 +56,12 @@ jobs:
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
             -only-testing:CardPilotTests \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryPaidFilterShowsEmptyResultAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAdditionalCardDoesNotRepeatReminderOnboarding \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../diagnostic.log
       - name: Export native summary
         if: always()
@@ -60,13 +70,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: numeric-keyboard-readback-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-audit-metadata-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            .github/diagnostics/numeric_keyboard_readback.patch
+            .github/diagnostics/allocation_issue_metadata.py
           retention-days: 7
           if-no-files-found: error
