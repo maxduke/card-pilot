@@ -1,4 +1,4 @@
-name: Allocation exported native metrics (diagnostic only)
+name: Allocation search focus (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -9,20 +9,20 @@ permissions:
 jobs:
   diagnose:
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: e177565d2dbc61f2ad5cd8631d8d4c25284acc94
+          ref: 2e186ac210647e81233c8db6222ba5bb7cb6b117
           path: candidate
           persist-credentials: false
-      - name: Add passive file-backed metrics to the failed production layout
+      - name: Apply frozen input layout repair
         working-directory: candidate
         run: |
-          python3 ../.github/diagnostics/allocation_exported_metrics.py
+          python3 ../.github/diagnostics/allocation_search_focus.py
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
@@ -32,7 +32,7 @@ jobs:
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run the entire unchanged native test plan
+      - name: Run native input and history regression flows
         working-directory: candidate
         shell: bash
         run: |
@@ -44,44 +44,16 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
+            -only-testing:CardPilotTests \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchPreservesSelectionAndAmount \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
             -maximum-test-execution-time-allowance 240 \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../diagnostic.log
-      - name: Export persistent native measurements
-        if: always()
-        shell: bash
-        run: |
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          import json, shutil
-          # XCTest may shut down the destination or use a cloned simulator.
-          # App caches remain on disk; export them without requiring a boot.
-          developer = Path.home() / 'Library/Developer'
-          directories = [
-              path for path in developer.rglob('AllocationNativeEvidence')
-              if path.is_dir() and path.parent.name == 'Caches'
-          ]
-          output = Path('native-metrics')
-          output.mkdir(exist_ok=True)
-          manifest = []
-          for directory in directories:
-              for path in directory.glob('*.jsonl'):
-                  target = output / path.name
-                  assert not target.exists(), path
-                  shutil.copy2(path, target)
-                  manifest.append({'source': str(path), 'file': target.name})
-          (output / 'sources.json').write_text(json.dumps(manifest, indent=2))
-          paths = list(output.glob('*.jsonl'))
-          assert paths, 'Native observer files are required evidence'
-          total = 0
-          for path in paths:
-              records = [json.loads(line) for line in path.read_text().splitlines()]
-              total += len(records)
-              print(path.name, len(records))
-          assert total > 0
-          PYCODE
       - name: Export native summary
         if: always()
         run: xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
@@ -89,15 +61,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-exported-metrics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-search-focus-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            native-metrics
-            .github/diagnostics/allocation_exported_metrics.py
-            .github/diagnostics/allocation_exported_metrics.swift
+            .github/diagnostics/allocation_search_focus.py
+            .github/diagnostics/allocation_search_focus.patch
           retention-days: 7
           if-no-files-found: error

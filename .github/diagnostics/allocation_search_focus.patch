@@ -1,0 +1,60 @@
+diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
+index 292d9bd..1cac544 100644
+--- a/CardPilot/Features/Transactions/TransactionsView.swift
++++ b/CardPilot/Features/Transactions/TransactionsView.swift
+@@ -901,6 +901,7 @@ struct TransactionEditorForm: View {
+     private enum InputField: Hashable {
+         case amount
+         case allocation(UUID)
++        case promotionSearch
+     }
+ 
+     @Environment(\.modelContext) private var modelContext
+@@ -1242,6 +1243,13 @@ struct TransactionEditorForm: View {
+                     if phase != .active { persistDraft() }
+                 }
+                 .task { if transaction == nil { focusedInput = .amount } }
++                .onChange(of: focusedInput) { _, field in
++                    guard field == .promotionSearch else { return }
++                    Task { @MainActor in
++                        await Task.yield()
++                        scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
++                    }
++                }
+                 .onChange(of: cardID) { _, _ in
+                     if !originalTransactions.contains(where: { $0.id == originalTransactionID }) {
+                         originalTransactionID = Self.noOriginalTransactionID
+@@ -1289,7 +1297,7 @@ struct TransactionEditorForm: View {
+                             EditorCancelButton()
+                         }
+                     }
+-                    if focusedInput != nil {
++                    if focusedInput != nil && focusedInput != .promotionSearch {
+                         ToolbarItemGroup(placement: .keyboard) {
+                             Spacer()
+                             Button("收起键盘") { focusedInput = nil }
+@@ -1722,9 +1730,15 @@ struct TransactionEditorForm: View {
+     @ViewBuilder
+     private var promotionSection: some View {
+         Section("促销分配") {
+-            LabeledContent("搜索其他促销") {
++            VStack(alignment: .leading, spacing: 7) {
++                Text("搜索其他促销")
++                    .foregroundStyle(.secondary)
++                    .fixedSize(horizontal: false, vertical: true)
+                 TextField("", text: $promotionSearchText)
++                    .focused($focusedInput, equals: .promotionSearch)
++                    .accessibilityLabel("搜索其他促销")
+                     .accessibilityIdentifier("allocation.search")
++                    .id(InputField.promotionSearch)
+             }
+             if visiblePromotions.isEmpty && candidatePromotions.isEmpty && selectedPromotionIDs.isEmpty && promotionSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                 Label("本笔未计入促销", systemImage: "tag.slash")
+@@ -1779,7 +1793,6 @@ struct TransactionEditorForm: View {
+                             .environment(\.locale, amountFormat.locale)
+                             .focused($focusedInput, equals: .allocation(promotion.id))
+                             .textFieldStyle(.plain)
+-                            .fixedSize(horizontal: false, vertical: true)
+                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
+                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
+                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
