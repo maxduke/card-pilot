@@ -2434,7 +2434,12 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         XCTAssertFalse(dismissal.exists)
         let lastFour = app.textFields["末四位"]
-        replaceText("0123", in: lastFour)
+        // The ordinary keyboard's candidate bar sits above its AX frame.
+        // Start scrolling inside the Form, above the entire keyboard.
+        reveal(lastFour, navigationBar: navigationBar, contentContainer: form)
+        lastFour.tap()
+        let oldLastFour = lastFour.value as? String ?? ""
+        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldLastFour.count) + "0123")
         assertEditorNumericKeyboardInput(lastFour, navigationBar: navigationBar, form: form, dismissal: dismissal)
         captureScreenshot("\(prefix)卡片末四位键盘收起入口")
         dismissal.tap()
