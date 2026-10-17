@@ -1017,6 +1017,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        // The initial amount focus moves lazy rows while the keyboard opens.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let summary = app.staticTexts["transaction.original.summary"]
         reveal(summary, fullyVisible: true)
         XCTAssertEqual(summary.label, "原消费：2026年10月10日 · \(merchant) · 100.25 CNY · 状态：已冲正")
@@ -2286,7 +2290,7 @@ final class CoreFlowsUITests: XCTestCase {
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         let form = app.collectionViews["transaction.form"]
         let search = app.textFields["allocation.search"]
-        reveal(search, navigationBar: navigationBar, contentHeader: progress)
+        reveal(search, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(search.label, "搜索其他促销")
         search.tap()
         search.typeText("Spend")
@@ -2313,8 +2317,8 @@ final class CoreFlowsUITests: XCTestCase {
         }
         dismissSearchKeyboard()
         reveal(app.staticTexts["促销分配"], scrollTowardTopWhenMissing: true, fullyVisible: true,
-               navigationBar: navigationBar, contentHeader: progress)
-        reveal(search, navigationBar: navigationBar, contentHeader: progress)
+               navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
+        reveal(search, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(search.value as? String, "Spend")
         XCTAssertGreaterThanOrEqual(search.frame.minY + 0.001, progress.frame.maxY)
         XCTAssertLessThanOrEqual(search.frame.maxY, min(contentBottom, form.frame.maxY))
@@ -2322,21 +2326,21 @@ final class CoreFlowsUITests: XCTestCase {
 
         let selection = app.switches["allocation.toggle.UI Spend"]
         let control = selection.switches.firstMatch
-        reveal(control, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
+        reveal(control, fullyVisible: true, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(selection.value as? String, "1")
         control.tap()
         XCTAssertEqual(selection.value as? String, "0")
         control.tap()
         XCTAssertEqual(selection.value as? String, "1")
         reveal(search, scrollTowardTopWhenMissing: true,
-               navigationBar: navigationBar, contentHeader: progress)
+               navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(search.value as? String, "Spend")
         replaceText("", in: search)
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         XCTAssertEqual(search.value as? String, "")
         dismissSearchKeyboard()
         let allocation = app.textFields["allocation.amount.UI Spend"]
-        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(allocation.value as? String, "125.5")
         XCTAssertEqual(selection.value as? String, "1")
         XCTAssertTrue(app.buttons["saveTransaction"].isEnabled)
@@ -2605,8 +2609,14 @@ final class CoreFlowsUITests: XCTestCase {
         scrollTowardTopWhenMissing: Bool = false,
         fullyVisible: Bool = false,
         navigationBar: XCUIElement? = nil,
-        contentHeader: XCUIElement? = nil
+        contentHeader: XCUIElement? = nil,
+        contentContainer: XCUIElement? = nil
     ) {
+        // A footer button's AX frame can start below the actual Form viewport.
+        var visibleBottom: CGFloat {
+            guard let contentContainer else { return contentBottom }
+            return min(contentBottom, contentContainer.frame.maxY)
+        }
         // SwiftUI can report a field behind the fixed footer as hittable.
         // Check its geometry as well; keep queries outside a polling predicate
         // because remote accessibility snapshots may take several seconds on CI.
@@ -2631,7 +2641,7 @@ final class CoreFlowsUITests: XCTestCase {
                 var frameIsVisible = !targetFrame.isEmpty && targetFrame.intersects(frame)
                 settlesAtDestination = needsUnobscuredFrame && frameIsVisible
                 if needsUnobscuredFrame {
-                    let bottom = contentBottom
+                    let bottom = visibleBottom
                     viewportBottom = bottom
                     geometryDescription = "minY=\(targetFrame.minY), top=\(contentTop), maxY=\(targetFrame.maxY), bottom=\(bottom)"
                     // A row can meet the bar at a subpixel AX rounding boundary.
@@ -2645,7 +2655,7 @@ final class CoreFlowsUITests: XCTestCase {
                 // the viewport. Always swiping up would move it farther out of reach.
                 targetIsAbove = !targetFrame.isEmpty && targetFrame.minY + geometryTolerance < contentTop
                 if !targetFrame.isEmpty && needsUnobscuredFrame {
-                    let bottom = viewportBottom ?? contentBottom
+                    let bottom = viewportBottom ?? visibleBottom
                     viewportBottom = bottom
                     let obscuredDistance = targetIsAbove
                         ? contentTop - targetFrame.minY
@@ -2655,7 +2665,7 @@ final class CoreFlowsUITests: XCTestCase {
                     scrollDistance = min(240, max(60, obscuredDistance + 24))
                 }
             }
-            let startY = min(frame.maxY - 100, (viewportBottom ?? contentBottom) - 25)
+            let startY = min(frame.maxY - 100, (viewportBottom ?? visibleBottom) - 25)
             let endY = max(frame.minY + 160, startY - scrollDistance)
             // Use the list gutter so a drag never begins on a promotion switch.
             let origin = app.coordinate(withNormalizedOffset: .zero)
