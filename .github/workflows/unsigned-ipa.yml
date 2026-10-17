@@ -1,4 +1,4 @@
-name: Full native audit metadata (diagnostic only)
+name: Allocation scaled input comparison (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,6 +10,10 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [baseline, scaled-inputs]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -19,16 +23,16 @@ jobs:
           ref: 23bd9279df208dd6b31cb662faaa679f9c3d7ea4
           path: candidate
           persist-credentials: false
-      - name: Attach raw audit metadata with the production app unchanged
+      - name: Compare input bounds with passive native font metrics
         working-directory: candidate
         env:
-          SCOPE: actual
+          SCOPE: ${{ matrix.scope }}
         run: |
-          python3 ../.github/diagnostics/allocation_issue_metadata.py "$SCOPE"
+          python3 ../.github/diagnostics/allocation_scaled_inputs.py "$SCOPE"
           git diff --check
           python3 - <<'PYCODE'
           import os, subprocess
-          expected = {"CardPilotUITests/CoreFlowsUITests.swift"}
+          expected = {"CardPilotUITests/CoreFlowsUITests.swift", "CardPilot/Features/Transactions/TransactionsView.swift"}
           actual = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
           assert actual == expected, actual
           PYCODE
@@ -57,13 +61,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-audit-full-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-scaled-input-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
+            repair.patch
             .github/diagnostics/allocation_issue_metadata.py
+            .github/diagnostics/allocation_scaled_inputs.py
           retention-days: 7
           if-no-files-found: error
