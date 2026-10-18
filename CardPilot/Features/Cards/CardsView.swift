@@ -1762,53 +1762,63 @@ struct CardEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("卡片") {
-                    Picker("信用卡账户", selection: $accountID) {
-                        ForEach(accounts, id: \.id) { account in
-                            Text(cardAccountDisplayName(account)).tag(account.id)
+            ScrollViewReader { scrollProxy in
+                Form {
+                    Section("卡片") {
+                        Picker("信用卡账户", selection: $accountID) {
+                            ForEach(accounts, id: \.id) { account in
+                                Text(cardAccountDisplayName(account)).tag(account.id)
+                            }
                         }
-                    }
-                    Text("卡组织组合")
-                        .font(.subheadline.weight(.semibold))
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(CardNetworkSelection.singleChoices) { choice in
-                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                        Text("卡组织组合")
+                            .font(.subheadline.weight(.semibold))
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(CardNetworkSelection.singleChoices) { choice in
+                                NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                            }
                         }
+                        Text("双标卡")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(CardNetworkSelection.dualChoices) { choice in
+                                NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                            }
+                        }
+                        NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
+                        if networkSelection == .other {
+                            TextField("卡组织名称", text: $customNetworkName)
+                        }
+                        TextField("卡产品名称", text: $productName)
+                        TextField("昵称（可选）", text: $nickname)
+                        TextField("末四位", text: $lastFour)
+                            .keyboardType(.numberPad)
+                            .textContentType(.none)
+                            .focused($isLastFourFocused)
+                            .id("card.lastFour")
+                        Picker("状态", selection: $status) {
+                            Text("使用中").tag(CardStatus.active)
+                            Text("停用").tag(CardStatus.inactive)
+                        }
+                        TextField("备注（可选）", text: $notes, axis: .vertical)
                     }
-                    Text("双标卡")
-                        .font(.caption.weight(.semibold))
+                    Text("不要录入完整卡号或 CVV。")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(CardNetworkSelection.dualChoices) { choice in
-                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
-                        }
+                    if let errorMessage {
+                        InlineErrorView(message: errorMessage)
                     }
-                    NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
-                    if networkSelection == .other {
-                        TextField("卡组织名称", text: $customNetworkName)
-                    }
-                    TextField("卡产品名称", text: $productName)
-                    TextField("昵称（可选）", text: $nickname)
-                    TextField("末四位", text: $lastFour)
-                        .keyboardType(.numberPad)
-                        .textContentType(.none)
-                        .focused($isLastFourFocused)
-                    Picker("状态", selection: $status) {
-                        Text("使用中").tag(CardStatus.active)
-                        Text("停用").tag(CardStatus.inactive)
-                    }
-                    TextField("备注（可选）", text: $notes, axis: .vertical)
                 }
-                Text("不要录入完整卡号或 CVV。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
+                .scrollDismissesKeyboard(.immediately)
+                .accessibilityIdentifier("card.editor.form")
+                .onChange(of: isLastFourFocused) { _, isFocused in
+                    guard isFocused else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        scrollProxy.scrollTo("card.lastFour", anchor: .top)
+                    }
                 }
             }
-            .scrollDismissesKeyboard(.immediately)
-            .accessibilityIdentifier("card.editor.form")
             .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }

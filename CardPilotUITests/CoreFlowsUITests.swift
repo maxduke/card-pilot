@@ -2433,9 +2433,21 @@ final class CoreFlowsUITests: XCTestCase {
         replaceText(editedName, in: product)
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         XCTAssertFalse(dismissal.exists)
+        // The candidate bar is above the Keyboard AX frame, and the Form AX
+        // frame can extend behind it. Begin the dismissal drag in the middle
+        // of the content above the keys, clear of the candidate bar.
+        let contentTop = max(navigationBar.frame.maxY, form.frame.minY)
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let gutterX = form.frame.minX + form.frame.width * 0.03 - app.frame.minX
+        let startY = (contentTop + keyboard.frame.minY) / 2 - app.frame.minY
+        let endY = contentTop + 24 - app.frame.minY
+        origin.withOffset(CGVector(dx: gutterX, dy: startY)).press(
+            forDuration: 0.05,
+            thenDragTo: origin.withOffset(CGVector(dx: gutterX, dy: endY)),
+            withVelocity: .slow, thenHoldForDuration: 0.2
+        )
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
         let lastFour = app.textFields["末四位"]
-        // The ordinary keyboard's candidate bar sits above its AX frame.
-        // Start scrolling inside the Form, above the entire keyboard.
         reveal(lastFour, navigationBar: navigationBar, contentContainer: form)
         lastFour.tap()
         let oldLastFour = lastFour.value as? String ?? ""
