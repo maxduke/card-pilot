@@ -16,7 +16,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: e398237ba57bc773689345eee4234e6cbbf0a5e5
+          ref: 20cd5011595978c6dda4247c19bb12898f840f0b
           path: candidate
           persist-credentials: false
       - name: Apply frozen card keyboard visibility repair
@@ -28,7 +28,7 @@ jobs:
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/Features/Cards/CardsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilot/Features/Cards/CardsView.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
