@@ -23,3 +23,10 @@ index 0c452c5..1a98f86 100644
 +        }
 +    }
 +
+diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
+index 8a8546b..6d9a2b3 100644
+--- a/CardPilotUITests/CoreFlowsUITests.swift
++++ b/CardPilotUITests/CoreFlowsUITests.swift
+@@ -49,0 +50,2 @@ final class CoreFlowsUITests: XCTestCase {
++        // Native save/relaunch/readback took 184 seconds in run 39089978347.
++        executionTimeAllowance = 240

@@ -28,7 +28,7 @@ jobs:
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/Features/Cards/CardsView.swift"]
+          expected = ["CardPilot/Features/Cards/CardsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
