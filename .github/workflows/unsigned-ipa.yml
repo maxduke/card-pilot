@@ -1,4 +1,4 @@
-name: Card editor keyboard visibility (diagnostic only)
+name: Allocation input visibility (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -9,17 +9,17 @@ permissions:
 jobs:
   diagnose:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: 20cd5011595978c6dda4247c19bb12898f840f0b
+          ref: 1c4044f196ddf59c665683f2f4e95c5c55c5780d
           path: candidate
           persist-credentials: false
-      - name: Apply frozen card keyboard visibility repair
+      - name: Apply frozen allocation input visibility repair
         working-directory: candidate
         shell: bash
         run: |
@@ -28,13 +28,13 @@ jobs:
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/Features/Cards/CardsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilot/Features/Transactions/TransactionsView.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run both native card editor keyboard flows
+      - name: Run native allocation focus, search and validation flows
         working-directory: candidate
         shell: bash
         run: |
@@ -46,8 +46,11 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardPreservesSavedLastFour \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalPreservesDraftAndSavedAmounts \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchPreservesSelectionAndAmount \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -63,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: card-editor-keyboard-setup-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-input-visibility-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log

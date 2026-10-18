@@ -1,32 +1,33 @@
-diff --git a/CardPilot/Features/Cards/CardsView.swift b/CardPilot/Features/Cards/CardsView.swift
-index 0c452c5..1a98f86 100644
---- a/CardPilot/Features/Cards/CardsView.swift
-+++ b/CardPilot/Features/Cards/CardsView.swift
+diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
+index 6ca6864..dba4d3b 100644
+--- a/CardPilot/Features/Transactions/TransactionsView.swift
++++ b/CardPilot/Features/Transactions/TransactionsView.swift
 @@ -2,0 +3 @@ import SwiftUI
 +import UIKit
-@@ -1816,4 +1817,4 @@ struct CardEditorView: View {
--                    Task { @MainActor in
--                        await Task.yield()
--                        scrollProxy.scrollTo("card.lastFour", anchor: .top)
--                    }
-+                    revealLastFour(using: scrollProxy)
-+                }
-+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
-+                    revealLastFour(using: scrollProxy)
-@@ -1838,0 +1840,9 @@ struct CardEditorView: View {
-+    private func revealLastFour(using scrollProxy: ScrollViewProxy) {
-+        guard isLastFourFocused else { return }
-+        Task { @MainActor in
-+            await Task.yield()
-+            guard isLastFourFocused else { return }
-+            scrollProxy.scrollTo("card.lastFour", anchor: .top)
-+        }
-+    }
-+
-diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
-index 8a8546b..6d9a2b3 100644
---- a/CardPilotUITests/CoreFlowsUITests.swift
-+++ b/CardPilotUITests/CoreFlowsUITests.swift
-@@ -49,0 +50,2 @@ final class CoreFlowsUITests: XCTestCase {
-+        // Native save/relaunch/readback took 184 seconds in run 39089978347.
-+        executionTimeAllowance = 240
+@@ -1305 +1306,4 @@ struct TransactionEditorForm: View {
+-                revealPromotionSearch(field, using: scrollProxy)
++                revealFocusedInput(field, using: scrollProxy)
++            }
++            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
++                revealFocusedInput(focusedInput, using: scrollProxy)
+@@ -1638,2 +1642,2 @@ struct TransactionEditorForm: View {
+-    private func revealPromotionSearch(_ field: InputField?, using scrollProxy: ScrollViewProxy) {
+-        guard field == .promotionSearch else { return }
++    private func revealFocusedInput(_ field: InputField?, using scrollProxy: ScrollViewProxy) {
++        guard let field, field != .amount else { return }
+@@ -1642 +1646,12 @@ struct TransactionEditorForm: View {
+-            scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
++            guard focusedInput == field else { return }
++            switch field {
++            case .promotionSearch:
++                scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
++            case let .allocation(id):
++                // The caption and an inline error can exceed the keyboard's
++                // viewport. Reveal the input itself; keep the row's separate
++                // validation anchor for showing an error after saving.
++                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .bottom)
++            case .amount:
++                break
++            }
+@@ -1821,0 +1837 @@ struct TransactionEditorForm: View {
++                            .id("allocation.input.\(promotion.id)")
