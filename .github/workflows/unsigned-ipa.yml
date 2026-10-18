@@ -1,4 +1,4 @@
-name: Allocation search focus (diagnostic only)
+name: Card editor keyboard setup (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -9,34 +9,36 @@ permissions:
 jobs:
   diagnose:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: 2e186ac210647e81233c8db6222ba5bb7cb6b117
+          ref: e398237ba57bc773689345eee4234e6cbbf0a5e5
           path: candidate
           persist-credentials: false
-      - name: Apply frozen input layout repair
+      - name: Apply frozen card test setup repair
         working-directory: candidate
+        shell: bash
         run: |
-          python3 ../.github/diagnostics/allocation_search_focus.py
+          set -euo pipefail
+          git apply ../.github/diagnostics/account_card_keyboard_setup.patch
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/Features/Transactions/TransactionsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run native input and history regression flows
+      - name: Run both native card editor keyboard flows
         working-directory: candidate
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
           printf '%s\n' "$device_id" > ../device-id.txt
           xcodebuild test \
@@ -44,11 +46,8 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotTests \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchPreservesSelectionAndAmount \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountHistoryFiltersAndSavedFutureDatesAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardPreservesSavedLastFour \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -56,19 +55,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../diagnostic.log
       - name: Export native summary
         if: always()
-        run: xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
       - name: Preserve native evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-search-focus-${{ github.run_id }}-${{ github.run_attempt }}
+          name: card-editor-keyboard-setup-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            .github/diagnostics/allocation_search_focus.py
-            .github/diagnostics/allocation_search_focus.patch
+            device-id.txt
+            .github/diagnostics/account_card_keyboard_setup.patch
           retention-days: 7
           if-no-files-found: error
