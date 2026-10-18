@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct CardsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -1249,6 +1250,7 @@ struct AccountEditorView: View {
     let account: CreditCardAccount?
     let banks: [Bank]
 
+    @FocusState private var isLimitFocused: Bool
     @State private var bankID: UUID
     @State private var limitText: String
     @State private var currencyCode: String
@@ -1335,6 +1337,7 @@ struct AccountEditorView: View {
                     }
                     TextField("信用额度（可选）", text: $limitText)
                         .keyboardType(.decimalPad)
+                        .focused($isLimitFocused)
                     CurrencyPickerView(selection: $currencyCode)
                     Picker("状态", selection: $status) {
                         Text("使用中").tag(CreditCardAccountStatus.active)
@@ -1344,6 +1347,7 @@ struct AccountEditorView: View {
                         DatePicker("关闭日期", selection: $closedDate, displayedComponents: .date)
                     }
                     TextField("备注（可选）", text: $notes, axis: .vertical)
+                        .accessibilityIdentifier("account.notes")
                 }
 
                 Section(account == nil ? "账务规则" : "修改以后的账单规则") {
@@ -1417,10 +1421,20 @@ struct AccountEditorView: View {
                     InlineErrorView(message: errorMessage)
                 }
             }
+            .scrollDismissesKeyboard(.immediately)
+            .accessibilityIdentifier("account.editor.form")
             .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+                if isLimitFocused {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("收起键盘") { isLimitFocused = false }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("account.keyboard.dismiss")
+                    }
+                }
             }
         }
         .protectEdits(snapshot: editSnapshot)
@@ -1718,6 +1732,7 @@ struct CardEditorView: View {
     let accounts: [CreditCardAccount]
     let networks: [CardNetwork]
 
+    @FocusState private var isLastFourFocused: Bool
     @State private var accountID: UUID
     @State private var networkSelection: CardNetworkSelection
     @State private var customNetworkName: String
@@ -1748,57 +1763,87 @@ struct CardEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("卡片") {
-                    Picker("信用卡账户", selection: $accountID) {
-                        ForEach(accounts, id: \.id) { account in
-                            Text(cardAccountDisplayName(account)).tag(account.id)
+            ScrollViewReader { scrollProxy in
+                Form {
+                    Section("卡片") {
+                        Picker("信用卡账户", selection: $accountID) {
+                            ForEach(accounts, id: \.id) { account in
+                                Text(cardAccountDisplayName(account)).tag(account.id)
+                            }
                         }
-                    }
-                    Text("卡组织组合")
-                        .font(.subheadline.weight(.semibold))
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(CardNetworkSelection.singleChoices) { choice in
-                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                        Text("卡组织组合")
+                            .font(.subheadline.weight(.semibold))
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(CardNetworkSelection.singleChoices) { choice in
+                                NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                            }
                         }
+                        Text("双标卡")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(CardNetworkSelection.dualChoices) { choice in
+                                NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
+                            }
+                        }
+                        NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
+                        if networkSelection == .other {
+                            TextField("卡组织名称", text: $customNetworkName)
+                        }
+                        TextField("卡产品名称", text: $productName)
+                        TextField("昵称（可选）", text: $nickname)
+                        TextField("末四位", text: $lastFour)
+                            .keyboardType(.numberPad)
+                            .textContentType(.none)
+                            .focused($isLastFourFocused)
+                            .id("card.lastFour")
+                        Picker("状态", selection: $status) {
+                            Text("使用中").tag(CardStatus.active)
+                            Text("停用").tag(CardStatus.inactive)
+                        }
+                        TextField("备注（可选）", text: $notes, axis: .vertical)
                     }
-                    Text("双标卡")
-                        .font(.caption.weight(.semibold))
+                    Text("不要录入完整卡号或 CVV。")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(CardNetworkSelection.dualChoices) { choice in
-                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
-                        }
+                    if let errorMessage {
+                        InlineErrorView(message: errorMessage)
                     }
-                    NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
-                    if networkSelection == .other {
-                        TextField("卡组织名称", text: $customNetworkName)
-                    }
-                    TextField("卡产品名称", text: $productName)
-                    TextField("昵称（可选）", text: $nickname)
-                    TextField("末四位", text: $lastFour)
-                        .keyboardType(.numberPad)
-                        .textContentType(.none)
-                    Picker("状态", selection: $status) {
-                        Text("使用中").tag(CardStatus.active)
-                        Text("停用").tag(CardStatus.inactive)
-                    }
-                    TextField("备注（可选）", text: $notes, axis: .vertical)
                 }
-                Text("不要录入完整卡号或 CVV。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
+                .scrollDismissesKeyboard(.immediately)
+                .accessibilityIdentifier("card.editor.form")
+                .onChange(of: isLastFourFocused) { _, isFocused in
+                    guard isFocused else { return }
+                    revealLastFour(using: scrollProxy)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                    revealLastFour(using: scrollProxy)
                 }
             }
             .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
+                if isLastFourFocused {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("收起键盘") { isLastFourFocused = false }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("card.keyboard.dismiss")
+                    }
+                }
             }
         }
         .protectEdits(snapshot: editSnapshot)
+    }
+
+    private func revealLastFour(using scrollProxy: ScrollViewProxy) {
+        guard isLastFourFocused else { return }
+        Task { @MainActor in
+            await Task.yield()
+            guard isLastFourFocused else { return }
+            scrollProxy.scrollTo("card.lastFour", anchor: .top)
+        }
     }
 
     private func save() {
