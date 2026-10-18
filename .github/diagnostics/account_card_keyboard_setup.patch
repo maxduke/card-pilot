@@ -1,11 +1,108 @@
+diff --git a/CardPilot/Features/Cards/CardsView.swift b/CardPilot/Features/Cards/CardsView.swift
+index 3e23c01..0c452c5 100644
+--- a/CardPilot/Features/Cards/CardsView.swift
++++ b/CardPilot/Features/Cards/CardsView.swift
+@@ -1765,5 +1765,7 @@ struct CardEditorView: View {
+-            Form {
+-                Section("卡片") {
+-                    Picker("信用卡账户", selection: $accountID) {
+-                        ForEach(accounts, id: \.id) { account in
+-                            Text(cardAccountDisplayName(account)).tag(account.id)
++            ScrollViewReader { scrollProxy in
++                Form {
++                    Section("卡片") {
++                        Picker("信用卡账户", selection: $accountID) {
++                            ForEach(accounts, id: \.id) { account in
++                                Text(cardAccountDisplayName(account)).tag(account.id)
++                            }
+@@ -1771,6 +1773,6 @@ struct CardEditorView: View {
+-                    }
+-                    Text("卡组织组合")
+-                        .font(.subheadline.weight(.semibold))
+-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+-                        ForEach(CardNetworkSelection.singleChoices) { choice in
+-                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
++                        Text("卡组织组合")
++                            .font(.subheadline.weight(.semibold))
++                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
++                            ForEach(CardNetworkSelection.singleChoices) { choice in
++                                NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
++                            }
+@@ -1778,7 +1780,7 @@ struct CardEditorView: View {
+-                    }
+-                    Text("双标卡")
+-                        .font(.caption.weight(.semibold))
+-                        .foregroundStyle(.secondary)
+-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+-                        ForEach(CardNetworkSelection.dualChoices) { choice in
+-                            NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
++                        Text("双标卡")
++                            .font(.caption.weight(.semibold))
++                            .foregroundStyle(.secondary)
++                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
++                            ForEach(CardNetworkSelection.dualChoices) { choice in
++                                NetworkChoiceTile(choice: choice, selection: $networkSelection, customName: customNetworkName)
++                            }
+@@ -1785,0 +1788,16 @@ struct CardEditorView: View {
++                        NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
++                        if networkSelection == .other {
++                            TextField("卡组织名称", text: $customNetworkName)
++                        }
++                        TextField("卡产品名称", text: $productName)
++                        TextField("昵称（可选）", text: $nickname)
++                        TextField("末四位", text: $lastFour)
++                            .keyboardType(.numberPad)
++                            .textContentType(.none)
++                            .focused($isLastFourFocused)
++                            .id("card.lastFour")
++                        Picker("状态", selection: $status) {
++                            Text("使用中").tag(CardStatus.active)
++                            Text("停用").tag(CardStatus.inactive)
++                        }
++                        TextField("备注（可选）", text: $notes, axis: .vertical)
+@@ -1787,13 +1805,5 @@ struct CardEditorView: View {
+-                    NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
+-                    if networkSelection == .other {
+-                        TextField("卡组织名称", text: $customNetworkName)
+-                    }
+-                    TextField("卡产品名称", text: $productName)
+-                    TextField("昵称（可选）", text: $nickname)
+-                    TextField("末四位", text: $lastFour)
+-                        .keyboardType(.numberPad)
+-                        .textContentType(.none)
+-                        .focused($isLastFourFocused)
+-                    Picker("状态", selection: $status) {
+-                        Text("使用中").tag(CardStatus.active)
+-                        Text("停用").tag(CardStatus.inactive)
++                    Text("不要录入完整卡号或 CVV。")
++                        .font(.caption)
++                        .foregroundStyle(.secondary)
++                    if let errorMessage {
++                        InlineErrorView(message: errorMessage)
+@@ -1801 +1810,0 @@ struct CardEditorView: View {
+-                    TextField("备注（可选）", text: $notes, axis: .vertical)
+@@ -1803,5 +1812,8 @@ struct CardEditorView: View {
+-                Text("不要录入完整卡号或 CVV。")
+-                    .font(.caption)
+-                    .foregroundStyle(.secondary)
+-                if let errorMessage {
+-                    InlineErrorView(message: errorMessage)
++                .scrollDismissesKeyboard(.immediately)
++                .accessibilityIdentifier("card.editor.form")
++                .onChange(of: isLastFourFocused) { _, isFocused in
++                    guard isFocused else { return }
++                    Task { @MainActor in
++                        await Task.yield()
++                        scrollProxy.scrollTo("card.lastFour", anchor: .top)
++                    }
+@@ -1810,2 +1821,0 @@ struct CardEditorView: View {
+-            .scrollDismissesKeyboard(.immediately)
+-            .accessibilityIdentifier("card.editor.form")
 diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
 index f5d857b..8a8546b 100644
 --- a/CardPilotUITests/CoreFlowsUITests.swift
 +++ b/CardPilotUITests/CoreFlowsUITests.swift
-@@ -2433,9 +2433,21 @@ final class CoreFlowsUITests: XCTestCase {
-         replaceText(editedName, in: product)
-         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
-         XCTAssertFalse(dismissal.exists)
+@@ -2435,0 +2436,14 @@ final class CoreFlowsUITests: XCTestCase {
 +        // The candidate bar is above the Keyboard AX frame, and the Form AX
 +        // frame can extend behind it. Begin the dismissal drag in the middle
 +        // of the content above the keys, clear of the candidate bar.
@@ -20,9 +117,6 @@ index f5d857b..8a8546b 100644
 +            withVelocity: .slow, thenHoldForDuration: 0.2
 +        )
 +        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
-         let lastFour = app.textFields["末四位"]
+@@ -2437,2 +2450,0 @@ final class CoreFlowsUITests: XCTestCase {
 -        // The ordinary keyboard's candidate bar sits above its AX frame.
 -        // Start scrolling inside the Form, above the entire keyboard.
-         reveal(lastFour, navigationBar: navigationBar, contentContainer: form)
-         lastFour.tap()
-         let oldLastFour = lastFour.value as? String ?? ""

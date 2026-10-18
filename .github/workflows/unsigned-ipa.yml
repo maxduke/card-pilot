@@ -1,4 +1,4 @@
-name: Card editor keyboard setup (diagnostic only)
+name: Card editor keyboard visibility (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -19,16 +19,16 @@ jobs:
           ref: e398237ba57bc773689345eee4234e6cbbf0a5e5
           path: candidate
           persist-credentials: false
-      - name: Apply frozen card test setup repair
+      - name: Apply frozen card keyboard visibility repair
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
-          git apply ../.github/diagnostics/account_card_keyboard_setup.patch
+          git apply --unidiff-zero ../.github/diagnostics/account_card_keyboard_setup.patch
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilot/Features/Cards/CardsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
