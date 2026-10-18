@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct TransactionsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -1302,7 +1303,10 @@ struct TransactionEditorForm: View {
             .scrollDismissesKeyboard(.immediately)
             .accessibilityIdentifier("transaction.form")
             .onChange(of: focusedInput) { (_: InputField?, field: InputField?) in
-                revealPromotionSearch(field, using: scrollProxy)
+                revealFocusedInput(field, using: scrollProxy)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                revealFocusedInput(focusedInput, using: scrollProxy)
             }
             VStack(spacing: 0) {
                 Divider()
@@ -1635,11 +1639,22 @@ struct TransactionEditorForm: View {
         }
     }
 
-    private func revealPromotionSearch(_ field: InputField?, using scrollProxy: ScrollViewProxy) {
-        guard field == .promotionSearch else { return }
+    private func revealFocusedInput(_ field: InputField?, using scrollProxy: ScrollViewProxy) {
+        guard let field, field != .amount else { return }
         Task { @MainActor in
             await Task.yield()
-            scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
+            guard focusedInput == field else { return }
+            switch field {
+            case .promotionSearch:
+                scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
+            case let .allocation(id):
+                // The caption and an inline error can exceed the keyboard's
+                // viewport. Reveal the input itself; keep the row's separate
+                // validation anchor for showing an error after saving.
+                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .bottom)
+            case .amount:
+                break
+            }
         }
     }
 
@@ -1819,6 +1834,7 @@ struct TransactionEditorForm: View {
                             .textFieldStyle(.plain)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
+                            .id("allocation.input.\(promotion.id)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
                                 InlineErrorView(message: "计入金额应为大于 0 的数字。")
                                     .fixedSize(horizontal: false, vertical: true)
