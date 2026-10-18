@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct CardsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -1813,10 +1814,10 @@ struct CardEditorView: View {
                 .accessibilityIdentifier("card.editor.form")
                 .onChange(of: isLastFourFocused) { _, isFocused in
                     guard isFocused else { return }
-                    Task { @MainActor in
-                        await Task.yield()
-                        scrollProxy.scrollTo("card.lastFour", anchor: .top)
-                    }
+                    revealLastFour(using: scrollProxy)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                    revealLastFour(using: scrollProxy)
                 }
             }
             .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
@@ -1834,6 +1835,15 @@ struct CardEditorView: View {
             }
         }
         .protectEdits(snapshot: editSnapshot)
+    }
+
+    private func revealLastFour(using scrollProxy: ScrollViewProxy) {
+        guard isLastFourFocused else { return }
+        Task { @MainActor in
+            await Task.yield()
+            guard isLastFourFocused else { return }
+            scrollProxy.scrollTo("card.lastFour", anchor: .top)
+        }
     }
 
     private func save() {

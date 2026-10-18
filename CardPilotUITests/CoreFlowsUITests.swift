@@ -47,6 +47,8 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testCardEditorNumericKeyboardAtLargestTextSize() {
+        // Native save/relaunch/readback took 184 seconds in run 39089978347.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyCardEditorNumericKeyboard(largestText: true)
     }
