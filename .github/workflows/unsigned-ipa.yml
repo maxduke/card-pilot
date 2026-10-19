@@ -1,4 +1,4 @@
-name: Native mixed row layout comparison (diagnostic only)
+name: Allocation eager confirmation preview (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,9 +10,14 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [eager_confirmation, eager_confirmation_control]
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       PROBE_IOS_VERSION: "18.5"
+      PROBE_VARIANT: ${{ matrix.variant }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -28,11 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           test -d "$DEVELOPER_DIR"
-          git apply ../.github/diagnostics/native_mixed_layout.patch
+          git apply "../.github/diagnostics/allocation_${PROBE_VARIANT}.patch"
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/App/CardPilotApp.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilot/Features/Transactions/TransactionsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
@@ -43,7 +48,7 @@ jobs:
           xcodebuild -showsdks >> ../platform.txt
           xcrun simctl list runtimes -j > ../runtimes.json
           xcrun simctl list devices available -j > ../devices.json
-      - name: Run native mixed layout comparisons
+      - name: Verify confirmation input and native audit
         working-directory: candidate
         shell: bash
         run: |
@@ -59,15 +64,21 @@ jobs:
           PYCODE
           )
           printf '%s\n' "$device_id" > ../device-id.txt
+          selected_tests=(-only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize)
+          if [[ "$PROBE_VARIANT" == eager_confirmation ]]; then
+            selected_tests+=(
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalPreservesDraftAndSavedAmounts
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchPreservesSelectionAndAmount
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchAtLargestTextSize
+            )
+          fi
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedFlatRowsProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedFlatRowsControlProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedEagerRowsProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedEagerRowsControlProbe \
+            "${selected_tests[@]}" \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -89,14 +100,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: native-mixed-layout-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            .github/diagnostics/native_mixed_layout.patch
+            .github/diagnostics/allocation_eager_confirmation*.patch
             platform.txt
             runtimes.json
             devices.json
