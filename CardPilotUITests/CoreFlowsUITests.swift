@@ -33,6 +33,27 @@ final class CoreFlowsUITests: XCTestCase {
         app = nil
     }
 
+    func testAccountEditorFieldFeedbackAndCorrectedSave() {
+        verifyAccountEditorFieldFeedback(largestText: false)
+    }
+
+    func testAccountEditorFieldFeedbackAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyAccountEditorFieldFeedback(largestText: true)
+    }
+
+    func testCardEditorFieldFeedbackAndCorrectedSave() {
+        verifyCardEditorFieldFeedback(largestText: false)
+    }
+
+    func testCardEditorFieldFeedbackAtLargestTextSizeAndDiscard() {
+        // The simpler largest-text card save/readback already took 184s in
+        // run 39089978347; this also checks three validation destinations.
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyCardEditorFieldFeedback(largestText: true)
+    }
+
     func testAccountEditorNumericKeyboardPreservesSavedLimit() {
         verifyAccountEditorNumericKeyboard(largestText: false)
     }
@@ -2369,6 +2390,179 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("\(prefix)促销搜索清空后保留计入金额")
     }
 
+    private func verifyAccountEditorFieldFeedback(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        launch("core")
+        openCard("UI Primary")
+        tap(app.buttons["card.account"])
+        tap(app.navigationBars["账户详情"].buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑信用卡账户"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let form = app.collectionViews["account.editor.form"]
+        let limit = app.textFields["信用额度（可选）"]
+        let error = app.staticTexts.matching(identifier: "account.limit.error").firstMatch
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["account.keyboard.dismiss"]
+        replaceText("0", in: limit)
+        XCTAssertFalse(error.exists)
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        scrollEditorTowardBottom(form)
+        if limit.exists {
+            let frame = limit.frame
+            let top = max(navigationBar.frame.maxY, form.frame.minY)
+            let bottom = min(contentBottom, form.frame.maxY)
+            XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= top && frame.maxY <= bottom,
+                           "Start away from the invalid field")
+        }
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.exists)
+        assertEditorFieldErrorVisible(limit, error: error, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(limit.value as? String, "0")
+        XCTAssertEqual(error.label, "错误：信用额度必须大于 0。")
+        captureScreenshot("\(prefix)账户额度首错定位")
+
+        replaceText("1.2.3", in: limit)
+        XCTAssertEqual(error.label, "错误：信用额度格式不正确。")
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        assertEditorFieldErrorVisible(limit, error: error, navigationBar: navigationBar, form: form)
+        captureScreenshot("\(prefix)账户额度格式错误更新")
+        replaceText("", in: limit)
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5), "An optional empty limit is valid")
+        replaceText("125.50", in: limit)
+        XCTAssertFalse(error.exists)
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Shared")
+        tap(app.buttons["card.account"])
+        let saved = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "信用额度", "125.5 CNY"
+        )).firstMatch
+        reveal(saved, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        captureScreenshot("\(prefix)账户纠错后共享额度读回")
+    }
+
+    private func verifyCardEditorFieldFeedback(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        launch("core")
+        openCard("UI Primary")
+        tap(app.navigationBars["卡片详情"].buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑卡片"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let form = app.collectionViews["card.editor.form"]
+        let keyboard = app.keyboards.firstMatch
+        let dismissal = app.buttons["card.keyboard.dismiss"]
+        tap(app.buttons["其他"])
+        let customNetwork = app.textFields["卡组织名称"]
+        let customError = app.staticTexts.matching(identifier: "card.customNetwork.error").firstMatch
+        let product = app.textFields["卡产品名称"]
+        let productError = app.staticTexts.matching(identifier: "card.productName.error").firstMatch
+        let lastFour = app.textFields["末四位"]
+        let lastFourError = app.staticTexts.matching(identifier: "card.lastFour.error").firstMatch
+        replaceText("", in: product)
+        // The candidate bar can extend above the Keyboard AX frame. Use the
+        // already-verified content gutter before approaching the numeric field.
+        let contentTop = max(navigationBar.frame.maxY, form.frame.minY)
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let gutterX = form.frame.minX + form.frame.width * 0.03 - app.frame.minX
+        let startY = (contentTop + keyboard.frame.minY) / 2 - app.frame.minY
+        let endY = contentTop + 24 - app.frame.minY
+        origin.withOffset(CGVector(dx: gutterX, dy: startY)).press(
+            forDuration: 0.05,
+            thenDragTo: origin.withOffset(CGVector(dx: gutterX, dy: endY)),
+            withVelocity: .slow, thenHoldForDuration: 0.2
+        )
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        replaceText("123", in: lastFour)
+        XCTAssertFalse(lastFourError.exists)
+        dismissal.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        scrollEditorTowardBottom(form)
+        navigationBar.buttons["保存"].tap()
+        assertEditorFieldErrorVisible(customNetwork, error: customError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(customError.label, "错误：请填写卡组织名称。")
+        captureScreenshot("\(prefix)卡片卡组织首错定位")
+
+        tap(app.buttons["Visa"], scrollTowardTopWhenMissing: true)
+        XCTAssertTrue(app.buttons["Visa，已选择"].waitForExistence(timeout: 5))
+        XCTAssertTrue(customError.waitForNonExistence(timeout: 5))
+        navigationBar.buttons["保存"].tap()
+        assertEditorFieldErrorVisible(product, error: productError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(productError.label, "错误：卡产品名称不能为空。")
+        captureScreenshot("\(prefix)卡片产品名称错误定位")
+        replaceText("UI Fixed", in: product)
+        XCTAssertTrue(productError.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(dismissal.exists, "Ordinary text does not show the numeric keyboard toolbar")
+        navigationBar.buttons["保存"].tap()
+        assertEditorFieldErrorVisible(lastFour, error: lastFourError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(lastFour.value as? String, "123")
+        XCTAssertEqual(lastFourError.label, "错误：末四位必须是 4 位数字。")
+        captureScreenshot("\(prefix)卡片末四位错误定位")
+        replaceText("0123", in: lastFour)
+        XCTAssertTrue(lastFourError.waitForNonExistence(timeout: 5))
+        if largestText {
+            navigationBar.buttons["取消"].tap()
+            tap(app.buttons["放弃修改"])
+        } else {
+            navigationBar.buttons["保存"].tap()
+        }
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["卡片"])
+        let search = app.searchFields["搜索银行、卡片或末四位"]
+        tap(search, scrollTowardTopWhenMissing: true)
+        let expectedName = largestText ? "UI Primary" : "UI Fixed"
+        search.typeText(expectedName + "\n")
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        let saved = app.buttons["card.\(expectedName)"]
+        reveal(saved, fullyVisible: true)
+        XCTAssertTrue(saved.label.contains(largestText ? "1234" : "0123"))
+        XCTAssertTrue(saved.label.contains("Visa"))
+        XCTAssertEqual(app.buttons.matching(identifier: "card.\(expectedName)").count, 1)
+        if largestText {
+            XCTAssertFalse(app.buttons["card.UI Fixed"].exists)
+        }
+        captureScreenshot("\(prefix)卡片纠错后\(largestText ? "放弃修改读回" : "保存读回")")
+    }
+
+    private func scrollEditorTowardBottom(_ form: XCUIElement) {
+        for _ in 0..<2 {
+            let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.8))
+            let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.2))
+            start.press(forDuration: 0.05, thenDragTo: end,
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+    }
+
+    private func assertEditorFieldErrorVisible(
+        _ field: XCUIElement,
+        error: XCUIElement,
+        navigationBar: XCUIElement,
+        form: XCUIElement
+    ) {
+        XCTAssertTrue(error.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        // Do not scroll here: these bounds verify the application's own
+        // first-error navigation, including the complete nearby message.
+        let top = max(navigationBar.frame.maxY, form.frame.minY)
+        let bottom = min(contentBottom, form.frame.maxY)
+        let fieldFrame = field.frame
+        let errorFrame = error.frame
+        for frame in [fieldFrame, errorFrame] {
+            XCTAssertFalse(frame.isEmpty)
+            XCTAssertGreaterThanOrEqual(frame.minY + 0.001, top)
+            XCTAssertLessThanOrEqual(frame.maxY, bottom)
+        }
+        XCTAssertGreaterThanOrEqual(errorFrame.minY, fieldFrame.maxY)
+        XCTAssertTrue(field.isHittable)
+    }
+
     private func verifyAccountEditorNumericKeyboard(largestText: Bool) {
         let prefix = largestText ? "最大字号" : ""
         launch("core")
@@ -2683,7 +2877,11 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openPromotion(_ name: String) {
         tap(app.tabBars.buttons["促销"])
-        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
+        let promotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        // A partly visible large-text row can report a hit point at the tab
+        // bar boundary. Reveal the whole row before asking XCTest to tap it.
+        reveal(promotion, fullyVisible: true)
+        promotion.tap()
     }
 
     private func openPromotionEditor(_ section: String) {

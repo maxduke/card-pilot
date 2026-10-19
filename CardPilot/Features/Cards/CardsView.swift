@@ -1244,13 +1244,20 @@ private struct BankEditorView: View {
 }
 
 struct AccountEditorView: View {
+    private enum Field: String, CaseIterable, Hashable {
+        case bank = "account.bank"
+        case limit = "account.limit"
+        case currency = "account.currency"
+        case notes = "account.notes"
+    }
+
     @Environment(\.currentDay) private var currentDay
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let account: CreditCardAccount?
     let banks: [Bank]
 
-    @FocusState private var isLimitFocused: Bool
+    @FocusState private var focusedField: Field?
     @State private var bankID: UUID
     @State private var limitText: String
     @State private var currencyCode: String
@@ -1270,6 +1277,7 @@ struct AccountEditorView: View {
     @State private var pendingUnpaidCycleKeys: Set<Int> = []
     @State private var notes: String
     @State private var errorMessage: String?
+    @State private var showingValidationErrors = false
 
     init(account: CreditCardAccount?, banks: [Bank], initialScheduledRule: BillingRuleVersion? = nil) {
         self.account = account
@@ -1328,111 +1336,120 @@ struct AccountEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("账户") {
-                    Picker("银行", selection: $bankID) {
-                        ForEach(selectableAccountBanks(banks, currentBankID: account?.bank.id), id: \.id) { bank in
-                            Text(bank.name).tag(bank.id)
-                        }
-                    }
-                    TextField("信用额度（可选）", text: $limitText)
-                        .keyboardType(.decimalPad)
-                        .focused($isLimitFocused)
-                    CurrencyPickerView(selection: $currencyCode)
-                    Picker("状态", selection: $status) {
-                        Text("使用中").tag(CreditCardAccountStatus.active)
-                        Text("已关闭").tag(CreditCardAccountStatus.closed)
-                    }
-                    if status == .closed {
-                        DatePicker("关闭日期", selection: $closedDate, displayedComponents: .date)
-                    }
-                    TextField("备注（可选）", text: $notes, axis: .vertical)
-                        .accessibilityIdentifier("account.notes")
-                }
-
-                Section(account == nil ? "账务规则" : "修改以后的账单规则") {
-                    if let latestScheduledRuleText {
-                        Label(latestScheduledRuleText, systemImage: "calendar.badge.clock")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    BillingDayPicker(title: "账单日", value: $statementDay)
-                        .accessibilityIdentifier("account.editor.rule.statementDay")
-                    Picker("还款规则", selection: $repaymentKind) {
-                        Text("固定日").tag(RepaymentRuleKind.fixedDay)
-                        Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
-                    }
-                    BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue, isDayOfMonth: repaymentKind == .fixedDay)
-                    .onChange(of: repaymentKind) { _, kind in
-                        if kind == .fixedDay { repaymentValue = min(31, repaymentValue) }
-                    }
-                    Text("不存在的日期会按当月最后一天计算。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if account != nil {
-                        MonthKeyPicker(
-                            title: "新规则生效账期",
-                            selection: $effectiveCycleKeyText,
-                            offsets: 1...60
-                        )
-                        .accessibilityIdentifier("account.editor.rule.effectiveCycle")
-                        Text("修改规则或生效账期后保存：所选未来账期已有版本时修正该版本，否则新增版本。不会改写当前与历史账期，后续已排定版本仍然保留。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if account != nil {
-                    Section("调整本期日期") {
-                        MonthKeyPicker(
-                            title: "账期",
-                            selection: $overrideCycleKeyText,
-                            offsets: -60...24
-                        )
-                        Toggle("覆盖账单日", isOn: $hasStatementOverride)
-                        if hasStatementOverride {
-                            DatePicker("实际账单日", selection: $statementOverrideDate, displayedComponents: .date)
-                        }
-                        Toggle("覆盖还款日", isOn: $hasRepaymentOverride)
-                        if hasRepaymentOverride {
-                            DatePicker("实际还款日", selection: $repaymentOverrideDate, displayedComponents: .date)
-                        }
-                        Text("单期覆盖只影响所选账期；还款日必须晚于账单日。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let cycleKey = Int(overrideCycleKeyText), pendingUnpaidCycleKeys.contains(cycleKey) {
-                            Label("保存后将恢复该账期的待还款状态", systemImage: "clock.arrow.circlepath")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                            Button("保留已还款状态") {
-                                pendingUnpaidCycleKeys.remove(cycleKey)
-                                selectedCycleIsRepaid = true
+            ScrollViewReader { scrollProxy in
+                Form {
+                    Section("账户") {
+                        Picker("银行", selection: $bankID) {
+                            ForEach(selectableAccountBanks(banks, currentBankID: account?.bank.id), id: \.id) { bank in
+                                Text(bank.name).tag(bank.id)
                             }
                         }
-                        if selectedCycleIsRepaid {
-                            Button("撤销已还款", role: .destructive, action: clearSelectedCycleRepaid)
-                                .accessibilityLabel("撤销账期 \(overrideCycleKeyText) 的已还款状态")
+                        .id(Field.bank)
+                        fieldError(.bank)
+                        TextField("信用额度（可选）", text: $limitText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .limit)
+                            .id(Field.limit)
+                        fieldError(.limit)
+                        CurrencyPickerView(selection: $currencyCode)
+                            .id(Field.currency)
+                        fieldError(.currency)
+                        Picker("状态", selection: $status) {
+                            Text("使用中").tag(CreditCardAccountStatus.active)
+                            Text("已关闭").tag(CreditCardAccountStatus.closed)
+                        }
+                        if status == .closed {
+                            DatePicker("关闭日期", selection: $closedDate, displayedComponents: .date)
+                        }
+                        TextField("备注（可选）", text: $notes, axis: .vertical)
+                            .accessibilityIdentifier("account.notes")
+                            .focused($focusedField, equals: .notes)
+                    }
+
+                    Section(account == nil ? "账务规则" : "修改以后的账单规则") {
+                        if let latestScheduledRuleText {
+                            Label(latestScheduledRuleText, systemImage: "calendar.badge.clock")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        BillingDayPicker(title: "账单日", value: $statementDay)
+                            .accessibilityIdentifier("account.editor.rule.statementDay")
+                        Picker("还款规则", selection: $repaymentKind) {
+                            Text("固定日").tag(RepaymentRuleKind.fixedDay)
+                            Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
+                        }
+                        BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue, isDayOfMonth: repaymentKind == .fixedDay)
+                        .onChange(of: repaymentKind) { _, kind in
+                            if kind == .fixedDay { repaymentValue = min(31, repaymentValue) }
+                        }
+                        Text("不存在的日期会按当月最后一天计算。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if account != nil {
+                            MonthKeyPicker(
+                                title: "新规则生效账期",
+                                selection: $effectiveCycleKeyText,
+                                offsets: 1...60
+                            )
+                            .accessibilityIdentifier("account.editor.rule.effectiveCycle")
+                            Text("修改规则或生效账期后保存：所选未来账期已有版本时修正该版本，否则新增版本。不会改写当前与历史账期，后续已排定版本仍然保留。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .onChange(of: overrideCycleKeyText) { _, _ in loadCycleOverrides() }
-                }
 
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
+                    if account != nil {
+                        Section("调整本期日期") {
+                            MonthKeyPicker(
+                                title: "账期",
+                                selection: $overrideCycleKeyText,
+                                offsets: -60...24
+                            )
+                            Toggle("覆盖账单日", isOn: $hasStatementOverride)
+                            if hasStatementOverride {
+                                DatePicker("实际账单日", selection: $statementOverrideDate, displayedComponents: .date)
+                            }
+                            Toggle("覆盖还款日", isOn: $hasRepaymentOverride)
+                            if hasRepaymentOverride {
+                                DatePicker("实际还款日", selection: $repaymentOverrideDate, displayedComponents: .date)
+                            }
+                            Text("单期覆盖只影响所选账期；还款日必须晚于账单日。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let cycleKey = Int(overrideCycleKeyText), pendingUnpaidCycleKeys.contains(cycleKey) {
+                                Label("保存后将恢复该账期的待还款状态", systemImage: "clock.arrow.circlepath")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                Button("保留已还款状态") {
+                                    pendingUnpaidCycleKeys.remove(cycleKey)
+                                    selectedCycleIsRepaid = true
+                                }
+                            }
+                            if selectedCycleIsRepaid {
+                                Button("撤销已还款", role: .destructive, action: clearSelectedCycleRepaid)
+                                    .accessibilityLabel("撤销账期 \(overrideCycleKeyText) 的已还款状态")
+                            }
+                        }
+                        .onChange(of: overrideCycleKeyText) { _, _ in loadCycleOverrides() }
+                    }
+
+                    if let errorMessage {
+                        InlineErrorView(message: errorMessage)
+                    }
                 }
-            }
-            .scrollDismissesKeyboard(.immediately)
-            .accessibilityIdentifier("account.editor.form")
-            .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
-                if isLimitFocused {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("收起键盘") { isLimitFocused = false }
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityIdentifier("account.keyboard.dismiss")
+                .scrollDismissesKeyboard(.immediately)
+                .accessibilityIdentifier("account.editor.form")
+                .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save(using: scrollProxy) } }
+                    if focusedField == .limit {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("收起键盘") { focusedField = nil }
+                                .frame(minWidth: 44, minHeight: 44)
+                                .accessibilityIdentifier("account.keyboard.dismiss")
+                        }
                     }
                 }
             }
@@ -1440,26 +1457,48 @@ struct AccountEditorView: View {
         .protectEdits(snapshot: editSnapshot)
     }
 
-    private func save() {
+    private func validationMessage(for field: Field) -> String? {
+        switch field {
+        case .bank:
+            return selectableAccountBanks(banks, currentBankID: account?.bank.id)
+                .contains(where: { $0.id == bankID }) ? nil : "请选择银行。"
+        case .limit:
+            guard !limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            guard let limit = CardPilotUI.decimal(limitText) else { return "信用额度格式不正确。" }
+            return limit > .zero ? nil : "信用额度必须大于 0。"
+        case .currency:
+            let normalized = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            return isValidCurrencyCode(normalized) ? nil : "额度币种应为有效的 ISO 4217 代码。"
+        case .notes:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func fieldError(_ field: Field) -> some View {
+        if showingValidationErrors, let message = validationMessage(for: field) {
+            InlineErrorView(message: message)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(field.rawValue).error")
+        }
+    }
+
+    private func save(using scrollProxy: ScrollViewProxy) {
+        focusedField = nil
+        errorMessage = nil
+        showingValidationErrors = true
+        if let field = Field.allCases.first(where: { validationMessage(for: $0) != nil }) {
+            Task { @MainActor in
+                await Task.yield()
+                guard validationMessage(for: field) != nil else { return }
+                scrollProxy.scrollTo(field, anchor: .top)
+            }
+            return
+        }
         guard let bank = selectableAccountBanks(banks, currentBankID: account?.bank.id)
-            .first(where: { $0.id == bankID }) else {
-            errorMessage = "请选择银行。"
-            return
-        }
+            .first(where: { $0.id == bankID }) else { return }
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard isValidCurrencyCode(normalizedCurrency) else {
-            errorMessage = "额度币种应为有效的 ISO 4217 代码。"
-            return
-        }
         let limit = limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : CardPilotUI.decimal(limitText)
-        guard limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || limit != nil else {
-            errorMessage = "信用额度格式不正确。"
-            return
-        }
-        guard limit.map({ $0 > .zero }) != false else {
-            errorMessage = "信用额度必须大于 0。"
-            return
-        }
         let today = currentDay.today
         let timeZone = CardPilotUI.homeTimeZone
         let requestedRule = BillingRuleInput(
@@ -1726,13 +1765,22 @@ private func cardAccountDisplayName(_ account: CreditCardAccount) -> String {
 }
 
 struct CardEditorView: View {
+    private enum Field: String, CaseIterable, Hashable {
+        case account = "card.account"
+        case customNetwork = "card.customNetwork"
+        case productName = "card.productName"
+        case nickname = "card.nickname"
+        case lastFour = "card.lastFour"
+        case notes = "card.notes"
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let card: Card?
     let accounts: [CreditCardAccount]
     let networks: [CardNetwork]
 
-    @FocusState private var isLastFourFocused: Bool
+    @FocusState private var focusedField: Field?
     @State private var accountID: UUID
     @State private var networkSelection: CardNetworkSelection
     @State private var customNetworkName: String
@@ -1742,6 +1790,7 @@ struct CardEditorView: View {
     @State private var status: CardStatus
     @State private var notes: String
     @State private var errorMessage: String?
+    @State private var showingValidationErrors = false
 
     init(card: Card?, accounts: [CreditCardAccount], networks: [CardNetwork]) {
         self.card = card
@@ -1771,6 +1820,8 @@ struct CardEditorView: View {
                                 Text(cardAccountDisplayName(account)).tag(account.id)
                             }
                         }
+                        .id(Field.account)
+                        fieldError(.account)
                         Text("卡组织组合")
                             .font(.subheadline.weight(.semibold))
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -1789,19 +1840,29 @@ struct CardEditorView: View {
                         NetworkChoiceTile(choice: .other, selection: $networkSelection, customName: customNetworkName)
                         if networkSelection == .other {
                             TextField("卡组织名称", text: $customNetworkName)
+                                .focused($focusedField, equals: .customNetwork)
+                                .id(Field.customNetwork)
+                            fieldError(.customNetwork)
                         }
                         TextField("卡产品名称", text: $productName)
+                            .focused($focusedField, equals: .productName)
+                            .id(Field.productName)
+                        fieldError(.productName)
                         TextField("昵称（可选）", text: $nickname)
+                            .focused($focusedField, equals: .nickname)
                         TextField("末四位", text: $lastFour)
                             .keyboardType(.numberPad)
                             .textContentType(.none)
-                            .focused($isLastFourFocused)
-                            .id("card.lastFour")
+                            .focused($focusedField, equals: .lastFour)
+                            .id(Field.lastFour)
+                        fieldError(.lastFour)
                         Picker("状态", selection: $status) {
                             Text("使用中").tag(CardStatus.active)
                             Text("停用").tag(CardStatus.inactive)
                         }
                         TextField("备注（可选）", text: $notes, axis: .vertical)
+                            .focused($focusedField, equals: .notes)
+                            .accessibilityIdentifier("card.notes")
                     }
                     Text("不要录入完整卡号或 CVV。")
                         .font(.caption)
@@ -1812,24 +1873,24 @@ struct CardEditorView: View {
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .accessibilityIdentifier("card.editor.form")
-                .onChange(of: isLastFourFocused) { _, isFocused in
-                    guard isFocused else { return }
+                .onChange(of: focusedField) { _, field in
+                    guard field == .lastFour else { return }
                     revealLastFour(using: scrollProxy)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
                     revealLastFour(using: scrollProxy)
                 }
-            }
-            .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
-                if isLastFourFocused {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("收起键盘") { isLastFourFocused = false }
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityIdentifier("card.keyboard.dismiss")
+                .navigationTitle(card == nil ? "添加卡片" : "编辑卡片")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save(using: scrollProxy) } }
+                    if focusedField == .lastFour {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("收起键盘") { focusedField = nil }
+                                .frame(minWidth: 44, minHeight: 44)
+                                .accessibilityIdentifier("card.keyboard.dismiss")
+                        }
                     }
                 }
             }
@@ -1838,29 +1899,57 @@ struct CardEditorView: View {
     }
 
     private func revealLastFour(using scrollProxy: ScrollViewProxy) {
-        guard isLastFourFocused else { return }
+        guard focusedField == .lastFour else { return }
         Task { @MainActor in
             await Task.yield()
-            guard isLastFourFocused else { return }
-            scrollProxy.scrollTo("card.lastFour", anchor: .top)
+            guard focusedField == .lastFour else { return }
+            scrollProxy.scrollTo(Field.lastFour, anchor: .top)
         }
     }
 
-    private func save() {
-        guard let account = accounts.first(where: { $0.id == accountID }) else {
-            errorMessage = "请选择账户。"
+    private func validationMessage(for field: Field) -> String? {
+        switch field {
+        case .account:
+            return accounts.contains(where: { $0.id == accountID }) ? nil : "请选择账户。"
+        case .customNetwork:
+            guard networkSelection == .other else { return nil }
+            return customNetworkName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "请填写卡组织名称。" : nil
+        case .productName:
+            return productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "卡产品名称不能为空。" : nil
+        case .lastFour:
+            let normalized = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.utf8.count == 4 && normalized.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
+                ? nil : "末四位必须是 4 位数字。"
+        case .nickname, .notes:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func fieldError(_ field: Field) -> some View {
+        if showingValidationErrors, let message = validationMessage(for: field) {
+            InlineErrorView(message: message)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(field.rawValue).error")
+        }
+    }
+
+    private func save(using scrollProxy: ScrollViewProxy) {
+        focusedField = nil
+        errorMessage = nil
+        showingValidationErrors = true
+        if let field = Field.allCases.first(where: { validationMessage(for: $0) != nil }) {
+            Task { @MainActor in
+                await Task.yield()
+                guard validationMessage(for: field) != nil else { return }
+                scrollProxy.scrollTo(field, anchor: .top)
+            }
             return
         }
-        guard !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "卡产品名称不能为空。"
-            return
-        }
+        guard let account = accounts.first(where: { $0.id == accountID }) else { return }
         let normalizedLastFour = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedLastFour.utf8.count == 4,
-              normalizedLastFour.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
-            errorMessage = "末四位必须是 4 位数字。"
-            return
-        }
         guard let selectedNetworks = resolveNetworks() else { return }
         let target = card ?? Card(
             account: account,
