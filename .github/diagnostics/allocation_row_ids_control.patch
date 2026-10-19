@@ -1,0 +1,57 @@
+diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
+index b622675..0be6738 100644
+--- a/CardPilot/Features/Transactions/TransactionsView.swift
++++ b/CardPilot/Features/Transactions/TransactionsView.swift
+@@ -1311,6 +1311,13 @@ struct TransactionEditorForm: View {
+             VStack(spacing: 0) {
+                 Divider()
+                 if editorStep == 1 {
++                    if showingAllocationErrors {
++                        Text("Intentional clipped native text control")
++                            .font(.largeTitle)
++                            .frame(width: 180, height: 12)
++                            .clipped()
++                            .accessibilityIdentifier("allocation.audit.positive-control")
++                    }
+                     Button("返回修改交易") { editorStep = 0 }
+                         .font(.footnote.weight(.medium))
+                         .padding(.top, 8)
+@@ -1804,6 +1811,7 @@ struct TransactionEditorForm: View {
+                     }
+                     .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
+                     .listRowSeparator(dynamicTypeSize.isAccessibilitySize || selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
++                    .id("allocation.toggle.\(promotion.id)")
+                     if dynamicTypeSize.isAccessibilitySize {
+                         // A long title and its summary can exceed the entire
+                         // viewport together. Let each native row scroll fully
+@@ -1813,6 +1821,7 @@ struct TransactionEditorForm: View {
+                             .foregroundStyle(.secondary)
+                             .fixedSize(horizontal: false, vertical: true)
+                             .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
++                            .id("allocation.summary.\(promotion.id)")
+                     }
+                     if selectedPromotionIDs.contains(promotion.id) {
+                         let warning = qualificationWarning(for: promotion)
+@@ -1822,6 +1831,7 @@ struct TransactionEditorForm: View {
+                             .fixedSize(horizontal: false, vertical: true)
+                             .padding(.leading, 24)
+                             .listRowSeparator(.hidden, edges: .bottom)
++                            .id("allocation.caption.\(promotion.id)")
+                         // Keep the input at the beginning of its native row.
+                         // The caption can be taller than the keyboard viewport.
+                         VStack(alignment: .leading, spacing: 7) {
+@@ -1850,12 +1860,14 @@ struct TransactionEditorForm: View {
+                                 .foregroundStyle(.orange)
+                                 .fixedSize(horizontal: false, vertical: true)
+                                 .padding(.leading, 24)
++                                .id("allocation.warning.\(promotion.id)")
+                         }
+                     }
+                     if postingDatePendingPromotions.contains(where: { $0.id == promotion.id }) {
+                         Text("需补入账日期，不会自动勾选。")
+                             .font(.caption)
+                             .foregroundStyle(.orange)
++                            .id("allocation.posting.\(promotion.id)")
+                     }
+                 }
+                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")

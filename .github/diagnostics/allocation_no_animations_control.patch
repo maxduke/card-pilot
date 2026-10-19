@@ -1,0 +1,32 @@
+diff --git a/CardPilot/App/CardPilotApp.swift b/CardPilot/App/CardPilotApp.swift
+index a0d3372..95ab2a0 100644
+--- a/CardPilot/App/CardPilotApp.swift
++++ b/CardPilot/App/CardPilotApp.swift
+@@ -117,6 +117,9 @@ struct CardPilotApp: App {
+ 
+     init() {
+         #if DEBUG && targetEnvironment(simulator)
++        if ProcessInfo.processInfo.environment["CARDPILOT_UI_SCENARIO"] != nil {
++            UIView.setAnimationsEnabled(false)
++        }
+         _store = StateObject(wrappedValue: UITestBootstrap.makeStore() ?? BackupStore())
+         #else
+         _store = StateObject(wrappedValue: BackupStore())
+diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
+index b622675..bf95563 100644
+--- a/CardPilot/Features/Transactions/TransactionsView.swift
++++ b/CardPilot/Features/Transactions/TransactionsView.swift
+@@ -1311,6 +1311,13 @@ struct TransactionEditorForm: View {
+             VStack(spacing: 0) {
+                 Divider()
+                 if editorStep == 1 {
++                    if showingAllocationErrors {
++                        Text("Intentional clipped native text control")
++                            .font(.largeTitle)
++                            .frame(width: 180, height: 12)
++                            .clipped()
++                            .accessibilityIdentifier("allocation.audit.positive-control")
++                    }
+                     Button("返回修改交易") { editorStep = 0 }
+                         .font(.footnote.weight(.medium))
+                         .padding(.top, 8)

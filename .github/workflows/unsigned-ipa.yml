@@ -1,4 +1,4 @@
-name: Allocation audit toolchain comparison (diagnostic only)
+name: Allocation audit row and animation comparison (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -13,10 +13,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ios: ["18.6"]
+        variant: [row_ids, row_ids_control, no_animations, no_animations_control]
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-      PROBE_IOS_VERSION: ${{ matrix.ios }}
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      PROBE_IOS_VERSION: "18.5"
+      PROBE_VARIANT: ${{ matrix.variant }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,17 +27,24 @@ jobs:
           ref: 34d722d42105940d8dfcf16f03353d0da814d6db
           path: candidate
           persist-credentials: false
-      - name: Apply frozen expression extraction and record toolchain
+      - name: Apply frozen diagnostic and record toolchain
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
           test -d "$DEVELOPER_DIR"
-          git apply ../.github/diagnostics/xcode26_view_expression.patch
+          git apply "../.github/diagnostics/allocation_${PROBE_VARIANT}.patch"
           git diff --check
           python3 - <<'PYCODE'
-          import subprocess
-          expected = ["CardPilot/Features/Cards/CardsView.swift", "CardPilot/Features/Promotions/PromotionsView.swift"]
+          import os, subprocess
+          app = "CardPilot/App/CardPilotApp.swift"
+          transaction = "CardPilot/Features/Transactions/TransactionsView.swift"
+          expected = {
+              "row_ids": [transaction],
+              "row_ids_control": [transaction],
+              "no_animations": [app],
+              "no_animations_control": [app, transaction],
+          }[os.environ["PROBE_VARIANT"]]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
@@ -90,14 +98,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-toolchain-ios-${{ matrix.ios }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            .github/diagnostics/xcode26_view_expression.patch
+            .github/diagnostics/allocation_*.patch
             platform.txt
             runtimes.json
             devices.json
