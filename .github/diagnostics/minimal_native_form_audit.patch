@@ -1,5 +1,5 @@
 diff --git a/CardPilot/App/CardPilotApp.swift b/CardPilot/App/CardPilotApp.swift
-index a0d3372..8078885 100644
+index a0d3372..5192e4e 100644
 --- a/CardPilot/App/CardPilotApp.swift
 +++ b/CardPilot/App/CardPilotApp.swift
 @@ -129,7 +129,9 @@ struct CardPilotApp: App {
@@ -13,7 +13,7 @@ index a0d3372..8078885 100644
                      RootView()
                          .modelContainer(container)
                          .id(store.sessionID)
-@@ -146,3 +148,166 @@ struct CardPilotApp: App {
+@@ -146,3 +148,203 @@ struct CardPilotApp: App {
          }
      }
  }
@@ -70,6 +70,20 @@ index a0d3372..8078885 100644
 +                                TextField("0.00", text: $values[index])
 +                                    .textFieldStyle(.plain)
 +                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                            case "leaf-field-stack":
++                                VStack(alignment: .leading, spacing: 7) {
++                                    TextField("0.00", text: $values[index])
++                                        .textFieldStyle(.plain)
++                                        .accessibilityIdentifier("probe.leaf.\(index)")
++                                }
++                                .padding(.leading, 24)
++                            case "leaf-text-stack":
++                                VStack(alignment: .leading, spacing: 7) {
++                                    Text("125.5")
++                                        .font(.body)
++                                        .accessibilityIdentifier("probe.leaf.\(index)")
++                                }
++                                .padding(.leading, 24)
 +                            case "leaf-pair":
 +                                Text("125.5")
 +                                    .font(.body)
@@ -137,7 +151,7 @@ index a0d3372..8078885 100644
 +
 +    @ViewBuilder
 +    private func nativeRows(_ index: Int) -> some View {
-+        Toggle("UI Activity \(index)", isOn: $selected[index])
++        Toggle(mode == "form-short-title" ? "选中" : "UI Activity \(index)", isOn: $selected[index])
 +            .listRowSeparator(.hidden, edges: .bottom)
 +        Text("CNY · 达标 1,000")
 +            .font(.caption)
@@ -150,18 +164,14 @@ index a0d3372..8078885 100644
 +            .fixedSize(horizontal: false, vertical: true)
 +            .padding(.leading, 24)
 +            .listRowSeparator(.hidden, edges: .bottom)
-+        VStack(alignment: .leading, spacing: 7) {
-+            if mode == "form-text-values" {
-+                Text(values[index])
-+                    .font(.body)
-+                    .accessibilityIdentifier("probe.amount.\(index)")
-+            } else {
-+                TextField("0.00", text: $values[index])
-+                    .textFieldStyle(.plain)
-+                    .accessibilityLabel("UI Activity \(index)计入金额（CNY）")
-+                    .accessibilityIdentifier("probe.amount.\(index)")
-+            }
-+            if index == 0 && mode != "form-no-error" {
++        if mode == "form-flat-input" {
++            TextField("0.00", text: $values[index])
++                .textFieldStyle(.plain)
++                .accessibilityLabel("UI Activity \(index)计入金额（CNY）")
++                .accessibilityIdentifier("probe.amount.\(index)")
++                .padding(.leading, 24)
++                .id("probe.input.\(index)")
++            if index == 0 {
 +                HStack(alignment: .firstTextBaseline, spacing: 8) {
 +                    Image(systemName: "exclamationmark.triangle")
 +                        .accessibilityHidden(true)
@@ -173,21 +183,56 @@ index a0d3372..8078885 100644
 +                .accessibilityElement(children: .combine)
 +                .accessibilityLabel("错误：计入金额应为大于 0 的数字。")
 +                .accessibilityIdentifier("probe.error")
++                .padding(.leading, 24)
 +            }
++        } else {
++            VStack(alignment: .leading, spacing: 7) {
++                if mode == "form-text-values" {
++                    Text(values[index])
++                        .font(.body)
++                        .accessibilityIdentifier("probe.amount.\(index)")
++                } else {
++                    TextField("0.00", text: $values[index])
++                        .textFieldStyle(.plain)
++                        .accessibilityLabel("UI Activity \(index)计入金额（CNY）")
++                        .accessibilityIdentifier("probe.amount.\(index)")
++                }
++                if index == 0 && mode != "form-no-error" {
++                    HStack(alignment: .firstTextBaseline, spacing: 8) {
++                        Image(systemName: "exclamationmark.triangle")
++                            .accessibilityHidden(true)
++                        Text("计入金额应为大于 0 的数字。")
++                            .fixedSize(horizontal: false, vertical: true)
++                    }
++                    .font(.footnote)
++                    .foregroundStyle(.red)
++                    .accessibilityElement(children: .combine)
++                    .accessibilityLabel("错误：计入金额应为大于 0 的数字。")
++                    .accessibilityIdentifier("probe.error")
++                }
++            }
++            .padding(.leading, 24)
++            .id("probe.input.\(index)")
 +        }
-+        .padding(.leading, 24)
-+        .id("probe.input.\(index)")
 +    }
 +
 +}
 diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
-index 96f69da..762898e 100644
+index 96f69da..ffa5d27 100644
 --- a/CardPilotUITests/CoreFlowsUITests.swift
 +++ b/CardPilotUITests/CoreFlowsUITests.swift
-@@ -33,6 +33,120 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -33,6 +33,136 @@ final class CoreFlowsUITests: XCTestCase {
          app = nil
      }
  
++    func testNativeLeafFieldStackProbe() throws {
++        try runNativeFormAuditProbe("leaf-field-stack")
++    }
++
++    func testNativeLeafTextStackProbe() throws {
++        try runNativeFormAuditProbe("leaf-text-stack")
++    }
++
 +    func testNativeLeafTextSectionProbe() throws {
 +        try runNativeFormAuditProbe("leaf-section")
 +    }
@@ -231,6 +276,14 @@ index 96f69da..762898e 100644
 +
 +    func testNativeFormSectionsProbe() throws {
 +        try runNativeFormAuditProbe("form-sections")
++    }
++
++    func testNativeFormFlatInputProbe() throws {
++        try runNativeFormAuditProbe("form-flat-input")
++    }
++
++    func testNativeFormShortTitleProbe() throws {
++        try runNativeFormAuditProbe("form-short-title")
 +    }
 +
 +    func testNativeSingleTextFieldClippingProbe() throws {

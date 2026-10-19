@@ -1,4 +1,4 @@
-name: Native Form leaf control reproduction (diagnostic only)
+name: Native Form container comparison (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -48,12 +48,11 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafShortTextProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafCaptionProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafToggleProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafTextFieldProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafTextPairProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafTextSectionProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMultiRowFormClippingProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafFieldStackProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafTextStackProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeFormFlatInputProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeFormShortTitleProbe \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
