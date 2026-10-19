@@ -1277,26 +1277,23 @@ struct TransactionEditorForm: View {
     private func editorContent(using scrollProxy: ScrollViewProxy) -> some View {
         VStack(spacing: 0) {
             if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
-            Form {
+            Group {
                 if editorStep == 0 {
-                    basicTransactionSections
+                    Form {
+                        basicTransactionSections
+                        editorFeedback
+                    }
                 } else {
-                    promotionConfirmationSections
-                }
-                if !invalidPromotionIDs.isEmpty {
-                    Section("草稿活动需要重新确认") {
-                        Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
-                        Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
+                    ScrollView {
+                        // Keep the confirmation controls alive as their text
+                        // sizes change, including the focused input's anchor.
+                        VStack(alignment: .leading, spacing: 20) {
+                            promotionConfirmationSections
+                            editorFeedback
+                        }
+                        .padding(20)
                     }
-                }
-                if draftWriteError {
-                    Section {
-                        Text("草稿未能保存到设备，请保持此页面并重试。")
-                        Button("重试保存草稿") { persistDraft(force: true) }
-                    }
-                }
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
+                    .background(Color(uiColor: .systemGroupedBackground))
                 }
             }
             .animation(nil, value: dynamicTypeSize)
@@ -1341,6 +1338,60 @@ struct TransactionEditorForm: View {
                 .accessibilityIdentifier("saveTransaction")
             }
             .background(.bar, ignoresSafeAreaEdges: .bottom)
+        }
+    }
+
+    @ViewBuilder
+    private var editorFeedback: some View {
+        if !invalidPromotionIDs.isEmpty {
+            editorFeedbackSection("草稿活动需要重新确认") {
+                Text("部分活动已删除或变更币种。移除失效活动后可保留交易内容，仍存在的活动可重新搜索并填写计入金额。")
+                Button("移除失效活动，保留交易内容") { removeInvalidPromotions() }
+            }
+        }
+        if draftWriteError {
+            editorFeedbackSection {
+                Text("草稿未能保存到设备，请保持此页面并重试。")
+                Button("重试保存草稿") { persistDraft(force: true) }
+            }
+        }
+        if let errorMessage {
+            InlineErrorView(message: errorMessage)
+        }
+    }
+
+    @ViewBuilder
+    private func editorFeedbackSection<Content: View>(
+        _ title: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if editorStep == 0 {
+            Section {
+                content()
+            } header: {
+                if let title { Text(title) }
+            }
+        } else {
+            confirmationGroup(title, content: content)
+        }
+    }
+
+    private func confirmationGroup<Content: View>(
+        _ title: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title {
+                Text(title)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            VStack(alignment: .leading, spacing: 12, content: content)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -1583,7 +1634,7 @@ struct TransactionEditorForm: View {
 
     @ViewBuilder
     private var promotionConfirmationSections: some View {
-        Section("本笔交易") {
+        confirmationGroup("本笔交易") {
             if let selectedCard { Text(cardLabel(selectedCard)).font(.subheadline) }
             if amountFormat.decimalSeparator != Locale.current.decimalSeparator {
                 Text("计入金额沿用草稿格式，小数分隔符为“\(amountFormat.decimalSeparator)”。")
@@ -1593,10 +1644,24 @@ struct TransactionEditorForm: View {
             Text(CardPilotUI.amountText(CardPilotUI.decimal(amountText, format: amountFormat) ?? .zero, currencyCode: currencyCode))
                 .font(.title2.bold())
                 .monospacedDigit()
-            LabeledContent(kind == .refund ? "退款日期" : "消费日期", value: CardPilotUI.dateText(CardPilotUI.rawDate(transactionDate)))
-            if !merchant.isEmpty { LabeledContent("商户", value: merchant) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(kind == .refund ? "退款日期" : "消费日期")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(CardPilotUI.dateText(CardPilotUI.rawDate(transactionDate)))
+            }
+            .accessibilityElement(children: .combine)
+            if !merchant.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("商户")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(merchant)
+                }
+                .accessibilityElement(children: .combine)
+            }
         }
-        Section {
+        confirmationGroup("确认促销") {
             Label(
                 selectedPromotionIDs.isEmpty ? "本笔未计入促销" : "已选择 \(selectedPromotionIDs.count) 个促销",
                 systemImage: selectedPromotionIDs.isEmpty ? "tag.slash" : "checkmark.circle"
@@ -1605,8 +1670,6 @@ struct TransactionEditorForm: View {
             Text("请检查候选活动与计入金额；点击“确认并保存”后才会写入这笔交易。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        } header: {
-            Text("确认促销")
         }
         promotionSection
     }
@@ -1648,8 +1711,8 @@ struct TransactionEditorForm: View {
             case .promotionSearch:
                 scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
             case let .allocation(id):
-                // The input starts its own native row, so its existing
-                // validation anchor also reveals it above the fixed footer.
+                // The input begins at its validation anchor, leaving room
+                // above the fixed footer when the keyboard opens.
                 scrollProxy.scrollTo(InputField.allocation(id), anchor: .top)
             case .amount:
                 break
@@ -1767,7 +1830,7 @@ struct TransactionEditorForm: View {
 
     @ViewBuilder
     private var promotionSection: some View {
-        Section("促销分配") {
+        confirmationGroup("促销分配") {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("搜索")
                     .foregroundStyle(.secondary)
@@ -1803,16 +1866,13 @@ struct TransactionEditorForm: View {
                         }
                     }
                     .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
-                    .listRowSeparator(dynamicTypeSize.isAccessibilitySize || selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
                     if dynamicTypeSize.isAccessibilitySize {
-                        // A long title and its summary can exceed the entire
-                        // viewport together. Let each native row scroll fully
-                        // into view without reducing either text's size.
+                        // A long title and summary need separate space at
+                        // accessibility sizes so the title can scroll fully.
                         Text(promotionSummary(promotion))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                            .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
                     }
                     if selectedPromotionIDs.contains(promotion.id) {
                         let warning = qualificationWarning(for: promotion)
@@ -1821,9 +1881,8 @@ struct TransactionEditorForm: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.leading, 24)
-                            .listRowSeparator(.hidden, edges: .bottom)
-                        // Keep the input at the beginning of its native row.
-                        // The caption can be taller than the keyboard viewport.
+                        // The caption can exceed the keyboard viewport, so
+                        // keep the input at the beginning of its scroll anchor.
                         VStack(alignment: .leading, spacing: 7) {
                             TextField(
                                 "0\(amountFormat.decimalSeparator)00",
@@ -1842,7 +1901,6 @@ struct TransactionEditorForm: View {
                             }
                         }
                         .padding(.leading, 24)
-                        .listRowSeparator(warning == nil ? .visible : .hidden, edges: .bottom)
                         .id(InputField.allocation(promotion.id))
                         if let warning {
                             Text(warning)
@@ -1857,6 +1915,7 @@ struct TransactionEditorForm: View {
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
+                    Divider()
                 }
                 Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
                     .font(.caption)
