@@ -1651,7 +1651,7 @@ struct TransactionEditorForm: View {
                 // The caption and an inline error can exceed the keyboard's
                 // viewport. Reveal the input itself; keep the row's separate
                 // validation anchor for showing an error after saving.
-                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .bottom)
+                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .center)
             case .amount:
                 break
             }

@@ -861,6 +861,8 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAllocationErrorLocationAndCompletePromptAtLargestTextSize() throws {
+        // Native error navigation/audit completed at 212s in run 39188540056.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         launch("allocationFeedback")
         openCard("UI Primary")
