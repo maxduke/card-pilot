@@ -595,7 +595,7 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testNumericKeyboardDismissalAtLargestTextSize() throws {
-        // Both font audits mutate the lazy Form's layout. Include restoring
+        // Both font audits change text sizes. Include restoring
         // and checking each screen within the workflow's existing maximum.
         executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
@@ -607,7 +607,7 @@ final class CoreFlowsUITests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         let dismissal = app.buttons["transaction.keyboard.dismiss"]
         let navigationBar = app.navigationBars["添加交易"]
-        let form = app.collectionViews["transaction.form"]
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 10))
@@ -861,6 +861,8 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAllocationErrorLocationAndCompletePromptAtLargestTextSize() throws {
+        // Native error navigation/audit completed at 212s in run 39188540056.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         launch("allocationFeedback")
         openCard("UI Primary")
@@ -2308,7 +2310,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         let navigationBar = app.navigationBars["添加交易"]
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
-        let form = app.collectionViews["transaction.form"]
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
         let search = app.textFields["allocation.search"]
         reveal(search, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(search.label, "搜索其他促销")
@@ -2328,7 +2330,7 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("\(prefix)促销搜索键盘输入")
 
         func dismissSearchKeyboard() {
-            // Use the existing Form's scroll-to-dismiss gesture in its gutter.
+            // Use the confirmation view's scroll-to-dismiss gesture in its gutter.
             let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.75))
             let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.25))
             start.press(forDuration: 0.05, thenDragTo: end,
@@ -2620,7 +2622,7 @@ final class CoreFlowsUITests: XCTestCase {
         let amount = app.textFields["allocation.amount.\(title)"]
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         let top = max(app.navigationBars["添加交易"].frame.maxY, progress.frame.maxY)
-        let form = app.collectionViews["transaction.form"]
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
         XCTAssertTrue(form.exists)
         let bottom = min(contentBottom, form.frame.maxY)
         for element in [amount, error] {
