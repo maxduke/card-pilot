@@ -2877,7 +2877,11 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openPromotion(_ name: String) {
         tap(app.tabBars.buttons["促销"])
-        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch)
+        let promotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        // A partly visible large-text row can report a hit point at the tab
+        // bar boundary. Reveal the whole row before asking XCTest to tap it.
+        reveal(promotion, fullyVisible: true)
+        promotion.tap()
     }
 
     private func openPromotionEditor(_ section: String) {
