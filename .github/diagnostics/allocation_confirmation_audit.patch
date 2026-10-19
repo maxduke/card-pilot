@@ -1,0 +1,21 @@
+diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
+index 96f69da..6645480 100644
+--- a/CardPilotUITests/CoreFlowsUITests.swift
++++ b/CardPilotUITests/CoreFlowsUITests.swift
+@@ -874,8 +874,15 @@ final class CoreFlowsUITests: XCTestCase {
+         amount.tap()
+         amount.typeText("125.50")
+         tap(app.buttons["saveTransaction"])
++        // Audit the initial confirmation screen as well as the invalid amount
++        // state below. Both audits must pass without filtering any findings.
++        reveal(app.staticTexts["本笔交易"], scrollTowardTopWhenMissing: true,
++               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress,
++               contentContainer: app.collectionViews["transaction.form"])
++        try app.performAccessibilityAudit(for: .textClipped)
+         let first = app.textFields["allocation.amount.\(allocationFeedbackFirstTitle)"]
+-        reveal(first, navigationBar: navigationBar, contentHeader: progress)
++        reveal(first, scrollTowardTopWhenMissing: true,
++               navigationBar: navigationBar, contentHeader: progress)
+         first.tap()
+         let oldValue = first.value as? String ?? ""
+         first.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldValue.count) + "0")

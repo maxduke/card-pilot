@@ -1,4 +1,4 @@
-name: Native Form scroll position comparison (diagnostic only)
+name: Confirmation initial and invalid state audits (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -19,22 +19,22 @@ jobs:
           ref: 34d722d42105940d8dfcf16f03353d0da814d6db
           path: candidate
           persist-credentials: false
-      - name: Apply frozen minimal native Form reproduction
+      - name: Apply frozen confirmation audit coverage change
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
-          git apply ../.github/diagnostics/minimal_native_form_audit.patch
+          git apply ../.github/diagnostics/allocation_confirmation_audit.patch
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/App/CardPilotApp.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run isolated native controls and positive clipping control
+      - name: Run original largest allocation error flow with both audits
         working-directory: candidate
         shell: bash
         run: |
@@ -48,10 +48,7 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafScrolledTextProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafScrolledCaptionProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafScrolledFieldProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeFormTopProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -67,7 +64,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: minimal-native-form-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          name: confirmation-state-audits-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
@@ -76,6 +73,6 @@ jobs:
             candidate.patch
             device-id.txt
             platform.txt
-            .github/diagnostics/minimal_native_form_audit.patch
+            .github/diagnostics/allocation_confirmation_audit.patch
           retention-days: 7
           if-no-files-found: error
