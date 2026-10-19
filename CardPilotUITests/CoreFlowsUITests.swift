@@ -836,7 +836,16 @@ final class CoreFlowsUITests: XCTestCase {
         openCard("UI Primary")
         tap(app.buttons["card.addTransaction"])
         enter("125.50", into: app.textFields["transactionAmount"])
-        enter("UI Corrected Allocation", into: app.textFields["商户（可选）"])
+        // Finish numeric editing before revealing another lazy Form row;
+        // scrolling to dismiss the keyboard also changes that row's position.
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
+        dismissal.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let merchant = app.textFields["商户（可选）"]
+        enter("UI Corrected Allocation", into: merchant)
+        XCTAssertEqual(merchant.value as? String, "UI Corrected Allocation")
+        captureScreenshot("计入金额草稿商户输入")
         tap(app.buttons["saveTransaction"])
         let allocation = app.textFields["allocation.amount.UI Spend"]
         let error = allocationError("UI Spend")
@@ -845,7 +854,6 @@ final class CoreFlowsUITests: XCTestCase {
         assertAllocationErrorVisible("UI Spend")
         replaceText("150.25", in: allocation)
         XCTAssertTrue(error.waitForNonExistence(timeout: 5))
-        let dismissal = app.buttons["transaction.keyboard.dismiss"]
         XCTAssertTrue(dismissal.waitForExistence(timeout: 10))
         dismissal.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
