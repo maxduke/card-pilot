@@ -1,4 +1,4 @@
-name: Allocation audit row and animation comparison (diagnostic only)
+name: Native mixed row layout comparison (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,14 +10,9 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [row_ids, row_ids_control, no_animations, no_animations_control]
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       PROBE_IOS_VERSION: "18.5"
-      PROBE_VARIANT: ${{ matrix.variant }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -33,18 +28,11 @@ jobs:
         run: |
           set -euo pipefail
           test -d "$DEVELOPER_DIR"
-          git apply "../.github/diagnostics/allocation_${PROBE_VARIANT}.patch"
+          git apply ../.github/diagnostics/native_mixed_layout.patch
           git diff --check
           python3 - <<'PYCODE'
-          import os, subprocess
-          app = "CardPilot/App/CardPilotApp.swift"
-          transaction = "CardPilot/Features/Transactions/TransactionsView.swift"
-          expected = {
-              "row_ids": [transaction],
-              "row_ids_control": [transaction],
-              "no_animations": [app],
-              "no_animations_control": [app, transaction],
-          }[os.environ["PROBE_VARIANT"]]
+          import subprocess
+          expected = ["CardPilot/App/CardPilotApp.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
@@ -55,7 +43,7 @@ jobs:
           xcodebuild -showsdks >> ../platform.txt
           xcrun simctl list runtimes -j > ../runtimes.json
           xcrun simctl list devices available -j > ../devices.json
-      - name: Run unchanged allocation error audit on the explicit runtime
+      - name: Run native mixed layout comparisons
         working-directory: candidate
         shell: bash
         run: |
@@ -76,7 +64,10 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedFlatRowsProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedFlatRowsControlProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedEagerRowsProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMixedEagerRowsControlProbe \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -98,14 +89,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-mixed-layout-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
             candidate.patch
-            .github/diagnostics/allocation_*.patch
+            .github/diagnostics/native_mixed_layout.patch
             platform.txt
             runtimes.json
             devices.json
