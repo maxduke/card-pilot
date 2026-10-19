@@ -1,4 +1,4 @@
-name: Confirmation initial and invalid state audits (diagnostic only)
+name: Allocation audit toolchain comparison (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -10,6 +10,13 @@ jobs:
   diagnose:
     runs-on: macos-15
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ios: ["18.5", "26.2"]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      PROBE_IOS_VERSION: ${{ matrix.ios }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -19,30 +26,35 @@ jobs:
           ref: 34d722d42105940d8dfcf16f03353d0da814d6db
           path: candidate
           persist-credentials: false
-      - name: Apply frozen confirmation audit coverage change
+      - name: Record exact unmodified source and toolchain
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
-          git apply ../.github/diagnostics/allocation_confirmation_audit.patch
-          git diff --check
-          python3 - <<'PYCODE'
-          import subprocess
-          expected = ["CardPilotUITests/CoreFlowsUITests.swift"]
-          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
-          assert actual == expected, actual
-          PYCODE
+          test -d "$DEVELOPER_DIR"
+          git diff --exit-code
           git rev-parse HEAD > ../candidate-base.txt
-          git diff --binary > ../candidate.patch
-      - name: Run original largest allocation error flow with both audits
+          xcodebuild -version > ../platform.txt
+          uname -m >> ../platform.txt
+          xcodebuild -showsdks >> ../platform.txt
+          xcrun simctl list runtimes -j > ../runtimes.json
+          xcrun simctl list devices available -j > ../devices.json
+      - name: Run unchanged allocation error audit on the explicit runtime
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
-          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
+          device_id=$(python3 - <<'PYCODE'
+          import json,os
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["PROBE_IOS_VERSION"].replace(".", "-")
+          with open("../devices.json") as f:
+              devices = json.load(f)["devices"].get(runtime, [])
+          matches = [d for d in devices if d["name"] == "iPhone 16 Pro" and d.get("isAvailable", False)]
+          assert len(matches) == 1, (runtime, matches)
+          print(matches[0]["udid"])
+          PYCODE
+          )
           printf '%s\n' "$device_id" > ../device-id.txt
-          xcodebuild -version > ../platform.txt
-          xcrun simctl list runtimes -j >> ../platform.txt
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
@@ -62,17 +74,24 @@ jobs:
           xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
       - name: Preserve native evidence
         if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path exported-attachments
+      - name: Upload native evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: confirmation-state-audits-${{ github.run_id }}-${{ github.run_attempt }}
+          name: allocation-toolchain-ios-${{ matrix.ios }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
             summary.json
             candidate-base.txt
-            candidate.patch
-            device-id.txt
             platform.txt
-            .github/diagnostics/allocation_confirmation_audit.patch
+            runtimes.json
+            devices.json
+            device-id.txt
+            exported-attachments
           retention-days: 7
           if-no-files-found: error
