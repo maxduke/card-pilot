@@ -1,5 +1,5 @@
 diff --git a/CardPilot/App/CardPilotApp.swift b/CardPilot/App/CardPilotApp.swift
-index a0d3372..5192e4e 100644
+index a0d3372..3cafa2c 100644
 --- a/CardPilot/App/CardPilotApp.swift
 +++ b/CardPilot/App/CardPilotApp.swift
 @@ -129,7 +129,9 @@ struct CardPilotApp: App {
@@ -13,7 +13,7 @@ index a0d3372..5192e4e 100644
                      RootView()
                          .modelContainer(container)
                          .id(store.sessionID)
-@@ -146,3 +148,203 @@ struct CardPilotApp: App {
+@@ -146,3 +148,211 @@ struct CardPilotApp: App {
          }
      }
  }
@@ -56,13 +56,14 @@ index a0d3372..5192e4e 100644
 +                Form {
 +                    if mode.hasPrefix("leaf-") {
 +                        ForEach(0..<40, id: \.self) { index in
-+                            switch mode {
++                            switch mode.replacingOccurrences(of: "-scrolled", with: "") {
 +                            case "leaf-caption":
 +                                Text("计入金额（CNY）")
 +                                    .font(.caption)
 +                                    .fixedSize(horizontal: false, vertical: true)
 +                                    .padding(.leading, 24)
 +                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                                    .id(index)
 +                            case "leaf-toggle":
 +                                Toggle("选中", isOn: $selected[index])
 +                                    .accessibilityIdentifier("probe.leaf.\(index)")
@@ -70,6 +71,7 @@ index a0d3372..5192e4e 100644
 +                                TextField("0.00", text: $values[index])
 +                                    .textFieldStyle(.plain)
 +                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                                    .id(index)
 +                            case "leaf-field-stack":
 +                                VStack(alignment: .leading, spacing: 7) {
 +                                    TextField("0.00", text: $values[index])
@@ -100,6 +102,7 @@ index a0d3372..5192e4e 100644
 +                                Text("125.5")
 +                                    .font(.body)
 +                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                                    .id(index)
 +                            }
 +                        }
 +                    } else if mode == "control" {
@@ -142,7 +145,12 @@ index a0d3372..5192e4e 100644
 +                }
 +            }
 +            .task {
-+                guard mode.hasPrefix("form") else { return }
++                if mode.hasSuffix("-scrolled") {
++                    await Task.yield()
++                    proxy.scrollTo(20, anchor: .top)
++                    return
++                }
++                guard mode.hasPrefix("form") && mode != "form-top" else { return }
 +                await Task.yield()
 +                proxy.scrollTo("probe.input.0", anchor: .top)
 +            }
@@ -218,13 +226,25 @@ index a0d3372..5192e4e 100644
 +
 +}
 diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
-index 96f69da..ffa5d27 100644
+index 96f69da..7af45af 100644
 --- a/CardPilotUITests/CoreFlowsUITests.swift
 +++ b/CardPilotUITests/CoreFlowsUITests.swift
-@@ -33,6 +33,136 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -33,6 +33,156 @@ final class CoreFlowsUITests: XCTestCase {
          app = nil
      }
  
++    func testNativeLeafScrolledFieldProbe() throws {
++        try runNativeFormAuditProbe("leaf-field-scrolled")
++    }
++
++    func testNativeLeafScrolledCaptionProbe() throws {
++        try runNativeFormAuditProbe("leaf-caption-scrolled")
++    }
++
++    func testNativeLeafScrolledTextProbe() throws {
++        try runNativeFormAuditProbe("leaf-text-scrolled")
++    }
++
 +    func testNativeLeafFieldStackProbe() throws {
 +        try runNativeFormAuditProbe("leaf-field-stack")
 +    }
@@ -286,6 +306,10 @@ index 96f69da..ffa5d27 100644
 +        try runNativeFormAuditProbe("form-short-title")
 +    }
 +
++    func testNativeFormTopProbe() throws {
++        try runNativeFormAuditProbe("form-top")
++    }
++
 +    func testNativeSingleTextFieldClippingProbe() throws {
 +        try runNativeFormAuditProbe("single")
 +    }
@@ -310,8 +334,12 @@ index 96f69da..ffa5d27 100644
 +        let form = app.collectionViews["probe.form"]
 +        XCTAssertTrue(form.waitForExistence(timeout: 10))
 +        if mode.hasPrefix("leaf-") {
-+            let first = app.descendants(matching: .any).matching(identifier: "probe.leaf.0").firstMatch
++            let index = mode.hasSuffix("-scrolled") ? 20 : 0
++            let first = app.descendants(matching: .any).matching(identifier: "probe.leaf.\(index)").firstMatch
 +            XCTAssertTrue(first.waitForExistence(timeout: 10))
++            XCTAssertTrue(form.frame.contains(first.frame))
++        } else if mode == "form-top" {
++            XCTAssertTrue(app.switches.firstMatch.waitForExistence(timeout: 10))
 +        } else if mode == "control" {
 +            XCTAssertTrue(app.staticTexts["probe.clipped"].waitForExistence(timeout: 10))
 +        } else {

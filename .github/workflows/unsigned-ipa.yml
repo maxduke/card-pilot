@@ -1,4 +1,4 @@
-name: Native Form container comparison (diagnostic only)
+name: Native Form scroll position comparison (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -48,11 +48,10 @@ jobs:
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMultiRowFormClippingProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafFieldStackProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafTextStackProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeFormFlatInputProbe \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeFormShortTitleProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafScrolledTextProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafScrolledCaptionProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeLeafScrolledFieldProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeFormTopProbe \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
