@@ -1,4 +1,4 @@
-name: Centered allocation input (diagnostic only)
+name: Allocation input native row target (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: 288142cc330f52d0b78e431f036bcf49cb296c19
+          ref: 8921accbe236c9fa3924f9ce700323d2b68a726b
           path: candidate
           persist-credentials: false
       - name: Apply frozen allocation input visibility repair
@@ -28,7 +28,7 @@ jobs:
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/Features/Transactions/TransactionsView.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
+          expected = ["CardPilot/Features/Transactions/TransactionsView.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
