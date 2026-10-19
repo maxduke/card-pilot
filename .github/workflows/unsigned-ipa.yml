@@ -1,4 +1,4 @@
-name: Allocation input visibility (diagnostic only)
+name: Centered allocation input (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: 1c4044f196ddf59c665683f2f4e95c5c55c5780d
+          ref: 288142cc330f52d0b78e431f036bcf49cb296c19
           path: candidate
           persist-credentials: false
       - name: Apply frozen allocation input visibility repair
