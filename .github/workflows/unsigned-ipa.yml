@@ -26,13 +26,21 @@ jobs:
           ref: 34d722d42105940d8dfcf16f03353d0da814d6db
           path: candidate
           persist-credentials: false
-      - name: Record exact unmodified source and toolchain
+      - name: Apply frozen expression extraction and record toolchain
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
           test -d "$DEVELOPER_DIR"
-          git diff --exit-code
+          git apply ../.github/diagnostics/xcode26_view_expression.patch
+          git diff --check
+          python3 - <<'PYCODE'
+          import subprocess
+          expected = ["CardPilot/Features/Cards/CardsView.swift", "CardPilot/Features/Promotions/PromotionsView.swift"]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          assert actual == expected, actual
+          PYCODE
+          git diff --binary > ../candidate.patch
           git rev-parse HEAD > ../candidate-base.txt
           xcodebuild -version > ../platform.txt
           uname -m >> ../platform.txt
@@ -88,6 +96,8 @@ jobs:
             diagnostic.log
             summary.json
             candidate-base.txt
+            candidate.patch
+            .github/diagnostics/xcode26_view_expression.patch
             platform.txt
             runtimes.json
             devices.json

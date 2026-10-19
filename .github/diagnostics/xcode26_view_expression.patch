@@ -1,0 +1,386 @@
+diff --git a/CardPilot/Features/Cards/CardsView.swift b/CardPilot/Features/Cards/CardsView.swift
+index 1a98f86..c8cbe58 100644
+--- a/CardPilot/Features/Cards/CardsView.swift
++++ b/CardPilot/Features/Cards/CardsView.swift
+@@ -29,99 +29,7 @@ struct CardsView: View {
+ 
+     var body: some View {
+         NavigationStack {
+-            Group {
+-                if banks.isEmpty {
+-                    ContentUnavailableView {
+-                        Label("还没有信用卡", systemImage: "creditcard.fill")
+-                    } description: {
+-                        Text("添加一张卡，几步完成银行、账户和账务日设置。")
+-                    } actions: {
+-                        Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
+-                            .buttonStyle(.borderedProminent)
+-                    }
+-                } else if visibleBanks.isEmpty {
+-                    ContentUnavailableView.search(text: query)
+-                } else {
+-                    List {
+-                        ForEach(visibleBanks, id: \.id) { bank in
+-                            Section {
+-                                let bankAccounts = bankAccounts(for: bank)
+-                                if bankAccounts.isEmpty {
+-                                    Text("尚未添加信用卡账户")
+-                                        .foregroundStyle(.secondary)
+-                                } else {
+-                                    ForEach(bankAccounts, id: \.id) { account in
+-                                        NavigationLink {
+-                                            AccountDetailView(account: account)
+-                                        } label: {
+-                                            AccountRow(
+-                                                account: account,
+-                                                onEdit: { editingAccount = account; showingAccountEditor = true },
+-                                                onDelete: { requestDeleteAccount(account) }
+-                                            )
+-                                        }
+-                                        ForEach(visibleCards(for: account), id: \.id) { card in
+-                                            NavigationLink {
+-                                                CardDetailView(card: card)
+-                                            } label: {
+-                                                CardRow(card: card)
+-                                            }
+-                                            .contextMenu {
+-                                                Button {
+-                                                    editingCard = card
+-                                                    showingCardEditor = true
+-                                                } label: {
+-                                                    Label("编辑卡片", systemImage: "pencil")
+-                                                }
+-                                                Button(role: .destructive) {
+-                                                    requestDeleteCard(card)
+-                                                } label: {
+-                                                    Label("删除卡片", systemImage: "trash")
+-                                                }
+-                                            }
+-                                            .accessibilityIdentifier("card.\(card.productName)")
+-                                            .padding(.leading, 22)
+-                                        }
+-                                    }
+-                                }
+-                            } header: {
+-                                HStack {
+-                                    BankBadge(bank: bank)
+-                                    Text(bank.name)
+-                                    if bank.archivedAt != nil {
+-                                        Text("已归档")
+-                                            .font(.caption)
+-                                            .foregroundStyle(.secondary)
+-                                    }
+-                                    Spacer()
+-                                    Button {
+-                                        editingBank = bank
+-                                        showingBankEditor = true
+-                                    } label: {
+-                                        Image(systemName: "pencil")
+-                                    }
+-                                    .buttonStyle(.borderless)
+-                                    .accessibilityLabel("编辑银行 \(bank.name)")
+-                                }
+-                                .contextMenu {
+-                                    Button {
+-                                        editingBank = bank
+-                                        showingBankEditor = true
+-                                    } label: {
+-                                        Label("编辑银行", systemImage: "pencil")
+-                                    }
+-                                    Button(role: .destructive) {
+-                                        requestDeleteBank(bank)
+-                                    } label: {
+-                                        Label("删除银行", systemImage: "trash")
+-                                    }
+-                                }
+-                            }
+-                        }
+-                    }
+-                    .listStyle(.insetGrouped)
+-                }
+-            }
++            cardsContent
+             .searchable(text: $query, prompt: "搜索银行、卡片或末四位")
+             .navigationTitle("卡片")
+             .toolbar {
+@@ -201,6 +109,102 @@ struct CardsView: View {
+         }
+     }
+ 
++    private var cardsContent: some View {
++        Group {
++            if banks.isEmpty {
++                ContentUnavailableView {
++                    Label("还没有信用卡", systemImage: "creditcard.fill")
++                } description: {
++                    Text("添加一张卡，几步完成银行、账户和账务日设置。")
++                } actions: {
++                    Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
++                        .buttonStyle(.borderedProminent)
++                }
++            } else if visibleBanks.isEmpty {
++                ContentUnavailableView.search(text: query)
++            } else {
++                List {
++                    ForEach(visibleBanks, id: \.id) { bank in
++                        Section {
++                            let bankAccounts = bankAccounts(for: bank)
++                            if bankAccounts.isEmpty {
++                                Text("尚未添加信用卡账户")
++                                    .foregroundStyle(.secondary)
++                            } else {
++                                ForEach(bankAccounts, id: \.id) { account in
++                                    NavigationLink {
++                                        AccountDetailView(account: account)
++                                    } label: {
++                                        AccountRow(
++                                            account: account,
++                                            onEdit: { editingAccount = account; showingAccountEditor = true },
++                                            onDelete: { requestDeleteAccount(account) }
++                                        )
++                                    }
++                                    ForEach(visibleCards(for: account), id: \.id) { card in
++                                        NavigationLink {
++                                            CardDetailView(card: card)
++                                        } label: {
++                                            CardRow(card: card)
++                                        }
++                                        .contextMenu {
++                                            Button {
++                                                editingCard = card
++                                                showingCardEditor = true
++                                            } label: {
++                                                Label("编辑卡片", systemImage: "pencil")
++                                            }
++                                            Button(role: .destructive) {
++                                                requestDeleteCard(card)
++                                            } label: {
++                                                Label("删除卡片", systemImage: "trash")
++                                            }
++                                        }
++                                        .accessibilityIdentifier("card.\(card.productName)")
++                                        .padding(.leading, 22)
++                                    }
++                                }
++                            }
++                        } header: {
++                            HStack {
++                                BankBadge(bank: bank)
++                                Text(bank.name)
++                                if bank.archivedAt != nil {
++                                    Text("已归档")
++                                        .font(.caption)
++                                        .foregroundStyle(.secondary)
++                                }
++                                Spacer()
++                                Button {
++                                    editingBank = bank
++                                    showingBankEditor = true
++                                } label: {
++                                    Image(systemName: "pencil")
++                                }
++                                .buttonStyle(.borderless)
++                                .accessibilityLabel("编辑银行 \(bank.name)")
++                            }
++                            .contextMenu {
++                                Button {
++                                    editingBank = bank
++                                    showingBankEditor = true
++                                } label: {
++                                    Label("编辑银行", systemImage: "pencil")
++                                }
++                                Button(role: .destructive) {
++                                    requestDeleteBank(bank)
++                                } label: {
++                                    Label("删除银行", systemImage: "trash")
++                                }
++                            }
++                        }
++                    }
++                }
++                .listStyle(.insetGrouped)
++            }
++        }
++    }
++
+     private var errorPresented: Binding<Bool> {
+         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+     }
+diff --git a/CardPilot/Features/Promotions/PromotionsView.swift b/CardPilot/Features/Promotions/PromotionsView.swift
+index a00b5f8..50dc299 100644
+--- a/CardPilot/Features/Promotions/PromotionsView.swift
++++ b/CardPilot/Features/Promotions/PromotionsView.swift
+@@ -1849,6 +1849,88 @@ struct PromotionDetailView: View {
+     }
+ 
+     var body: some View {
++        promotionContent
++        .navigationTitle(displayedPromotion.title)
++        .toolbar {
++            ToolbarItem(placement: .topBarLeading) {
++                Button {
++                    showingEditOptions = true
++                } label: {
++                    Text("编辑")
++                        .frame(minWidth: 44, minHeight: 44)
++                }
++                .accessibilityLabel("编辑促销")
++                .accessibilityHint("选择要编辑的内容")
++                .accessibilityIdentifier("promotion.edit")
++            }
++            if displayedPromotion.seriesID == nil {
++                ToolbarItem(placement: .topBarTrailing) {
++                    Button {
++                        if nextCopyPeriod == nil {
++                            errorMessage = "无法生成下个月的完整日期。"
++                        } else {
++                            showingCopyConfirmation = true
++                        }
++                    } label: {
++                        Image(systemName: "doc.on.doc")
++                    }
++                    .accessibilityLabel("复制到下个月")
++                }
++            }
++        }
++        .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
++            ForEach(PromotionEditorStep.allCases) { item in
++                Button("编辑\(item.editingTitle)") {
++                    promotionEditorStep = item
++                }
++            }
++            Button("取消", role: .cancel) {}
++        }
++        .trackedSheet(isPresented: $showingTransactionEditor) {
++            TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
++        }
++        .trackedSheet(item: $promotionEditorStep) { step in
++            PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards, initialStep: step)
++        }
++        .trackedSheet(isPresented: $showingAllocationEditor) {
++            AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
++        }
++        .confirmationDialog("复制到下个月？", isPresented: $showingCopyConfirmation, titleVisibility: .visible) {
++            Button("复制活动", action: copyToNextMonth)
++            Button("取消", role: .cancel) {}
++        } message: {
++            if let period = nextCopyPeriod {
++                Text("将新建 \(CardPilotUI.dateRangeText(start: period.startOn, end: period.endOn)) 的独立活动。进度和已报名记录不会复制。")
++            }
++        }
++        .alert("复制完成", isPresented: $showingCopyCompleted) {
++            Button("好", role: .cancel) {}
++        } message: {
++            if let copiedPeriod {
++                Text("已创建 \(CardPilotUI.dateRangeText(start: copiedPeriod.startOn, end: copiedPeriod.endOn)) 的活动，可返回促销列表查看。")
++            }
++        }
++        .confirmationDialog("确认删除分配？", isPresented: $showingAllocationDeleteConfirmation) {
++            Button("删除分配", role: .destructive) {
++                if let allocationPendingDeletion {
++                    deleteAllocation(allocationPendingDeletion)
++                }
++                allocationPendingDeletion = nil
++            }
++            Button("取消", role: .cancel) {
++                allocationPendingDeletion = nil
++            }
++        } message: {
++            Text("将移除“\(pendingAllocationLabel)”在本期的促销分配。")
++        }
++        .alert("无法完成操作", isPresented: errorPresented) {
++            Button("好", role: .cancel) { errorMessage = nil }
++        } message: {
++            Text(errorMessage ?? "未知错误")
++        }
++    }
++
++    private var promotionContent: some View {
+         List {
+             if seriesPromotions.count > 1 {
+                 seriesSection
+@@ -2016,84 +2098,6 @@ struct PromotionDetailView: View {
+                 }
+             }
+         }
+-        .navigationTitle(displayedPromotion.title)
+-        .toolbar {
+-            ToolbarItem(placement: .topBarLeading) {
+-                Button {
+-                    showingEditOptions = true
+-                } label: {
+-                    Text("编辑")
+-                        .frame(minWidth: 44, minHeight: 44)
+-                }
+-                .accessibilityLabel("编辑促销")
+-                .accessibilityHint("选择要编辑的内容")
+-                .accessibilityIdentifier("promotion.edit")
+-            }
+-            if displayedPromotion.seriesID == nil {
+-                ToolbarItem(placement: .topBarTrailing) {
+-                    Button {
+-                        if nextCopyPeriod == nil {
+-                            errorMessage = "无法生成下个月的完整日期。"
+-                        } else {
+-                            showingCopyConfirmation = true
+-                        }
+-                    } label: {
+-                        Image(systemName: "doc.on.doc")
+-                    }
+-                    .accessibilityLabel("复制到下个月")
+-                }
+-            }
+-        }
+-        .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
+-            ForEach(PromotionEditorStep.allCases) { item in
+-                Button("编辑\(item.editingTitle)") {
+-                    promotionEditorStep = item
+-                }
+-            }
+-            Button("取消", role: .cancel) {}
+-        }
+-        .trackedSheet(isPresented: $showingTransactionEditor) {
+-            TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
+-        }
+-        .trackedSheet(item: $promotionEditorStep) { step in
+-            PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards, initialStep: step)
+-        }
+-        .trackedSheet(isPresented: $showingAllocationEditor) {
+-            AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
+-        }
+-        .confirmationDialog("复制到下个月？", isPresented: $showingCopyConfirmation, titleVisibility: .visible) {
+-            Button("复制活动", action: copyToNextMonth)
+-            Button("取消", role: .cancel) {}
+-        } message: {
+-            if let period = nextCopyPeriod {
+-                Text("将新建 \(CardPilotUI.dateRangeText(start: period.startOn, end: period.endOn)) 的独立活动。进度和已报名记录不会复制。")
+-            }
+-        }
+-        .alert("复制完成", isPresented: $showingCopyCompleted) {
+-            Button("好", role: .cancel) {}
+-        } message: {
+-            if let copiedPeriod {
+-                Text("已创建 \(CardPilotUI.dateRangeText(start: copiedPeriod.startOn, end: copiedPeriod.endOn)) 的活动，可返回促销列表查看。")
+-            }
+-        }
+-        .confirmationDialog("确认删除分配？", isPresented: $showingAllocationDeleteConfirmation) {
+-            Button("删除分配", role: .destructive) {
+-                if let allocationPendingDeletion {
+-                    deleteAllocation(allocationPendingDeletion)
+-                }
+-                allocationPendingDeletion = nil
+-            }
+-            Button("取消", role: .cancel) {
+-                allocationPendingDeletion = nil
+-            }
+-        } message: {
+-            Text("将移除“\(pendingAllocationLabel)”在本期的促销分配。")
+-        }
+-        .alert("无法完成操作", isPresented: errorPresented) {
+-            Button("好", role: .cancel) { errorMessage = nil }
+-        } message: {
+-            Text(errorMessage ?? "未知错误")
+-        }
+     }
+ 
+     private func promotionActionLabel(
