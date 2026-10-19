@@ -1,4 +1,4 @@
-name: Stable promotion rows (diagnostic only)
+name: Minimal native Form clipping reproduction (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -16,41 +16,41 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          ref: 8921accbe236c9fa3924f9ce700323d2b68a726b
+          ref: 34d722d42105940d8dfcf16f03353d0da814d6db
           path: candidate
           persist-credentials: false
-      - name: Apply frozen native row layout repair
+      - name: Apply frozen minimal native Form reproduction
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
-          git apply --unidiff-zero ../.github/diagnostics/account_card_keyboard_setup.patch
+          git apply ../.github/diagnostics/minimal_native_form_audit.patch
           git diff --check
           python3 - <<'PYCODE'
           import subprocess
-          expected = ["CardPilot/Features/Transactions/TransactionsView.swift"]
+          expected = ["CardPilot/App/CardPilotApp.swift", "CardPilotUITests/CoreFlowsUITests.swift"]
           actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           assert actual == expected, actual
           PYCODE
           git rev-parse HEAD > ../candidate-base.txt
           git diff --binary > ../candidate.patch
-      - name: Run native allocation focus, search and validation flows
+      - name: Run isolated native controls and positive clipping control
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for devices in data["devices"].values() for d in devices if d["name"].startswith("iPhone")))')
           printf '%s\n' "$device_id" > ../device-id.txt
+          xcodebuild -version > ../platform.txt
+          xcrun simctl list runtimes -j >> ../platform.txt
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath ../TestResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalPreservesDraftAndSavedAmounts \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchPreservesSelectionAndAmount \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionAllocationSearchAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAllocationErrorLocationAndCompletePromptAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeSingleTextFieldClippingProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeMultiRowFormClippingProbe \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeClippedTextPositiveControl \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -66,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: allocation-input-visibility-${{ github.run_id }}-${{ github.run_attempt }}
+          name: minimal-native-form-audit-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults.xcresult
             diagnostic.log
@@ -74,6 +74,7 @@ jobs:
             candidate-base.txt
             candidate.patch
             device-id.txt
-            .github/diagnostics/account_card_keyboard_setup.patch
+            platform.txt
+            .github/diagnostics/minimal_native_form_audit.patch
           retention-days: 7
           if-no-files-found: error

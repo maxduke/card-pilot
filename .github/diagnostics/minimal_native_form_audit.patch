@@ -1,0 +1,210 @@
+diff --git a/CardPilot/App/CardPilotApp.swift b/CardPilot/App/CardPilotApp.swift
+index a0d3372..4106576 100644
+--- a/CardPilot/App/CardPilotApp.swift
++++ b/CardPilot/App/CardPilotApp.swift
+@@ -129,7 +129,9 @@ struct CardPilotApp: App {
+     var body: some Scene {
+         WindowGroup {
+             Group {
+-                if let container = store.container {
++                if let probe = ProcessInfo.processInfo.environment["CARDPILOT_AUDIT_PROBE"] {
++                    NativeFormAuditProbeRoot(mode: probe)
++                } else if let container = store.container {
+                     RootView()
+                         .modelContainer(container)
+                         .id(store.sessionID)
+@@ -146,3 +148,116 @@ struct CardPilotApp: App {
+         }
+     }
+ }
++
++
++// Diagnostic-only native controls, without CardPilot domain or editor code.
++private struct NativeFormAuditProbeRoot: View {
++    let mode: String
++    @State private var presented = false
++
++    var body: some View {
++        Button("Open native probe") { presented = true }
++            .accessibilityIdentifier("probe.open")
++            .sheet(isPresented: $presented) {
++                NavigationStack {
++                    NativeFormAuditProbe(mode: mode)
++                        .navigationTitle("原生表单")
++                        .navigationBarTitleDisplayMode(.inline)
++                }
++            }
++    }
++}
++
++private struct NativeFormAuditProbe: View {
++    let mode: String
++    @State private var values = Array(repeating: "125.5", count: 7)
++    @State private var selected = Array(repeating: true, count: 7)
++    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
++
++    var body: some View {
++        ScrollViewReader { proxy in
++            VStack(spacing: 0) {
++                if mode == "form" {
++                    Text("第 2 步，共 2 步：确认促销")
++                        .font(.headline)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .frame(maxWidth: .infinity, alignment: .leading)
++                        .padding(16)
++                }
++                Form {
++                    if mode == "control" {
++                        Text("Intentional clipped native text control")
++                            .font(.largeTitle)
++                            .frame(width: 180, height: 12)
++                            .clipped()
++                            .accessibilityIdentifier("probe.clipped")
++                    } else if mode == "single" {
++                        TextField("Amount", text: $values[0])
++                            .textFieldStyle(.plain)
++                            .accessibilityIdentifier("probe.amount.0")
++                    } else {
++                        ForEach(0..<7, id: \.self) { index in
++                            Toggle("UI Activity \(index)", isOn: $selected[index])
++                                .listRowSeparator(.hidden, edges: .bottom)
++                            Text("CNY · 达标 1,000")
++                                .font(.caption)
++                                .foregroundStyle(.secondary)
++                                .fixedSize(horizontal: false, vertical: true)
++                                .listRowSeparator(.hidden, edges: .bottom)
++                            Text("计入金额（CNY）")
++                                .font(.caption)
++                                .foregroundStyle(.secondary)
++                                .fixedSize(horizontal: false, vertical: true)
++                                .padding(.leading, 24)
++                                .listRowSeparator(.hidden, edges: .bottom)
++                            VStack(alignment: .leading, spacing: 7) {
++                                TextField("0.00", text: $values[index])
++                                    .textFieldStyle(.plain)
++                                    .accessibilityLabel("UI Activity \(index)计入金额（CNY）")
++                                    .accessibilityIdentifier("probe.amount.\(index)")
++                                if index == 0 {
++                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
++                                        Image(systemName: "exclamationmark.triangle")
++                                            .accessibilityHidden(true)
++                                        Text("计入金额应为大于 0 的数字。")
++                                            .fixedSize(horizontal: false, vertical: true)
++                                    }
++                                    .font(.footnote)
++                                    .foregroundStyle(.red)
++                                    .accessibilityElement(children: .combine)
++                                    .accessibilityLabel("错误：计入金额应为大于 0 的数字。")
++                                    .accessibilityIdentifier("probe.error")
++                                }
++                            }
++                            .padding(.leading, 24)
++                            .id("probe.input.\(index)")
++                        }
++                    }
++                }
++                .animation(nil, value: dynamicTypeSize)
++                .accessibilityIdentifier("probe.form")
++                if mode == "form" {
++                    VStack(spacing: 0) {
++                        Divider()
++                        Button("返回修改交易") {}
++                            .font(.footnote.weight(.medium))
++                            .padding(.top, 8)
++                        Button {} label: {
++                            Text("确认并保存").frame(maxWidth: .infinity)
++                        }
++                        .buttonStyle(.borderedProminent)
++                        .controlSize(.large)
++                        .padding(.horizontal, 16)
++                        .padding(.vertical, 10)
++                    }
++                    .background(.bar, ignoresSafeAreaEdges: .bottom)
++                }
++            }
++            .task {
++                guard mode == "form" else { return }
++                await Task.yield()
++                proxy.scrollTo("probe.input.0", anchor: .top)
++            }
++        }
++    }
++}
+diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
+index 96f69da..6fcbce4 100644
+--- a/CardPilotUITests/CoreFlowsUITests.swift
++++ b/CardPilotUITests/CoreFlowsUITests.swift
+@@ -33,6 +33,73 @@ final class CoreFlowsUITests: XCTestCase {
+         app = nil
+     }
+ 
++
++    func testNativeSingleTextFieldClippingProbe() throws {
++        try runNativeFormAuditProbe("single")
++    }
++
++    func testNativeMultiRowFormClippingProbe() throws {
++        try runNativeFormAuditProbe("form")
++    }
++
++    func testNativeClippedTextPositiveControl() throws {
++        try runNativeFormAuditProbe("control")
++    }
++
++    private func runNativeFormAuditProbe(_ mode: String) throws {
++        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
++        app.launchEnvironment["CARDPILOT_UI_SCENARIO"] = "empty"
++        app.launchEnvironment["CARDPILOT_AUDIT_PROBE"] = mode
++        app.launch()
++        let open = app.buttons["probe.open"]
++        XCTAssertTrue(open.waitForExistence(timeout: 10))
++        open.tap()
++        XCTAssertTrue(app.navigationBars["原生表单"].waitForExistence(timeout: 10))
++        let form = app.collectionViews["probe.form"]
++        XCTAssertTrue(form.waitForExistence(timeout: 10))
++        if mode == "control" {
++            XCTAssertTrue(app.staticTexts["probe.clipped"].waitForExistence(timeout: 10))
++        } else {
++            let first = app.textFields["probe.amount.0"]
++            XCTAssertTrue(first.waitForExistence(timeout: 10))
++            XCTAssertEqual(first.value as? String, "125.5")
++            if mode == "form" {
++                let error = app.staticTexts["probe.error"]
++                let visible = NSPredicate { _, _ in
++                    first.exists && error.exists && first.frame.minY >= form.frame.minY
++                        && error.frame.maxY <= form.frame.maxY
++                }
++                expectation(for: visible, evaluatedWith: nil)
++                waitForExpectations(timeout: 10)
++            }
++        }
++        captureScreenshot("native-probe-\(mode)-before")
++        let before = XCTAttachment(string: app.debugDescription)
++        before.name = "native-probe-\(mode)-before-AX"
++        before.lifetime = .keepAlways
++        add(before)
++        continueAfterFailure = true
++        var count = 0
++        try app.performAccessibilityAudit(for: .textClipped) { issue in
++            count += 1
++            let details = "mode=\(mode)\n\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
++            let raw = XCTAttachment(string: details)
++            raw.name = "native-probe-\(mode)-issue"
++            raw.lifetime = .keepAlways
++            self.add(raw)
++            self.captureScreenshot("native-probe-\(mode)-callback")
++            let hierarchy = XCTAttachment(string: self.app.debugDescription)
++            hierarchy.name = "native-probe-\(mode)-callback-AX"
++            hierarchy.lifetime = .keepAlways
++            self.add(hierarchy)
++            return false
++        }
++        if mode == "control" {
++            XCTAssertGreaterThan(count, 0, "Positive control must detect intentional clipping")
++        }
++        captureScreenshot("native-probe-\(mode)-after")
++    }
++
+     func testAccountEditorNumericKeyboardPreservesSavedLimit() {
+         verifyAccountEditorNumericKeyboard(largestText: false)
+     }
