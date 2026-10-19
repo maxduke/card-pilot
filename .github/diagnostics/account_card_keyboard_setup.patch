@@ -5,3 +5,10 @@ index dba4d3b..7515ffc 100644
 @@ -1654 +1654 @@ struct TransactionEditorForm: View {
 -                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .bottom)
 +                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .center)
+diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
+index 6d9a2b3..96f69da 100644
+--- a/CardPilotUITests/CoreFlowsUITests.swift
++++ b/CardPilotUITests/CoreFlowsUITests.swift
+@@ -863,0 +864,2 @@ final class CoreFlowsUITests: XCTestCase {
++        // Native error navigation/audit completed at 212s in run 39188540056.
++        executionTimeAllowance = 240
