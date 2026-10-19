@@ -29,99 +29,7 @@ struct CardsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if banks.isEmpty {
-                    ContentUnavailableView {
-                        Label("还没有信用卡", systemImage: "creditcard.fill")
-                    } description: {
-                        Text("添加一张卡，几步完成银行、账户和账务日设置。")
-                    } actions: {
-                        Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
-                            .buttonStyle(.borderedProminent)
-                    }
-                } else if visibleBanks.isEmpty {
-                    ContentUnavailableView.search(text: query)
-                } else {
-                    List {
-                        ForEach(visibleBanks, id: \.id) { bank in
-                            Section {
-                                let bankAccounts = bankAccounts(for: bank)
-                                if bankAccounts.isEmpty {
-                                    Text("尚未添加信用卡账户")
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(bankAccounts, id: \.id) { account in
-                                        NavigationLink {
-                                            AccountDetailView(account: account)
-                                        } label: {
-                                            AccountRow(
-                                                account: account,
-                                                onEdit: { editingAccount = account; showingAccountEditor = true },
-                                                onDelete: { requestDeleteAccount(account) }
-                                            )
-                                        }
-                                        ForEach(visibleCards(for: account), id: \.id) { card in
-                                            NavigationLink {
-                                                CardDetailView(card: card)
-                                            } label: {
-                                                CardRow(card: card)
-                                            }
-                                            .contextMenu {
-                                                Button {
-                                                    editingCard = card
-                                                    showingCardEditor = true
-                                                } label: {
-                                                    Label("编辑卡片", systemImage: "pencil")
-                                                }
-                                                Button(role: .destructive) {
-                                                    requestDeleteCard(card)
-                                                } label: {
-                                                    Label("删除卡片", systemImage: "trash")
-                                                }
-                                            }
-                                            .accessibilityIdentifier("card.\(card.productName)")
-                                            .padding(.leading, 22)
-                                        }
-                                    }
-                                }
-                            } header: {
-                                HStack {
-                                    BankBadge(bank: bank)
-                                    Text(bank.name)
-                                    if bank.archivedAt != nil {
-                                        Text("已归档")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Button {
-                                        editingBank = bank
-                                        showingBankEditor = true
-                                    } label: {
-                                        Image(systemName: "pencil")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .accessibilityLabel("编辑银行 \(bank.name)")
-                                }
-                                .contextMenu {
-                                    Button {
-                                        editingBank = bank
-                                        showingBankEditor = true
-                                    } label: {
-                                        Label("编辑银行", systemImage: "pencil")
-                                    }
-                                    Button(role: .destructive) {
-                                        requestDeleteBank(bank)
-                                    } label: {
-                                        Label("删除银行", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                }
-            }
+            cardsContent
             .searchable(text: $query, prompt: "搜索银行、卡片或末四位")
             .navigationTitle("卡片")
             .toolbar {
@@ -197,6 +105,102 @@ struct CardsView: View {
                 Button("好", role: .cancel) { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "未知错误")
+            }
+        }
+    }
+
+    private var cardsContent: some View {
+        Group {
+            if banks.isEmpty {
+                ContentUnavailableView {
+                    Label("还没有信用卡", systemImage: "creditcard.fill")
+                } description: {
+                    Text("添加一张卡，几步完成银行、账户和账务日设置。")
+                } actions: {
+                    Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else if visibleBanks.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else {
+                List {
+                    ForEach(visibleBanks, id: \.id) { bank in
+                        Section {
+                            let bankAccounts = bankAccounts(for: bank)
+                            if bankAccounts.isEmpty {
+                                Text("尚未添加信用卡账户")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(bankAccounts, id: \.id) { account in
+                                    NavigationLink {
+                                        AccountDetailView(account: account)
+                                    } label: {
+                                        AccountRow(
+                                            account: account,
+                                            onEdit: { editingAccount = account; showingAccountEditor = true },
+                                            onDelete: { requestDeleteAccount(account) }
+                                        )
+                                    }
+                                    ForEach(visibleCards(for: account), id: \.id) { card in
+                                        NavigationLink {
+                                            CardDetailView(card: card)
+                                        } label: {
+                                            CardRow(card: card)
+                                        }
+                                        .contextMenu {
+                                            Button {
+                                                editingCard = card
+                                                showingCardEditor = true
+                                            } label: {
+                                                Label("编辑卡片", systemImage: "pencil")
+                                            }
+                                            Button(role: .destructive) {
+                                                requestDeleteCard(card)
+                                            } label: {
+                                                Label("删除卡片", systemImage: "trash")
+                                            }
+                                        }
+                                        .accessibilityIdentifier("card.\(card.productName)")
+                                        .padding(.leading, 22)
+                                    }
+                                }
+                            }
+                        } header: {
+                            HStack {
+                                BankBadge(bank: bank)
+                                Text(bank.name)
+                                if bank.archivedAt != nil {
+                                    Text("已归档")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button {
+                                    editingBank = bank
+                                    showingBankEditor = true
+                                } label: {
+                                    Image(systemName: "pencil")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("编辑银行 \(bank.name)")
+                            }
+                            .contextMenu {
+                                Button {
+                                    editingBank = bank
+                                    showingBankEditor = true
+                                } label: {
+                                    Label("编辑银行", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    requestDeleteBank(bank)
+                                } label: {
+                                    Label("删除银行", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
             }
         }
     }

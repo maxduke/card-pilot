@@ -1849,6 +1849,88 @@ struct PromotionDetailView: View {
     }
 
     var body: some View {
+        promotionContent
+        .navigationTitle(displayedPromotion.title)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showingEditOptions = true
+                } label: {
+                    Text("编辑")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("编辑促销")
+                .accessibilityHint("选择要编辑的内容")
+                .accessibilityIdentifier("promotion.edit")
+            }
+            if displayedPromotion.seriesID == nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if nextCopyPeriod == nil {
+                            errorMessage = "无法生成下个月的完整日期。"
+                        } else {
+                            showingCopyConfirmation = true
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .accessibilityLabel("复制到下个月")
+                }
+            }
+        }
+        .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
+            ForEach(PromotionEditorStep.allCases) { item in
+                Button("编辑\(item.editingTitle)") {
+                    promotionEditorStep = item
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
+        .trackedSheet(isPresented: $showingTransactionEditor) {
+            TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
+        }
+        .trackedSheet(item: $promotionEditorStep) { step in
+            PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards, initialStep: step)
+        }
+        .trackedSheet(isPresented: $showingAllocationEditor) {
+            AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
+        }
+        .confirmationDialog("复制到下个月？", isPresented: $showingCopyConfirmation, titleVisibility: .visible) {
+            Button("复制活动", action: copyToNextMonth)
+            Button("取消", role: .cancel) {}
+        } message: {
+            if let period = nextCopyPeriod {
+                Text("将新建 \(CardPilotUI.dateRangeText(start: period.startOn, end: period.endOn)) 的独立活动。进度和已报名记录不会复制。")
+            }
+        }
+        .alert("复制完成", isPresented: $showingCopyCompleted) {
+            Button("好", role: .cancel) {}
+        } message: {
+            if let copiedPeriod {
+                Text("已创建 \(CardPilotUI.dateRangeText(start: copiedPeriod.startOn, end: copiedPeriod.endOn)) 的活动，可返回促销列表查看。")
+            }
+        }
+        .confirmationDialog("确认删除分配？", isPresented: $showingAllocationDeleteConfirmation) {
+            Button("删除分配", role: .destructive) {
+                if let allocationPendingDeletion {
+                    deleteAllocation(allocationPendingDeletion)
+                }
+                allocationPendingDeletion = nil
+            }
+            Button("取消", role: .cancel) {
+                allocationPendingDeletion = nil
+            }
+        } message: {
+            Text("将移除“\(pendingAllocationLabel)”在本期的促销分配。")
+        }
+        .alert("无法完成操作", isPresented: errorPresented) {
+            Button("好", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "未知错误")
+        }
+    }
+
+    private var promotionContent: some View {
         List {
             if seriesPromotions.count > 1 {
                 seriesSection
@@ -2015,84 +2097,6 @@ struct PromotionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-        }
-        .navigationTitle(displayedPromotion.title)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    showingEditOptions = true
-                } label: {
-                    Text("编辑")
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityLabel("编辑促销")
-                .accessibilityHint("选择要编辑的内容")
-                .accessibilityIdentifier("promotion.edit")
-            }
-            if displayedPromotion.seriesID == nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        if nextCopyPeriod == nil {
-                            errorMessage = "无法生成下个月的完整日期。"
-                        } else {
-                            showingCopyConfirmation = true
-                        }
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .accessibilityLabel("复制到下个月")
-                }
-            }
-        }
-        .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
-            ForEach(PromotionEditorStep.allCases) { item in
-                Button("编辑\(item.editingTitle)") {
-                    promotionEditorStep = item
-                }
-            }
-            Button("取消", role: .cancel) {}
-        }
-        .trackedSheet(isPresented: $showingTransactionEditor) {
-            TransactionEditorView(transaction: nil, cards: cards, promotions: allPromotions, transactions: transactions, initialPromotion: displayedPromotion)
-        }
-        .trackedSheet(item: $promotionEditorStep) { step in
-            PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards, initialStep: step)
-        }
-        .trackedSheet(isPresented: $showingAllocationEditor) {
-            AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
-        }
-        .confirmationDialog("复制到下个月？", isPresented: $showingCopyConfirmation, titleVisibility: .visible) {
-            Button("复制活动", action: copyToNextMonth)
-            Button("取消", role: .cancel) {}
-        } message: {
-            if let period = nextCopyPeriod {
-                Text("将新建 \(CardPilotUI.dateRangeText(start: period.startOn, end: period.endOn)) 的独立活动。进度和已报名记录不会复制。")
-            }
-        }
-        .alert("复制完成", isPresented: $showingCopyCompleted) {
-            Button("好", role: .cancel) {}
-        } message: {
-            if let copiedPeriod {
-                Text("已创建 \(CardPilotUI.dateRangeText(start: copiedPeriod.startOn, end: copiedPeriod.endOn)) 的活动，可返回促销列表查看。")
-            }
-        }
-        .confirmationDialog("确认删除分配？", isPresented: $showingAllocationDeleteConfirmation) {
-            Button("删除分配", role: .destructive) {
-                if let allocationPendingDeletion {
-                    deleteAllocation(allocationPendingDeletion)
-                }
-                allocationPendingDeletion = nil
-            }
-            Button("取消", role: .cancel) {
-                allocationPendingDeletion = nil
-            }
-        } message: {
-            Text("将移除“\(pendingAllocationLabel)”在本期的促销分配。")
-        }
-        .alert("无法完成操作", isPresented: errorPresented) {
-            Button("好", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "未知错误")
         }
     }
 
