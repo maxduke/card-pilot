@@ -1,5 +1,5 @@
 diff --git a/CardPilot/App/CardPilotApp.swift b/CardPilot/App/CardPilotApp.swift
-index a0d3372..dcc2100 100644
+index a0d3372..8078885 100644
 --- a/CardPilot/App/CardPilotApp.swift
 +++ b/CardPilot/App/CardPilotApp.swift
 @@ -129,7 +129,9 @@ struct CardPilotApp: App {
@@ -13,7 +13,7 @@ index a0d3372..dcc2100 100644
                      RootView()
                          .modelContainer(container)
                          .id(store.sessionID)
-@@ -146,3 +148,132 @@ struct CardPilotApp: App {
+@@ -146,3 +148,166 @@ struct CardPilotApp: App {
          }
      }
  }
@@ -39,8 +39,8 @@ index a0d3372..dcc2100 100644
 +
 +private struct NativeFormAuditProbe: View {
 +    let mode: String
-+    @State private var values = Array(repeating: "125.5", count: 7)
-+    @State private var selected = Array(repeating: true, count: 7)
++    @State private var values = Array(repeating: "125.5", count: 40)
++    @State private var selected = Array(repeating: true, count: 40)
 +    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 +
 +    var body: some View {
@@ -54,7 +54,41 @@ index a0d3372..dcc2100 100644
 +                        .padding(16)
 +                }
 +                Form {
-+                    if mode == "control" {
++                    if mode.hasPrefix("leaf-") {
++                        ForEach(0..<40, id: \.self) { index in
++                            switch mode {
++                            case "leaf-caption":
++                                Text("计入金额（CNY）")
++                                    .font(.caption)
++                                    .fixedSize(horizontal: false, vertical: true)
++                                    .padding(.leading, 24)
++                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                            case "leaf-toggle":
++                                Toggle("选中", isOn: $selected[index])
++                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                            case "leaf-field":
++                                TextField("0.00", text: $values[index])
++                                    .textFieldStyle(.plain)
++                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                            case "leaf-pair":
++                                Text("125.5")
++                                    .font(.body)
++                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                                Text("123").font(.caption)
++                            case "leaf-section":
++                                Section {
++                                    Text("125.5")
++                                        .font(.body)
++                                        .accessibilityIdentifier("probe.leaf.\(index)")
++                                    Text("123").font(.caption)
++                                }
++                            default:
++                                Text("125.5")
++                                    .font(.body)
++                                    .accessibilityIdentifier("probe.leaf.\(index)")
++                            }
++                        }
++                    } else if mode == "control" {
 +                        Text("Intentional clipped native text control")
 +                            .font(.largeTitle)
 +                            .frame(width: 180, height: 12)
@@ -147,13 +181,37 @@ index a0d3372..dcc2100 100644
 +
 +}
 diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
-index 96f69da..5d3d9cb 100644
+index 96f69da..762898e 100644
 --- a/CardPilotUITests/CoreFlowsUITests.swift
 +++ b/CardPilotUITests/CoreFlowsUITests.swift
-@@ -33,6 +33,93 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -33,6 +33,120 @@ final class CoreFlowsUITests: XCTestCase {
          app = nil
      }
  
++    func testNativeLeafTextSectionProbe() throws {
++        try runNativeFormAuditProbe("leaf-section")
++    }
++
++    func testNativeLeafTextPairProbe() throws {
++        try runNativeFormAuditProbe("leaf-pair")
++    }
++
++    func testNativeLeafTextFieldProbe() throws {
++        try runNativeFormAuditProbe("leaf-field")
++    }
++
++    func testNativeLeafToggleProbe() throws {
++        try runNativeFormAuditProbe("leaf-toggle")
++    }
++
++    func testNativeLeafCaptionProbe() throws {
++        try runNativeFormAuditProbe("leaf-caption")
++    }
++
++    func testNativeLeafShortTextProbe() throws {
++        try runNativeFormAuditProbe("leaf-text")
++    }
++
 +
 +    func testNativeFormTextValuesProbe() throws {
 +        try runNativeFormAuditProbe("form-text-values")
@@ -198,7 +256,10 @@ index 96f69da..5d3d9cb 100644
 +        XCTAssertTrue(app.navigationBars["原生表单"].waitForExistence(timeout: 10))
 +        let form = app.collectionViews["probe.form"]
 +        XCTAssertTrue(form.waitForExistence(timeout: 10))
-+        if mode == "control" {
++        if mode.hasPrefix("leaf-") {
++            let first = app.descendants(matching: .any).matching(identifier: "probe.leaf.0").firstMatch
++            XCTAssertTrue(first.waitForExistence(timeout: 10))
++        } else if mode == "control" {
 +            XCTAssertTrue(app.staticTexts["probe.clipped"].waitForExistence(timeout: 10))
 +        } else {
 +            let first = mode == "form-text-values" ? app.staticTexts["probe.amount.0"] : app.textFields["probe.amount.0"]
