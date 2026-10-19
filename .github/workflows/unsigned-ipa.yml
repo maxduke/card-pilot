@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ios: ["18.5", "26.2"]
+        ios: ["18.6"]
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       PROBE_IOS_VERSION: ${{ matrix.ios }}
