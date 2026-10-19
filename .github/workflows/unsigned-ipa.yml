@@ -1,4 +1,4 @@
-name: Allocation input native row target (diagnostic only)
+name: Stable promotion rows (diagnostic only)
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
           ref: 8921accbe236c9fa3924f9ce700323d2b68a726b
           path: candidate
           persist-credentials: false
-      - name: Apply frozen allocation input visibility repair
+      - name: Apply frozen native row layout repair
         working-directory: candidate
         shell: bash
         run: |

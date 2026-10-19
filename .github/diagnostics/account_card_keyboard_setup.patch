@@ -1,5 +1,5 @@
 diff --git a/CardPilot/Features/Transactions/TransactionsView.swift b/CardPilot/Features/Transactions/TransactionsView.swift
-index 7515ffc..b622675 100644
+index 7515ffc..6e19b12 100644
 --- a/CardPilot/Features/Transactions/TransactionsView.swift
 +++ b/CardPilot/Features/Transactions/TransactionsView.swift
 @@ -1651,4 +1651,3 @@ struct TransactionEditorForm: View {
@@ -10,21 +10,53 @@ index 7515ffc..b622675 100644
 +                // The input starts its own native row, so its existing
 +                // validation anchor also reveals it above the fixed footer.
 +                scrollProxy.scrollTo(InputField.allocation(id), anchor: .top)
-@@ -1820,2 +1819,8 @@ struct TransactionEditorForm: View {
+@@ -1795,10 +1794,3 @@ struct TransactionEditorForm: View {
+-                        VStack(alignment: .leading, spacing: 3) {
+-                            Text(promotion.title)
+-                                .font(.subheadline.weight(.medium))
+-                                .fixedSize(horizontal: false, vertical: true)
+-                            if !dynamicTypeSize.isAccessibilitySize {
+-                                Text(promotionSummary(promotion))
+-                                    .font(.caption)
+-                                    .foregroundStyle(.secondary)
+-                            }
+-                        }
++                        Text(promotion.title)
++                            .font(.subheadline.weight(.medium))
++                            .fixedSize(horizontal: false, vertical: true)
+@@ -1807,6 +1799,11 @@ struct TransactionEditorForm: View {
+-                    .listRowSeparator(dynamicTypeSize.isAccessibilitySize || selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+-                    if dynamicTypeSize.isAccessibilitySize {
+-                        // A long title and its summary can exceed the entire
+-                        // viewport together. Let each native row scroll fully
+-                        // into view without reducing either text's size.
+-                        Text(promotionSummary(promotion))
++                    .listRowSeparator(.hidden, edges: .bottom)
++                    // Keep the native rows stable when Dynamic Type changes.
++                    // A long title and its summary can scroll independently.
++                    Text(promotionSummary(promotion))
++                        .font(.caption)
++                        .foregroundStyle(.secondary)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
++                    if selectedPromotionIDs.contains(promotion.id) {
++                        let warning = qualificationWarning(for: promotion)
++                        Text("计入金额（\(promotion.progressCurrencyCode)）")
+@@ -1816,6 +1813,4 @@ struct TransactionEditorForm: View {
+-                            .listRowSeparator(selectedPromotionIDs.contains(promotion.id) ? .hidden : .visible, edges: .bottom)
+-                    }
+-                    if selectedPromotionIDs.contains(promotion.id) {
+-                        let warning = qualificationWarning(for: promotion)
 -                        // A separate Form row gives native scrolling a target
 -                        // that fits even when the activity title is very tall.
-+                        Text("计入金额（\(promotion.progressCurrencyCode)）")
-+                            .font(.caption)
-+                            .foregroundStyle(.secondary)
-+                            .fixedSize(horizontal: false, vertical: true)
 +                            .padding(.leading, 24)
 +                            .listRowSeparator(.hidden, edges: .bottom)
 +                        // Keep the input at the beginning of its native row.
 +                        // The caption can be taller than the keyboard viewport.
-@@ -1823,4 +1827,0 @@ struct TransactionEditorForm: View {
+@@ -1823,4 +1817,0 @@ struct TransactionEditorForm: View {
 -                            Text("计入金额（\(promotion.progressCurrencyCode)）")
 -                                .font(.caption)
 -                                .foregroundStyle(.secondary)
 -                                .fixedSize(horizontal: false, vertical: true)
-@@ -1837 +1837,0 @@ struct TransactionEditorForm: View {
+@@ -1837 +1827,0 @@ struct TransactionEditorForm: View {
 -                            .id("allocation.input.\(promotion.id)")
