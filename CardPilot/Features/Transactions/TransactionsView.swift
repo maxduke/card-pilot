@@ -1648,10 +1648,9 @@ struct TransactionEditorForm: View {
             case .promotionSearch:
                 scrollProxy.scrollTo(InputField.promotionSearch, anchor: .top)
             case let .allocation(id):
-                // The caption and an inline error can exceed the keyboard's
-                // viewport. Reveal the input itself; keep the row's separate
-                // validation anchor for showing an error after saving.
-                scrollProxy.scrollTo("allocation.input.\(id)", anchor: .center)
+                // The input starts its own native row, so its existing
+                // validation anchor also reveals it above the fixed footer.
+                scrollProxy.scrollTo(InputField.allocation(id), anchor: .top)
             case .amount:
                 break
             }
@@ -1817,13 +1816,15 @@ struct TransactionEditorForm: View {
                     }
                     if selectedPromotionIDs.contains(promotion.id) {
                         let warning = qualificationWarning(for: promotion)
-                        // A separate Form row gives native scrolling a target
-                        // that fits even when the activity title is very tall.
+                        Text("计入金额（\(promotion.progressCurrencyCode)）")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 24)
+                            .listRowSeparator(.hidden, edges: .bottom)
+                        // Keep the input at the beginning of its native row.
+                        // The caption can be taller than the keyboard viewport.
                         VStack(alignment: .leading, spacing: 7) {
-                            Text("计入金额（\(promotion.progressCurrencyCode)）")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
                             TextField(
                                 "0\(amountFormat.decimalSeparator)00",
                                 text: amountBinding(promotion.id)
@@ -1834,7 +1835,6 @@ struct TransactionEditorForm: View {
                             .textFieldStyle(.plain)
                             .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
                             .accessibilityIdentifier("allocation.amount.\(promotion.title)")
-                            .id("allocation.input.\(promotion.id)")
                             if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
                                 InlineErrorView(message: "计入金额应为大于 0 的数字。")
                                     .fixedSize(horizontal: false, vertical: true)
