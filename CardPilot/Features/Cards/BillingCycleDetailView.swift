@@ -239,6 +239,7 @@ private struct BillingCycleDatesEditor: View {
                         fieldError(.repayment, issue: issue)
                     } footer: {
                         Text("关闭调整后恢复规则计算；调整账单日后，未单独调整的还款日会随之重新推算。")
+                            .accessibilityIdentifier("billingDates.explanation")
                     }
                 }
                 .accessibilityIdentifier("billingDates.form")

@@ -2361,8 +2361,27 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThan(normalTitleHeight, 0)
         let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle)
+        // The next section heading can straddle the tab bar even while this
+        // billing row is visible. Include that text in the reading viewport.
+        let followingHeading = app.staticTexts["适用活动"]
+        XCTAssertTrue(followingHeading.waitForExistence(timeout: 10))
+        let bottom = contentBottom
+        let overflow = followingHeading.frame.maxY - bottom
+        if overflow > 0 {
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: app.frame.width * 0.03, dy: bottom - 25))
+            let end = origin.withOffset(CGVector(dx: app.frame.width * 0.03, dy: bottom - 25 - overflow - 24))
+            start.press(forDuration: 0.05, thenDragTo: end,
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        for element in [title, cycle, followingHeading] {
+            XCTAssertFalse(element.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(element.frame))
+            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, app.navigationBars["卡片详情"].frame.maxY)
+            XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
+        }
         captureScreenshot("卡片账期日程")
-        try auditAccessibility(for: [.textClipped])
+        try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
         tap(app.tabBars.buttons["首页"])
         let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
@@ -2640,9 +2659,28 @@ final class CoreFlowsUITests: XCTestCase {
                              from: 15, to: 16, navigationBar: navigationBar, form: form)
         captureScreenshot("\(prefix)还款日期滚轮完整值")
         if !accountEditor {
-            // This editor contains only account identity and date inputs.
-            // Keep the complete text-clipping audit, with no exclusions.
-            try app.performAccessibilityAudit(for: .textClipped)
+            // Include the complete date explanation before auditing text;
+            // it was partly below the viewport after the last wheel edit.
+            let explanation = app.staticTexts["billingDates.explanation"]
+            reveal(explanation, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+            let repayment = app.datePickers["billingDates.repaymentDate"]
+            let title = app.staticTexts["billingDates.repaymentDate.label"]
+            for element in [title, repayment, explanation] {
+                XCTAssertFalse(element.frame.isEmpty)
+                XCTAssertTrue(app.frame.contains(element.frame))
+                XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
+                XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
+            }
+            captureScreenshot("最大字号账期日期及说明完整阅读")
+            try app.performAccessibilityAudit(for: .textClipped) { issue in
+                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+                let attachment = XCTAttachment(string: details)
+                attachment.name = "账期日期文字裁切审计元素"
+                attachment.lifetime = .keepAlways
+                self.add(attachment)
+                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
+                return false
+            }
         }
         navigationBar.buttons["保存"].tap()
         XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
@@ -3220,7 +3258,15 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(amount.isHittable)
     }
 
-    private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {
+    private func captureAccessibilityAuditContext(_ name: String) {
+        captureScreenshot("\(name)画面")
+        let attachment = XCTAttachment(string: app.debugDescription)
+        attachment.name = "\(name)层级"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func auditAccessibility(for types: XCUIAccessibilityAuditType, captureFailureContext: Bool = false) throws {
         let original = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = original }
@@ -3230,6 +3276,7 @@ final class CoreFlowsUITests: XCTestCase {
             attachment.name = "无障碍审计元素"
             attachment.lifetime = .keepAlways
             self.add(attachment)
+            if captureFailureContext { self.captureAccessibilityAuditContext("无障碍审计回调") }
             // iOS 18.5 reports clipping for this native placeholder even when it
             // is fully visible at both sizes (run 38068318067). Keep the report;
             // check actual scaling, screenshots and search interaction separately.
