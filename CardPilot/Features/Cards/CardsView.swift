@@ -814,12 +814,13 @@ private struct CardOnboardingView: View {
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                BillingDayPicker(title: "账单日", value: $statementDay)
+                BillingDayPicker(title: "账单日", value: $statementDay, identifier: "onboarding.rule.statementDay")
                 Picker("还款规则", selection: $repaymentKind) {
                     Text("固定日").tag(RepaymentRuleKind.fixedDay)
                     Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
                 }
-                BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue, isDayOfMonth: repaymentKind == .fixedDay)
+                BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue,
+                                 isDayOfMonth: repaymentKind == .fixedDay, identifier: "onboarding.rule.repaymentDay")
                 .onChange(of: repaymentKind) { _, kind in
                     if kind == .fixedDay { repaymentValue = min(31, repaymentValue) }
                 }
@@ -1376,7 +1377,7 @@ struct AccountEditorView: View {
                             Text("已关闭").tag(CreditCardAccountStatus.closed)
                         }
                         if status == .closed {
-                            DatePicker("关闭日期", selection: $closedDate, displayedComponents: .date)
+                            BillingDatePicker(title: "关闭日期", selection: $closedDate, identifier: "account.editor.closedDate")
                                 .id(Field.closedDate)
                             fieldError(.closedDate, billingIssue: billingIssue)
                         }
@@ -1391,13 +1392,13 @@ struct AccountEditorView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
-                        BillingDayPicker(title: "账单日", value: $statementDay)
-                            .accessibilityIdentifier("account.editor.rule.statementDay")
+                        BillingDayPicker(title: "账单日", value: $statementDay, identifier: "account.editor.rule.statementDay")
                         Picker("还款规则", selection: $repaymentKind) {
                             Text("固定日").tag(RepaymentRuleKind.fixedDay)
                             Text("账单日后 N 天").tag(RepaymentRuleKind.daysAfterStatement)
                         }
-                        BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue, isDayOfMonth: repaymentKind == .fixedDay)
+                        BillingDayPicker(title: repaymentKind == .fixedDay ? "还款日" : "账单日后", value: $repaymentValue,
+                                         isDayOfMonth: repaymentKind == .fixedDay, identifier: "account.editor.rule.repaymentDay")
                         .onChange(of: repaymentKind) { _, kind in
                             if kind == .fixedDay { repaymentValue = min(31, repaymentValue) }
                         }
@@ -1408,9 +1409,9 @@ struct AccountEditorView: View {
                             MonthKeyPicker(
                                 title: "新规则生效账期",
                                 selection: $effectiveCycleKeyText,
-                                offsets: 1...60
+                                offsets: 1...60,
+                                identifier: "account.editor.rule.effectiveCycle"
                             )
-                            .accessibilityIdentifier("account.editor.rule.effectiveCycle")
                             .id(Field.effectiveCycle)
                             fieldError(.effectiveCycle, billingIssue: billingIssue)
                             Text("修改规则或生效账期后保存：所选未来账期已有版本时修正该版本，否则新增版本。不会改写当前与历史账期，后续已排定版本仍然保留。")
@@ -1424,24 +1425,24 @@ struct AccountEditorView: View {
                             MonthKeyPicker(
                                 title: "账期",
                                 selection: $overrideCycleKeyText,
-                                offsets: -60...24
+                                offsets: -60...24,
+                                identifier: "account.editor.override.cycle"
                             )
-                            .accessibilityIdentifier("account.editor.override.cycle")
                             .id(Field.overrideCycle)
                             fieldError(.overrideCycle, billingIssue: billingIssue)
                             Toggle("覆盖账单日", isOn: $hasStatementOverride)
                                 .accessibilityIdentifier("account.editor.override.statement.enabled")
                             if hasStatementOverride {
-                                DatePicker("实际账单日", selection: $statementOverrideDate, displayedComponents: .date)
-                                    .accessibilityIdentifier("account.editor.override.statementDate")
+                                BillingDatePicker(title: "实际账单日", selection: $statementOverrideDate,
+                                                  identifier: "account.editor.override.statementDate")
                                     .id(Field.statementOverride)
                                 fieldError(.statementOverride, billingIssue: billingIssue)
                             }
                             Toggle("覆盖还款日", isOn: $hasRepaymentOverride)
                                 .accessibilityIdentifier("account.editor.override.repayment.enabled")
                             if hasRepaymentOverride {
-                                DatePicker("实际还款日", selection: $repaymentOverrideDate, displayedComponents: .date)
-                                    .accessibilityIdentifier("account.editor.override.repaymentDate")
+                                BillingDatePicker(title: "实际还款日", selection: $repaymentOverrideDate,
+                                                  identifier: "account.editor.override.repaymentDate")
                                     .id(Field.repaymentOverride)
                                 fieldError(.repaymentOverride, billingIssue: billingIssue)
                             }
@@ -1788,10 +1789,12 @@ struct AccountEditorView: View {
 
 private struct MonthKeyPicker: View {
     @Environment(\.currentDay) private var currentDay
-    // ponytail: a focused rolling window keeps the menu usable; switch to an unbounded month sheet if long-range edits become common.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    // Keep the existing rolling window and include any selected month outside it.
     let title: String
     @Binding var selection: String
     let offsets: ClosedRange<Int>
+    let identifier: String
 
     private var monthKeys: [Int] {
         let today = currentDay.today
@@ -1801,13 +1804,73 @@ private struct MonthKeyPicker: View {
     }
 
     var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            NavigationLink {
+                BillingMonthSelection(title: title, selection: $selection, monthKeys: monthKeys)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                    Text(CardPilotUI.monthKeyText(Int(selection)))
+                        .foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityLabel(title)
+            .accessibilityValue(CardPilotUI.monthKeyText(Int(selection)))
+            .accessibilityIdentifier(identifier)
+        } else {
+            picker.pickerStyle(.menu)
+        }
+    }
+
+    private var picker: some View {
         Picker(title, selection: $selection) {
             ForEach(monthKeys, id: \.self) { monthKey in
-                Text(CardPilotUI.monthKeyText(monthKey)).tag(String(monthKey))
+                Text(CardPilotUI.monthKeyText(monthKey))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .tag(String(monthKey))
             }
         }
-        .pickerStyle(.menu)
+        .accessibilityIdentifier(identifier)
         .accessibilityValue(CardPilotUI.monthKeyText(Int(selection)))
+    }
+}
+
+private struct BillingMonthSelection: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    @Binding var selection: String
+    let monthKeys: [Int]
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            List(monthKeys, id: \.self) { monthKey in
+                Button {
+                    selection = String(monthKey)
+                    dismiss()
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(CardPilotUI.monthKeyText(monthKey))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        if selection == String(monthKey) {
+                            Image(systemName: "checkmark")
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityAddTraits(selection == String(monthKey) ? .isSelected : [])
+                .id(String(monthKey))
+            }
+            .task {
+                await Task.yield()
+                scrollProxy.scrollTo(selection, anchor: .center)
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

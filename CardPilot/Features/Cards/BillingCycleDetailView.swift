@@ -227,16 +227,14 @@ private struct BillingCycleDatesEditor: View {
                             .accessibilityIdentifier("billingDates.statement.enabled")
                             .id(Field.statement)
                         if overrideStatement {
-                            DatePicker("账单日", selection: $statement, displayedComponents: .date)
-                                .accessibilityIdentifier("billingDates.statementDate")
+                            BillingDatePicker(title: "账单日", selection: $statement, identifier: "billingDates.statementDate")
                         }
                         fieldError(.statement, issue: issue)
                         Toggle("调整还款日", isOn: $overrideRepayment)
                             .accessibilityIdentifier("billingDates.repayment.enabled")
                             .id(Field.repayment)
                         if overrideRepayment {
-                            DatePicker("还款日", selection: $repayment, displayedComponents: .date)
-                                .accessibilityIdentifier("billingDates.repaymentDate")
+                            BillingDatePicker(title: "还款日", selection: $repayment, identifier: "billingDates.repaymentDate")
                         }
                         fieldError(.repayment, issue: issue)
                     } footer: {
