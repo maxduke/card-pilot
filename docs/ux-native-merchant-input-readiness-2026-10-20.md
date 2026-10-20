@@ -21,3 +21,7 @@
 [PR #49](https://github.com/maxduke/card-pilot/pull/49) 的 HEAD `107acb0` 在 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/39317404272) 完整通过 280／280，两张受影响原图已实际验收；合并为 `a5ce697`。随后的 [main CI](https://github.com/maxduke/card-pilot/actions/runs/39330388648) 在另一项既有用例 `testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards` 达到默认 180 秒上限。日志显示 180 秒后仍继续操作还款状态筛选，读取数量及已还账期，185.53 秒进入清理；此前没有断言失败。原始查询截图和层级保留正确的历史账期，不能把超时诊断中的可能挂起视为已证实的应用挂起。
 
 该用例含历史查询、实际还款、跨重启和另一张共享卡片的读回，仅为它设置已有的 240 秒最大额度。操作、断言、通用助手、应用代码、完整 280 项范围、默认 180 秒及全局最大 240 秒均保留。再次要求补修 PR 与合并主线完整绿色，不能以超时后重启继续的运行充当通过。此修改只涉及执行额度，不新增画面或交互，沿用已有原图验收；最终原生结果必须包含全部 61 项 UI 且没有超时或测试进程重启。
+
+## 完成交付
+
+[PR #50](https://github.com/maxduke/card-pilot/pull/50) 的 HEAD `a228e62` 在 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/39342143802) 完整通过 280／280；合并提交 `967b36f` 的 [main CI](https://github.com/maxduke/card-pilot/actions/runs/39350400548) 同样完整通过，零失败、零跳过，无超时或测试进程重启。账期用例分别用时 49.963 秒和 48.879 秒。适用评审及未解决发现检查完成，原工作区在主线绿色后干净快进至该提交。

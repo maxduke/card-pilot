@@ -1248,7 +1248,23 @@ struct AccountEditorView: View {
         case bank = "account.bank"
         case limit = "account.limit"
         case currency = "account.currency"
+        case closedDate = "account.closedDate"
         case notes = "account.notes"
+        case effectiveCycle = "account.effectiveCycle"
+        case overrideCycle = "account.overrideCycle"
+        case statementOverride = "account.statementOverride"
+        case repaymentOverride = "account.repaymentOverride"
+    }
+
+    private struct BillingChanges {
+        let rule: BillingRuleInput?
+        let trackingStart: Int
+        let cycles: [Int: BillingCycleOverride]
+    }
+
+    private struct BillingInputIssue: Error {
+        let field: Field
+        let message: String
     }
 
     @Environment(\.currentDay) private var currentDay
@@ -1337,6 +1353,7 @@ struct AccountEditorView: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { scrollProxy in
+                let billingIssue = currentBillingIssue
                 Form {
                     Section("账户") {
                         Picker("银行", selection: $bankID) {
@@ -1360,6 +1377,8 @@ struct AccountEditorView: View {
                         }
                         if status == .closed {
                             DatePicker("关闭日期", selection: $closedDate, displayedComponents: .date)
+                                .id(Field.closedDate)
+                            fieldError(.closedDate, billingIssue: billingIssue)
                         }
                         TextField("备注（可选）", text: $notes, axis: .vertical)
                             .accessibilityIdentifier("account.notes")
@@ -1392,6 +1411,8 @@ struct AccountEditorView: View {
                                 offsets: 1...60
                             )
                             .accessibilityIdentifier("account.editor.rule.effectiveCycle")
+                            .id(Field.effectiveCycle)
+                            fieldError(.effectiveCycle, billingIssue: billingIssue)
                             Text("修改规则或生效账期后保存：所选未来账期已有版本时修正该版本，否则新增版本。不会改写当前与历史账期，后续已排定版本仍然保留。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -1405,13 +1426,24 @@ struct AccountEditorView: View {
                                 selection: $overrideCycleKeyText,
                                 offsets: -60...24
                             )
+                            .accessibilityIdentifier("account.editor.override.cycle")
+                            .id(Field.overrideCycle)
+                            fieldError(.overrideCycle, billingIssue: billingIssue)
                             Toggle("覆盖账单日", isOn: $hasStatementOverride)
+                                .accessibilityIdentifier("account.editor.override.statement.enabled")
                             if hasStatementOverride {
                                 DatePicker("实际账单日", selection: $statementOverrideDate, displayedComponents: .date)
+                                    .accessibilityIdentifier("account.editor.override.statementDate")
+                                    .id(Field.statementOverride)
+                                fieldError(.statementOverride, billingIssue: billingIssue)
                             }
                             Toggle("覆盖还款日", isOn: $hasRepaymentOverride)
+                                .accessibilityIdentifier("account.editor.override.repayment.enabled")
                             if hasRepaymentOverride {
                                 DatePicker("实际还款日", selection: $repaymentOverrideDate, displayedComponents: .date)
+                                    .accessibilityIdentifier("account.editor.override.repaymentDate")
+                                    .id(Field.repaymentOverride)
+                                fieldError(.repaymentOverride, billingIssue: billingIssue)
                             }
                             Text("单期覆盖只影响所选账期；还款日必须晚于账单日。")
                                 .font(.caption)
@@ -1469,36 +1501,53 @@ struct AccountEditorView: View {
         case .currency:
             let normalized = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             return isValidCurrencyCode(normalized) ? nil : "额度币种应为有效的 ISO 4217 代码。"
-        case .notes:
+        case .closedDate, .notes, .effectiveCycle, .overrideCycle, .statementOverride, .repaymentOverride:
             return nil
         }
     }
 
     @ViewBuilder
-    private func fieldError(_ field: Field) -> some View {
-        if showingValidationErrors, let message = validationMessage(for: field) {
+    private func fieldError(_ field: Field, billingIssue: BillingInputIssue? = nil) -> some View {
+        if showingValidationErrors,
+           let message = validationMessage(for: field) ?? (billingIssue?.field == field ? billingIssue?.message : nil) {
             InlineErrorView(message: message)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("\(field.rawValue).error")
         }
     }
 
-    private func save(using scrollProxy: ScrollViewProxy) {
-        focusedField = nil
-        errorMessage = nil
-        showingValidationErrors = true
-        if let field = Field.allCases.first(where: { validationMessage(for: $0) != nil }) {
-            Task { @MainActor in
-                await Task.yield()
-                guard validationMessage(for: field) != nil else { return }
-                scrollProxy.scrollTo(field, anchor: .top)
-            }
-            return
+    private var currentBillingIssue: BillingInputIssue? {
+        guard showingValidationErrors else { return nil }
+        do {
+            _ = try proposedBillingChanges()
+            return nil
+        } catch let issue as BillingInputIssue {
+            return issue
+        } catch {
+            // Configuration and persistence failures retain the overall save message.
+            return nil
         }
-        guard let bank = selectableAccountBanks(banks, currentBankID: account?.bank.id)
-            .first(where: { $0.id == bankID }) else { return }
-        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let limit = limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : CardPilotUI.decimal(limitText)
+    }
+
+    private func dateIssue(for cycleKey: Int) -> BillingInputIssue {
+        let month = CardPilotUI.monthKeyText(cycleKey)
+        guard Int(overrideCycleKeyText) == cycleKey else {
+            return BillingInputIssue(field: .effectiveCycle,
+                message: "\(month)账期的还款日不晚于账单日。请调整该账期日期，或修改规则。")
+        }
+        let field: Field = hasRepaymentOverride ? .repaymentOverride : hasStatementOverride ? .statementOverride : .overrideCycle
+        return BillingInputIssue(field: field, message: "\(month)账期的还款日必须晚于账单日。")
+    }
+
+    private func scrollToError(_ field: Field, using scrollProxy: ScrollViewProxy) {
+        Task { @MainActor in
+            await Task.yield()
+            guard validationMessage(for: field) != nil || currentBillingIssue?.field == field else { return }
+            scrollProxy.scrollTo(field, anchor: .top)
+        }
+    }
+
+    private func proposedBillingChanges() throws -> BillingChanges {
         let today = currentDay.today
         let timeZone = CardPilotUI.homeTimeZone
         let requestedRule = BillingRuleInput(
@@ -1510,7 +1559,6 @@ struct AccountEditorView: View {
         let trackingStart: Int
         var cycleUpdates: [Int: BillingCycleOverride] = [:]
         do {
-            try bank.validate()
             try requestedRule.validate()
             if let account {
                 try account.validateBillingConfiguration()
@@ -1521,8 +1569,7 @@ struct AccountEditorView: View {
                 )
                 trackingStart = account.trackingStartCycleKey
                 guard let cycleKey = Int(overrideCycleKeyText), LocalDate.isValidMonthKey(cycleKey) else {
-                    errorMessage = "请选择有效的覆盖账期。"
-                    return
+                    throw BillingInputIssue(field: .overrideCycle, message: "请选择有效的覆盖账期。")
                 }
                 let existing = account.billingCycles.first { $0.cycleKey == cycleKey }
                 let statement = hasStatementOverride ? CardPilotUI.localDate(from: statementOverrideDate) : nil
@@ -1562,27 +1609,60 @@ struct AccountEditorView: View {
                     )
                 }
                 proposedOverrides.merge(cycleUpdates) { _, changed in changed }
-                try BillingCalculator.validateOverridesAffectedByRuleChange(
-                    ruleChange, rules: proposedRules, overrides: proposedOverrides, today: today, timeZone: timeZone
-                )
+                if let cycleKey = try BillingCalculator.firstInvalidOverrideCycleKey(
+                    affectedBy: ruleChange, rules: proposedRules, overrides: proposedOverrides, today: today, timeZone: timeZone
+                ) {
+                    throw dateIssue(for: cycleKey)
+                }
             }
             // Validate values before mutating models or their inverse relationship arrays.
-            for (cycleKey, dates) in cycleUpdates {
-                _ = try BillingCalculator.calculate(
-                    accountStatus: status, closedOn: closedOn, cycleKey: cycleKey,
-                    rules: proposedRules, override: dates, today: today, timeZone: timeZone
-                )
+            for (cycleKey, dates) in cycleUpdates.sorted(by: { $0.key < $1.key }) {
+                do {
+                    _ = try BillingCalculator.calculate(
+                        accountStatus: status, closedOn: closedOn, cycleKey: cycleKey,
+                        rules: proposedRules, override: dates, today: today, timeZone: timeZone
+                    )
+                } catch BillingCalculationError.invalidOverride {
+                    throw dateIssue(for: cycleKey)
+                } catch BillingCalculationError.accountClosed {
+                    let field: Field = Int(overrideCycleKeyText) == cycleKey && hasStatementOverride ? .statementOverride : .closedDate
+                    throw BillingInputIssue(field: field,
+                        message: "\(CardPilotUI.monthKeyText(cycleKey))账期的账单日晚于账户关闭日期，请调整日期。")
+                }
             }
         } catch ModelValidationError.effectiveCycleMustBeFuture {
-            errorMessage = "规则变更生效账期必须晚于当前账期。"
+            throw BillingInputIssue(field: .effectiveCycle, message: "规则变更生效账期必须晚于当前账期。")
+        }
+        return BillingChanges(rule: ruleChange, trackingStart: trackingStart, cycles: cycleUpdates)
+    }
+
+    private func save(using scrollProxy: ScrollViewProxy) {
+        focusedField = nil
+        errorMessage = nil
+        showingValidationErrors = true
+        if let field = Field.allCases.first(where: { validationMessage(for: $0) != nil }) {
+            scrollToError(field, using: scrollProxy)
             return
-        } catch BillingCalculationError.invalidOverride {
-            errorMessage = "还款日必须晚于账单日，请检查所选账期的日期。"
+        }
+        guard let bank = selectableAccountBanks(banks, currentBankID: account?.bank.id)
+            .first(where: { $0.id == bankID }) else { return }
+        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let limit = limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : CardPilotUI.decimal(limitText)
+        let changes: BillingChanges
+        do {
+            try bank.validate()
+            changes = try proposedBillingChanges()
+        } catch let issue as BillingInputIssue {
+            scrollToError(issue.field, using: scrollProxy)
             return
         } catch {
             errorMessage = "账户未保存：\(error.localizedDescription)"
             return
         }
+        let ruleChange = changes.rule
+        let trackingStart = changes.trackingStart
+        let cycleUpdates = changes.cycles
+        let closedOn = status == .closed ? CardPilotUI.localDate(from: closedDate) : nil
 
         let previousOwnerBank = account?.bank
         let target = account ?? CreditCardAccount(bank: bank, trackingStartCycleKey: trackingStart)
