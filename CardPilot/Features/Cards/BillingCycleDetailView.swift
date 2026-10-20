@@ -243,7 +243,7 @@ private struct BillingCycleDatesEditor: View {
                     }
                 }
                 .accessibilityIdentifier("billingDates.form")
-                .contentMargins(.bottom, 16, for: .scrollContent)
+                .safeAreaPadding(.bottom, 16)
                 .navigationTitle("调整本期日期")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }

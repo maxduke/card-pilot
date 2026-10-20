@@ -2361,37 +2361,30 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThan(normalTitleHeight, 0)
         let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle)
-        // The next section heading can straddle the tab bar even while this
-        // billing row is visible. Include that text in the reading viewport.
-        let followingHeading = app.staticTexts["适用活动"]
-        XCTAssertTrue(followingHeading.waitForExistence(timeout: 10))
-        let bottom = contentBottom
-        let overflow = followingHeading.frame.maxY - bottom
-        if overflow > 0 {
-            let origin = app.coordinate(withNormalizedOffset: .zero)
-            let start = origin.withOffset(CGVector(dx: app.frame.width * 0.03, dy: bottom - 25))
-            let end = origin.withOffset(CGVector(dx: app.frame.width * 0.03, dy: bottom - 25 - overflow - 24))
-            start.press(forDuration: 0.05, thenDragTo: end,
-                        withVelocity: .slow, thenHoldForDuration: 0.2)
-        }
-        for element in [title, cycle, followingHeading] {
+        for element in [title, cycle] {
             XCTAssertFalse(element.frame.isEmpty)
             XCTAssertTrue(app.frame.contains(element.frame))
             XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, app.navigationBars["卡片详情"].frame.maxY)
             XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
         }
         captureScreenshot("卡片账期日程")
-        // The audit also inspects the following promotion row. Its heading
-        // alone being visible does not make the row's text readable.
+        // Audit after the combined header has scrolled entirely out of the
+        // navigation bar, while the schedule and following promotion fit.
         let followingPromotion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "UI Spend、")).firstMatch
-        reveal(followingPromotion, fullyVisible: true, navigationBar: app.navigationBars["卡片详情"])
-        for element in [cycle, followingHeading, followingPromotion] {
+        let bank = app.staticTexts["银行、UI Test Bank"]
+        reveal(bank, fullyVisible: true, navigationBar: app.navigationBars["卡片详情"])
+        for element in [cycle, followingPromotion, bank] {
             XCTAssertFalse(element.frame.isEmpty)
             XCTAssertTrue(app.frame.contains(element.frame))
             XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, app.navigationBars["卡片详情"].frame.maxY)
             XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
         }
-        captureScreenshot("普通字号账期及活动完整阅读")
+        let header = app.staticTexts.matching(identifier: "card.detail.title")
+            .matching(NSPredicate(format: "label CONTAINS %@", "UI Test Bank图标")).firstMatch
+        if header.exists {
+            XCTAssertLessThanOrEqual(header.frame.maxY, app.navigationBars["卡片详情"].frame.maxY)
+        }
+        captureScreenshot("普通字号账期审计阅读区域")
         try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
         tap(app.tabBars.buttons["首页"])
@@ -2921,7 +2914,27 @@ final class CoreFlowsUITests: XCTestCase {
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
-        replaceText("123", in: lastFour)
+        // Keyboard disappearance can precede the end of the Form's motion.
+        // Establish a stable field before focusing the next keyboard type.
+        reveal(lastFour, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        var previousFrame: CGRect?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard lastFour.exists, !keyboard.exists else { return false }
+            let frame = lastFour.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty && frame == previousFrame
+                && frame.minY >= max(navigationBar.frame.maxY, form.frame.minY)
+                && frame.maxY < min(self.contentBottom, form.frame.maxY)
+                && lastFour.isHittable
+        }, object: lastFour)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        lastFour.tap()
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        let previousLastFour = lastFour.value as? String ?? ""
+        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "123")
+        XCTAssertEqual(lastFour.value as? String, "123")
+        captureScreenshot("\(prefix)卡片末四位纠错准备")
         XCTAssertFalse(lastFourError.exists)
         dismissal.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
