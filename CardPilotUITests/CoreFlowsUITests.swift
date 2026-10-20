@@ -33,6 +33,95 @@ final class CoreFlowsUITests: XCTestCase {
         app = nil
     }
 
+    func testAccountDateOverridesShowLocalErrorAndPreserveRepaymentOnSave() {
+        verifyBillingDateFeedback(accountEditor: true, largestText: false)
+    }
+
+    func testAccountDateOverrideFeedbackAtLargestTextSizeAndDiscard() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyBillingDateFeedback(accountEditor: true, largestText: true)
+    }
+
+    func testBillingCycleDateFeedbackCorrectsAndPreservesSavedRepayment() {
+        verifyBillingDateFeedback(accountEditor: false, largestText: false)
+    }
+
+    func testBillingCycleDateFeedbackAtLargestTextSizeAndDiscard() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyBillingDateFeedback(accountEditor: false, largestText: true)
+    }
+
+    func testFutureRuleConflictNamesAffectedCycleAndCorrectsWithinAccountEditor() {
+        launch("futureRules")
+        openCard("UI Foreign")
+        tap(app.buttons["card.account"])
+        let firstMonth = futureRuleMonth(offset: 1)
+        let conflictMonth = futureRuleMonth(offset: 2)
+        let laterMonth = futureRuleMonth(offset: 3)
+        let first = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", firstMonth
+        )).firstMatch
+        tap(first)
+        tap(app.buttons["account.rule.edit"])
+        tap(app.buttons["account.editor.rule.statementDay"], scrollTowardTopWhenMissing: true)
+        // The native menu initially shows days1–17. Drag within its visible
+        // options; the generic Form-gutter drag would dismiss this popup.
+        let menuStart = app.buttons["每月 16 日"]
+        let menuEnd = app.buttons["每月 5 日"]
+        XCTAssertTrue(menuStart.waitForExistence(timeout: 10))
+        XCTAssertTrue(menuStart.isHittable)
+        XCTAssertTrue(menuEnd.isHittable)
+        let start = menuStart.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = menuEnd.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end,
+                    withVelocity: .slow, thenHoldForDuration: 0.2)
+        let selectedDay = app.buttons["每月 20 日"]
+        XCTAssertTrue(selectedDay.waitForExistence(timeout: 10))
+        XCTAssertTrue(selectedDay.isHittable)
+        selectedDay.tap()
+        let navigationBar = app.navigationBars["编辑信用卡账户"]
+        let form = app.collectionViews["account.editor.form"]
+        let ruleError = app.staticTexts["account.effectiveCycle.error"]
+        XCTAssertFalse(ruleError.exists)
+        navigationBar.buttons["保存"].tap()
+        assertEditorFieldErrorVisible(app.buttons["account.editor.rule.effectiveCycle"], error: ruleError,
+                                      navigationBar: navigationBar, form: form)
+        XCTAssertEqual(ruleError.label, "错误：\(conflictMonth)账期的还款日不晚于账单日。请调整该账期日期，或修改规则。")
+        captureScreenshot("规则冲突指出受影响账期")
+
+        tap(app.buttons["account.editor.override.cycle"])
+        tap(app.buttons[conflictMonth])
+        let repayment = app.descendants(matching: .any).matching(identifier: "account.editor.override.repaymentDate").firstMatch
+        let dateError = app.staticTexts["account.repaymentOverride.error"]
+        XCTAssertTrue(dateError.waitForExistence(timeout: 10))
+        XCTAssertFalse(ruleError.exists)
+        navigationBar.buttons["保存"].tap()
+        assertEditorFieldErrorVisible(repayment, error: dateError, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(dateError.label.contains(conflictMonth))
+        captureScreenshot("规则冲突定位所选还款日期")
+        setBillingDateToggle("account.editor.override.repayment.enabled", enabled: false)
+        XCTAssertTrue(dateError.waitForNonExistence(timeout: 5))
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Foreign")
+        tap(app.buttons["card.account"])
+        let later = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", laterMonth
+        )).firstMatch
+        reveal(later, fullyVisible: true)
+        XCTAssertTrue(later.label.contains("每月 10 日出账"))
+        reveal(first, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        XCTAssertTrue(first.label.contains("每月 20 日出账"))
+        captureScreenshot("规则纠正后版本读回")
+        openBillingFeedbackCycle(offset: 2, scrollTowardTopWhenMissing: true)
+        assertBillingFeedbackDate("账单日", monthOffset: 2, day: 20)
+        assertBillingFeedbackDate("还款日", monthOffset: 2, day: 25)
+        captureScreenshot("规则纠正后账期日期读回")
+    }
+
     func testAccountEditorFieldFeedbackAndCorrectedSave() {
         verifyAccountEditorFieldFeedback(largestText: false)
     }
@@ -2399,6 +2488,98 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(selection.value as? String, "1")
         XCTAssertTrue(app.buttons["saveTransaction"].isEnabled)
         captureScreenshot("\(prefix)促销搜索清空后保留计入金额")
+    }
+
+    private func verifyBillingDateFeedback(accountEditor: Bool, largestText: Bool) {
+        let prefix = (largestText ? "最大字号" : "") + (accountEditor ? "账户编辑" : "账期编辑")
+        launch("billingDateFeedback")
+        openBillingFeedbackAccount()
+        if accountEditor {
+            tap(app.navigationBars["账户详情"].buttons["编辑"])
+        } else {
+            openBillingFeedbackCycle(offset: 0)
+            tap(app.buttons["调整本期日期"])
+        }
+        let navigationBar = app.navigationBars[accountEditor ? "编辑信用卡账户" : "调整本期日期"]
+        let form = app.collectionViews[accountEditor ? "account.editor.form" : "billingDates.form"]
+        let statementToggle = accountEditor ? "account.editor.override.statement.enabled" : "billingDates.statement.enabled"
+        let repaymentToggle = accountEditor ? "account.editor.override.repayment.enabled" : "billingDates.repayment.enabled"
+        let repayment = app.descendants(matching: .any).matching(identifier:
+            accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate").firstMatch
+        let error = app.staticTexts[accountEditor ? "account.repaymentOverride.error" : "billingDates.repayment.error"]
+        setBillingDateToggle(statementToggle, enabled: false)
+        XCTAssertFalse(error.exists)
+        if accountEditor {
+            reveal(app.textFields["信用额度（可选）"], scrollTowardTopWhenMissing: true, fullyVisible: true)
+        } else {
+            let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.2))
+            let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.8))
+            start.press(forDuration: 0.05, thenDragTo: end,
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        navigationBar.buttons["保存"].tap()
+        XCTAssertFalse(app.alerts["无法保存"].exists)
+        assertEditorFieldErrorVisible(repayment, error: error, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(error.label.contains("还款日必须晚于账单日"))
+        captureScreenshot("\(prefix)还款日期首错定位")
+        setBillingDateToggle(repaymentToggle, enabled: false)
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(repayment.exists)
+        captureScreenshot("\(prefix)恢复规则后错误消失")
+        if largestText {
+            navigationBar.buttons["取消"].tap()
+            tap(app.buttons["放弃修改"])
+        } else {
+            navigationBar.buttons["保存"].tap()
+        }
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        openBillingFeedbackCycle(offset: 0)
+        assertBillingFeedbackDate("账单日", monthOffset: 0, day: largestText ? 5 : 20)
+        assertBillingFeedbackDate("还款日", monthOffset: largestText ? 0 : 1, day: 15)
+        let status = app.staticTexts["状态、已还款"]
+        reveal(status, fullyVisible: true)
+        captureScreenshot("\(prefix)日期及已还款状态读回")
+        let undo = app.buttons["撤销已还款"]
+        reveal(undo, fullyVisible: true)
+        XCTAssertTrue(undo.exists)
+        XCTAssertFalse(app.buttons["标记已还"].exists)
+    }
+
+    private func setBillingDateToggle(_ identifier: String, enabled: Bool) {
+        let toggle = app.switches[identifier]
+        reveal(toggle, fullyVisible: true)
+        XCTAssertEqual(toggle.value as? String, enabled ? "0" : "1")
+        toggle.switches.firstMatch.tap()
+        XCTAssertEqual(toggle.value as? String, enabled ? "1" : "0")
+    }
+
+    private func openBillingFeedbackAccount() {
+        tap(app.tabBars.buttons["卡片"])
+        let account = app.buttons.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "尾号 1234", "尾号 5678"
+        )).firstMatch
+        tap(account)
+        XCTAssertTrue(app.navigationBars["账户详情"].waitForExistence(timeout: 10))
+    }
+
+    private func openBillingFeedbackCycle(offset: Int, scrollTowardTopWhenMissing: Bool = false) {
+        tap(app.buttons["account.cycleHistory"], scrollTowardTopWhenMissing: scrollTowardTopWhenMissing)
+        let month = accountHistoryMonth(offset: offset)
+        tap(app.buttons["account.history.cycle.\(month.key)"])
+        XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
+    }
+
+    private func assertBillingFeedbackDate(_ field: String, monthOffset: Int, day: Int) {
+        let key = accountHistoryMonth(offset: monthOffset).key
+        let text = String(format: "%04d年%02d月%02d日", key / 100, key % 100, day)
+        // Native LabeledContent exposes its label and value as one AX text.
+        let date = app.staticTexts["\(field)、\(text)"]
+        reveal(date, fullyVisible: true)
+        XCTAssertTrue(date.exists)
     }
 
     private func verifyAccountEditorFieldFeedback(largestText: Bool) {

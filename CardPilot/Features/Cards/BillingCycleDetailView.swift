@@ -182,6 +182,16 @@ struct BillingCycleDetailView: View {
 }
 
 private struct BillingCycleDatesEditor: View {
+    private enum Field: String, Hashable {
+        case statement = "billingDates.statement"
+        case repayment = "billingDates.repayment"
+    }
+
+    private struct InputIssue {
+        let field: Field
+        let message: String
+    }
+
     let account: CreditCardAccount
     let cycle: BillingCycle
     @Environment(\.modelContext) private var context
@@ -191,6 +201,7 @@ private struct BillingCycleDatesEditor: View {
     @State private var statement: Date
     @State private var repayment: Date
     @State private var errorMessage: String?
+    @State private var showingValidationErrors = false
 
     init(account: CreditCardAccount, cycle: BillingCycle) {
         self.account = account
@@ -204,38 +215,96 @@ private struct BillingCycleDatesEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text(CardPilotUI.accountName(account))
-                    Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
+            ScrollViewReader { scrollProxy in
+                let issue = currentInputIssue
+                Form {
+                    Section {
+                        Text(CardPilotUI.accountName(account))
+                        Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
+                    }
+                    Section {
+                        Toggle("调整账单日", isOn: $overrideStatement)
+                            .accessibilityIdentifier("billingDates.statement.enabled")
+                            .id(Field.statement)
+                        if overrideStatement {
+                            DatePicker("账单日", selection: $statement, displayedComponents: .date)
+                                .accessibilityIdentifier("billingDates.statementDate")
+                        }
+                        fieldError(.statement, issue: issue)
+                        Toggle("调整还款日", isOn: $overrideRepayment)
+                            .accessibilityIdentifier("billingDates.repayment.enabled")
+                            .id(Field.repayment)
+                        if overrideRepayment {
+                            DatePicker("还款日", selection: $repayment, displayedComponents: .date)
+                                .accessibilityIdentifier("billingDates.repaymentDate")
+                        }
+                        fieldError(.repayment, issue: issue)
+                    } footer: {
+                        Text("关闭调整后恢复规则计算；调整账单日后，未单独调整的还款日会随之重新推算。")
+                    }
                 }
-                Section {
-                    Toggle("调整账单日", isOn: $overrideStatement)
-                    if overrideStatement { DatePicker("账单日", selection: $statement, displayedComponents: .date) }
-                    Toggle("调整还款日", isOn: $overrideRepayment)
-                    if overrideRepayment { DatePicker("还款日", selection: $repayment, displayedComponents: .date) }
-                } footer: {
-                    Text("关闭调整后恢复规则计算；调整账单日后，未单独调整的还款日会随之重新推算。")
+                .accessibilityIdentifier("billingDates.form")
+                .navigationTitle("调整本期日期")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save(using: scrollProxy) } }
                 }
+                .alert("无法保存", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                    Button("好", role: .cancel) {}
+                } message: { Text(errorMessage ?? "请重试。") }
             }
-            .navigationTitle("调整本期日期")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
-            }
-            .alert("无法保存", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button("好", role: .cancel) {}
-            } message: { Text(errorMessage ?? "请重试。") }
         }
         .protectEdits(snapshot: editorSnapshot(overrideStatement, overrideRepayment, statement, repayment))
     }
 
-    private func save() {
+    private var currentInputIssue: InputIssue? {
+        guard showingValidationErrors else { return nil }
+        do {
+            _ = try BillingCalculator.calculate(
+                accountStatus: account.status,
+                closedOn: try account.closedOn.map { try LocalDate(rawValue: $0) },
+                cycleKey: cycle.cycleKey, rules: account.billingRuleVersions.map(\.billingRuleInput),
+                override: BillingCycleOverride(
+                    statementDate: overrideStatement ? CardPilotUI.localDate(from: statement) : nil,
+                    repaymentDate: overrideRepayment ? CardPilotUI.localDate(from: repayment) : nil,
+                    repaidAt: cycle.repaidAt
+                ), today: CardPilotUI.localDate(from: .now), timeZone: CardPilotUI.homeTimeZone
+            )
+        } catch BillingCalculationError.invalidOverride {
+            return InputIssue(field: overrideRepayment ? .repayment : .statement, message: "还款日必须晚于账单日。")
+        } catch BillingCalculationError.accountClosed {
+            return InputIssue(field: .statement, message: "账单日不能晚于账户关闭日期。")
+        } catch {
+            // Unknown configuration failures are still handled by the real save action.
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private func fieldError(_ field: Field, issue: InputIssue?) -> some View {
+        if let issue, issue.field == field {
+            InlineErrorView(message: issue.message)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(field.rawValue).error")
+        }
+    }
+
+    private func save(using scrollProxy: ScrollViewProxy) {
+        errorMessage = nil
+        showingValidationErrors = true
+        if let issue = currentInputIssue {
+            Task { @MainActor in
+                await Task.yield()
+                guard currentInputIssue?.field == issue.field else { return }
+                scrollProxy.scrollTo(issue.field, anchor: .top)
+            }
+            return
+        }
         do {
             try BillingCycleActions.save(.dates(statement: overrideStatement ? CardPilotUI.rawDate(statement) : nil,
                                                repayment: overrideRepayment ? CardPilotUI.rawDate(repayment) : nil),
                 account: account, cycleKey: cycle.cycleKey, context: context, today: CardPilotUI.localDate(from: .now))
             dismiss()
-        } catch { errorMessage = "请确认还款日晚于账单日，且账单日不晚于账户关闭日期。账户规则也必须有效。" }
+        } catch { errorMessage = "日期未保存，请重试。如仍失败，请检查账户规则及设备可用空间。" }
     }
 }

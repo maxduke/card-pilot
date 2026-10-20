@@ -116,16 +116,35 @@ enum BillingCalculator {
         today: LocalDate,
         timeZone: TimeZone = .current
     ) throws {
-        guard let changedRule else { return }
-        for (cycleKey, dates) in overrides {
+        if try firstInvalidOverrideCycleKey(affectedBy: changedRule, rules: rules,
+                                           overrides: overrides, today: today, timeZone: timeZone) != nil {
+            throw BillingCalculationError.invalidOverride
+        }
+    }
+
+    /// Identify the earliest affected bill so an editor can explain where to correct its dates.
+    static func firstInvalidOverrideCycleKey(
+        affectedBy changedRule: BillingRuleInput?,
+        rules: [BillingRuleInput],
+        overrides: [Int: BillingCycleOverride],
+        today: LocalDate,
+        timeZone: TimeZone = .current
+    ) throws -> Int? {
+        guard let changedRule else { return nil }
+        for cycleKey in overrides.keys.sorted() {
             guard applicableRule(from: rules, forCycleKey: cycleKey)?.effectiveCycleKey == changedRule.effectiveCycleKey else {
                 continue
             }
             // Closure controls visibility, not date consistency. Preserved post-closure
             // records must not prevent a status-only close or require changing historical facts.
-            _ = try calculate(accountStatus: .active, closedOn: nil, cycleKey: cycleKey,
-                              rules: rules, override: dates, today: today, timeZone: timeZone)
+            do {
+                _ = try calculate(accountStatus: .active, closedOn: nil, cycleKey: cycleKey,
+                                  rules: rules, override: overrides[cycleKey], today: today, timeZone: timeZone)
+            } catch BillingCalculationError.invalidOverride {
+                return cycleKey
+            }
         }
+        return nil
     }
 
     static func calculate(

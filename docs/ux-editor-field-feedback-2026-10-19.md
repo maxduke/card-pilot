@@ -25,4 +25,4 @@
 
 本地 Swift 语法检查和对原有保存／回滚路径的检查不代替 Apple SDK 编译与原生交互。真实 VoiceOver、外接键盘与设备验收继续属于 O21。
 
-最终 HEAD `a8fc847` 的 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/39290341499) 完整通过 280／280，零失败、零跳过，二十四张原图已逐张验收；[PR #48](https://github.com/maxduke/card-pilot/pull/48) 已合并为 `94d1397`。合并后的主线运行出现既有商户输入失焦，随后达到 90 分钟作业上限，尚未通过完整主线门禁。测试准备与作业预算补修见[原生商户输入验证记录](ux-native-merchant-input-readiness-2026-10-20.md)；应用字段反馈代码保持已验收版本。
+最终 HEAD `a8fc847` 的 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/39290341499) 完整通过 280／280，零失败、零跳过，二十四张原图已逐张验收；[PR #48](https://github.com/maxduke/card-pilot/pull/48) 已合并为 `94d1397`。首次合并后的主线出现既有商户输入失焦及 90 分钟作业取消，随后完成 [PR #49](https://github.com/maxduke/card-pilot/pull/49)、[PR #50](https://github.com/maxduke/card-pilot/pull/50) 的测试准备与执行额度补修，最终提交 `967b36f` 的完整主线 280／280 已通过。真实失败及交付证据见[原生验证记录](ux-native-merchant-input-readiness-2026-10-20.md)；应用字段反馈代码保持已验收版本。

@@ -8,6 +8,51 @@ final class BillingRuleOverrideTests: XCTestCase {
     private let october = BillingRuleInput(effectiveCycleKey: 202610, statementDay: 20,
                                           repaymentKind: .fixedDay, repaymentValue: 20)
 
+    func testConflictIdentifiesEarliestAffectedCycleRegardlessOfInsertionOrder() throws {
+        let today = try LocalDate(rawValue: 20260930)
+        let octoberDates = BillingCycleOverride(statementDate: nil,
+            repaymentDate: try LocalDate(rawValue: 20261015), repaidAt: nil)
+        let novemberDates = BillingCycleOverride(statementDate: nil,
+            repaymentDate: try LocalDate(rawValue: 20261115), repaidAt: .now)
+        for entries in [[(202611, novemberDates), (202610, octoberDates)],
+                        [(202610, octoberDates), (202611, novemberDates)]] {
+            XCTAssertEqual(try BillingCalculator.firstInvalidOverrideCycleKey(
+                affectedBy: october, rules: [baseline, october], overrides: Dictionary(uniqueKeysWithValues: entries),
+                today: today, timeZone: utc), 202610)
+        }
+    }
+
+    func testConflictIdentificationAcceptsCorrectionAndStopsAtNextVersion() throws {
+        let today = try LocalDate(rawValue: 20260930)
+        let november = BillingRuleInput(effectiveCycleKey: 202611, statementDay: 5,
+                                       repaymentKind: .fixedDay, repaymentValue: 20)
+        let overrides = [
+            202610: BillingCycleOverride(statementDate: nil,
+                repaymentDate: try LocalDate(rawValue: 20261025), repaidAt: nil),
+            202611: BillingCycleOverride(statementDate: nil,
+                repaymentDate: try LocalDate(rawValue: 20261115), repaidAt: .now)
+        ]
+        XCTAssertEqual(try BillingCalculator.firstInvalidOverrideCycleKey(
+            affectedBy: october, rules: [baseline, october], overrides: overrides,
+            today: today, timeZone: utc), 202611)
+        XCTAssertNil(try BillingCalculator.firstInvalidOverrideCycleKey(
+            affectedBy: october, rules: [baseline, october, november], overrides: overrides,
+            today: today, timeZone: utc))
+        XCTAssertNil(try BillingCalculator.firstInvalidOverrideCycleKey(
+            affectedBy: nil, rules: [baseline, october], overrides: overrides,
+            today: today, timeZone: utc))
+    }
+
+    func testConflictIdentificationPreservesConfigurationErrors() throws {
+        let dates = BillingCycleOverride(statementDate: nil,
+            repaymentDate: try LocalDate(rawValue: 20261025), repaidAt: nil)
+        XCTAssertThrowsError(try BillingCalculator.firstInvalidOverrideCycleKey(
+            affectedBy: october, rules: [october], overrides: [202610: dates],
+            today: LocalDate(rawValue: 20260930), timeZone: utc)) { error in
+            XCTAssertEqual(error as? BillingCalculationError, .missingBaselineRule)
+        }
+    }
+
     func testRuleChangeRejectsAnUnchangedOverrideThatWouldHideTheBill() throws {
         let today = try LocalDate(rawValue: 20260930)
         let dates = BillingCycleOverride(statementDate: nil, repaymentDate: try LocalDate(rawValue: 20261015), repaidAt: nil)
