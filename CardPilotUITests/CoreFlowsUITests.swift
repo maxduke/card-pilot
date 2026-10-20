@@ -717,11 +717,13 @@ final class CoreFlowsUITests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         let dismissal = app.buttons["transaction.keyboard.dismiss"]
         let navigationBar = app.navigationBars["添加交易"]
+        // Reveal inputs within the same actual scroll viewport checked below;
+        // the fixed footer starts above its buttons' accessibility frames.
         let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 10))
-        reveal(amount, navigationBar: navigationBar, contentHeader: progress)
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         amount.tap()
         amount.typeText("125.50")
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
@@ -756,8 +758,8 @@ final class CoreFlowsUITests: XCTestCase {
         // where the lazy amount row is below the viewport. Establish the known
         // card row before searching forward for the amount again.
         reveal(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true,
-               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
-        reveal(amount, navigationBar: navigationBar, contentHeader: progress)
+               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(amount.value as? String, "125.50")
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
@@ -773,7 +775,7 @@ final class CoreFlowsUITests: XCTestCase {
         let back = app.buttons["返回修改交易"]
         XCTAssertTrue(back.waitForExistence(timeout: 10))
         let allocation = app.textFields["allocation.amount.UI Spend"]
-        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         allocation.tap()
         let oldAllocationValue = allocation.value as? String ?? ""
         allocation.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldAllocationValue.count) + "100.25")
@@ -799,7 +801,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(allocation.value as? String, "100.25")
         XCTAssertTrue(navigationBar.exists)
 
-        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(allocation.value as? String, "100.25")
         XCTAssertTrue(back.isHittable)
         XCTAssertTrue(save.isHittable)
@@ -815,8 +817,8 @@ final class CoreFlowsUITests: XCTestCase {
         // its next layout returns to the beginning. Establish that known anchor
         // before searching forward for the later, lazy allocation row.
         reveal(app.staticTexts["本笔交易"], scrollTowardTopWhenMissing: true,
-               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress)
-        reveal(allocation, navigationBar: navigationBar, contentHeader: progress)
+               fullyVisible: true, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
+        reveal(allocation, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(allocation.value as? String, "100.25")
         XCTAssertFalse(allocation.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(allocation.frame))
