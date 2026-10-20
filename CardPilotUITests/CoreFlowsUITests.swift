@@ -64,7 +64,21 @@ final class CoreFlowsUITests: XCTestCase {
         tap(first)
         tap(app.buttons["account.rule.edit"])
         tap(app.buttons["account.editor.rule.statementDay"], scrollTowardTopWhenMissing: true)
-        tap(app.buttons["每月 20 日"])
+        // The native menu initially shows days1–17. Drag within its visible
+        // options; the generic Form-gutter drag would dismiss this popup.
+        let menuStart = app.buttons["每月 16 日"]
+        let menuEnd = app.buttons["每月 5 日"]
+        XCTAssertTrue(menuStart.waitForExistence(timeout: 10))
+        XCTAssertTrue(menuStart.isHittable)
+        XCTAssertTrue(menuEnd.isHittable)
+        let start = menuStart.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = menuEnd.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end,
+                    withVelocity: .slow, thenHoldForDuration: 0.2)
+        let selectedDay = app.buttons["每月 20 日"]
+        XCTAssertTrue(selectedDay.waitForExistence(timeout: 10))
+        XCTAssertTrue(selectedDay.isHittable)
+        selectedDay.tap()
         let navigationBar = app.navigationBars["编辑信用卡账户"]
         let form = app.collectionViews["account.editor.form"]
         let ruleError = app.staticTexts["account.effectiveCycle.error"]
@@ -103,8 +117,8 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(first.label.contains("每月 20 日出账"))
         captureScreenshot("规则纠正后版本读回")
         openBillingFeedbackCycle(offset: 2, scrollTowardTopWhenMissing: true)
-        assertBillingFeedbackDate(monthOffset: 2, day: 20)
-        assertBillingFeedbackDate(monthOffset: 2, day: 25)
+        assertBillingFeedbackDate("账单日", monthOffset: 2, day: 20)
+        assertBillingFeedbackDate("还款日", monthOffset: 2, day: 25)
         captureScreenshot("规则纠正后账期日期读回")
     }
 
@@ -2524,9 +2538,9 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         openBillingFeedbackAccount()
         openBillingFeedbackCycle(offset: 0)
-        assertBillingFeedbackDate(monthOffset: 0, day: largestText ? 5 : 20)
-        assertBillingFeedbackDate(monthOffset: largestText ? 0 : 1, day: 15)
-        let status = app.staticTexts["已还款"]
+        assertBillingFeedbackDate("账单日", monthOffset: 0, day: largestText ? 5 : 20)
+        assertBillingFeedbackDate("还款日", monthOffset: largestText ? 0 : 1, day: 15)
+        let status = app.staticTexts["状态、已还款"]
         reveal(status, fullyVisible: true)
         captureScreenshot("\(prefix)日期及已还款状态读回")
         let undo = app.buttons["撤销已还款"]
@@ -2559,10 +2573,11 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
 
-    private func assertBillingFeedbackDate(monthOffset: Int, day: Int) {
+    private func assertBillingFeedbackDate(_ field: String, monthOffset: Int, day: Int) {
         let key = accountHistoryMonth(offset: monthOffset).key
         let text = String(format: "%04d年%02d月%02d日", key / 100, key % 100, day)
-        let date = app.staticTexts[text]
+        // Native LabeledContent exposes its label and value as one AX text.
+        let date = app.staticTexts["\(field)、\(text)"]
         reveal(date, fullyVisible: true)
         XCTAssertTrue(date.exists)
     }
