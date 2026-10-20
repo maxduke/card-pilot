@@ -1858,6 +1858,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountCycleHistoryPersistsOlderUnpaidCycleRepaymentAcrossSharedCards() {
+        // Native shared-card repayment/readback reached teardown at 185.53s
+        // in run 39330388648; keep the full flow within the existing maximum.
+        executionTimeAllowance = 240
         launch("accountHistory")
         openCard("UI Shared")
         tap(app.buttons["card.account"])
