@@ -4,6 +4,8 @@
 
 基于已验证主线 `48e9bbe` 处理上一批截图确认的日期／月份裁切。辅助字号下，账务日期改用独立标题和系统滚轮；账期使用完整换行的入口与定位已选月份的列表；账单日选项使用原生导航列表。普通字号保持原有日期与菜单操作。沿用日期绑定、月份范围、值校验和持久化路径，新增四项真实交互及重启读回流程，完整交付要求 222＋70。范围和验收证据见[第二十二批记录](docs/ux-billing-date-accessibility-2026-10-20.md)。
 
+本批提交、CI、合并及主线验证完成后按用户要求暂停，并输出进展与后续；不自动开始下一批。
+
 ## 已完成 UX 第二十一批（2026-10-20）
 
 [PR #51](https://github.com/maxduke/card-pilot/pull/51) 完成账户与账期日期的就近错误、首错定位、实时纠正，以及明确指出冲突账期；[补修 #52](https://github.com/maxduke/card-pilot/pull/52) 让既有最大字号数字键盘用例按实际滚动区域定位。最终 HEAD `e3cc98d` 的 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/39388315594) 和合并提交 `48e9bbe` 的 [main CI](https://github.com/maxduke/card-pilot/actions/runs/39399629277) 均完整通过 222＋66，零失败、零跳过、无超时、重试或测试进程重启。十八张功能与三张补修原图已实际检查；原工作区干净快进至验证主线。本批完成后曾按用户要求暂停，现已恢复。实现与真实失败见[第二十一批记录](docs/ux-billing-date-feedback-2026-10-20.md)。

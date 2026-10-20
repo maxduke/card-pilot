@@ -2381,6 +2381,17 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
         }
         captureScreenshot("卡片账期日程")
+        // The audit also inspects the following promotion row. Its heading
+        // alone being visible does not make the row's text readable.
+        let followingPromotion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "UI Spend、")).firstMatch
+        reveal(followingPromotion, fullyVisible: true, navigationBar: app.navigationBars["卡片详情"])
+        for element in [cycle, followingHeading, followingPromotion] {
+            XCTAssertFalse(element.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(element.frame))
+            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, app.navigationBars["卡片详情"].frame.maxY)
+            XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
+        }
+        captureScreenshot("普通字号账期及活动完整阅读")
         try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
         tap(app.tabBars.buttons["首页"])
@@ -2804,7 +2815,11 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openBillingFeedbackCycle(offset: Int, scrollTowardTopWhenMissing: Bool = false) {
-        tap(app.buttons["account.cycleHistory"], scrollTowardTopWhenMissing: scrollTowardTopWhenMissing)
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, scrollTowardTopWhenMissing: scrollTowardTopWhenMissing, fullyVisible: true,
+               navigationBar: app.navigationBars["账户详情"])
+        history.tap()
+        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
         let month = accountHistoryMonth(offset: offset)
         tap(app.buttons["account.history.cycle.\(month.key)"])
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
