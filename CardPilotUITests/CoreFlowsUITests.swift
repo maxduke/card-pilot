@@ -2672,6 +2672,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(wheels.count, 3)
         let day = wheels.element(boundBy: 2)
         XCTAssertEqual(day.value as? String, "\(originalDay)日")
+        // Native wheels report a taller AX frame than their DatePicker host.
+        // Reveal that actual input too, using the unchanged viewport guards.
+        reveal(day, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         day.adjust(toPickerWheelValue: "\(changedDay)日")
         XCTAssertEqual(day.value as? String, "\(changedDay)日")
         for element in [title, picker] + wheels.allElementsBoundByIndex {
