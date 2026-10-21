@@ -2420,19 +2420,30 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(schedule)
         captureScreenshot("首页账期日程")
         try auditAccessibility(for: [.hitRegion, .textClipped])
+    }
 
+    func testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets() throws {
+        executionTimeAllowance = 240
+        launch("core")
+        openCard("UI Primary")
+        let title = app.staticTexts.matching(identifier: "card.detail.title")
+            .matching(NSPredicate(format: "label == %@", "UI Primary")).element
+        let normalTitleHeight = title.frame.height
+        XCTAssertGreaterThan(normalTitleHeight, 0)
         relaunchAtLargestTextSize()
         openCard("UI Primary")
         XCTAssertGreaterThan(title.frame.height, normalTitleHeight * 1.3)
+        let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle, fullyVisible: true)
         captureScreenshot("最大字号卡片账期日程")
-        try auditAccessibility(for: [.textClipped])
+        try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
         tap(app.tabBars.buttons["首页"])
         let promotion = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.promotion.")).firstMatch
         reveal(promotion, fullyVisible: true)
         captureScreenshot("最大字号首页活动摘要")
-        try auditAccessibility(for: [.textClipped])
+        try auditAccessibility(for: [.textClipped], captureFailureContext: true)
+        let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
         reveal(schedule, fullyVisible: true)
         assertTouchTarget(schedule)
         XCTAssertTrue(schedule.label.contains("UI Test Bank"))

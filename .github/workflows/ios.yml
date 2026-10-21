@@ -25,6 +25,7 @@ jobs:
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
