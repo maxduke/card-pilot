@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [control, title_only, wheel_only, title_frame, title_padding, no_fixed]
+        variant: [caption, text]
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -36,8 +36,8 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeDateClippingIsolation \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeScheduleClippingIsolation \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
