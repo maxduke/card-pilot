@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [control, single, reduced, bare]
+        variant: [control, title_only, wheel_only, title_frame, title_padding, no_fixed]
     runs-on: macos-15
     timeout-minutes: 20
     env:
