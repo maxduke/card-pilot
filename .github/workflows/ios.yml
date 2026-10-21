@@ -1,30 +1,76 @@
-name: iOS
+name: Native audit diagnosis
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [diagnose/pr53-native-audit]
 
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  diagnostic:
+    name: Native audit diagnosis (${{ matrix.variant }})
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [control, fresh-schedule, intrinsic, vertical]
     runs-on: macos-15
-    timeout-minutes: 120
+    timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
-      - name: Build and test
+      - name: Apply isolated layout probe
+        env:
+          AUDIT_VARIANT: ${{ matrix.variant }}
+        run: |
+          python3 - <<'PROBE'
+          import os
+          from pathlib import Path
+          variant = os.environ['AUDIT_VARIANT']
+          if variant in ('control', 'fresh-schedule'):
+              raise SystemExit(0)
+          path = Path('CardPilot/Features/Cards/CardDetailsView.swift')
+          source = path.read_text()
+          start = source.index('struct BillingCycleRow: View {')
+          end = source.index('private struct StatusPill: View {', start)
+          row = source[start:end]
+          anchor = '        .padding(.vertical, 4)'
+          assert row.count(anchor) == 1
+          row = row.replace(anchor, anchor + '\n        .fixedSize(horizontal: false, vertical: true)', 1)
+          if variant == 'vertical':
+              row = row.replace('dynamicTypeSize.isAccessibilitySize', 'true')
+          path.write_text(source[:start] + row + source[end:])
+          path = Path('CardPilot/Features/Cards/BillingCycleDetailView.swift')
+          source = path.read_text()
+          anchor = '                            .accessibilityIdentifier("billingDates.explanation")'
+          assert source.count(anchor) == 1
+          source = source.replace(anchor, anchor + '\n                            .fixedSize(horizontal: false, vertical: true)', 1)
+          path.write_text(source)
+          if variant == 'vertical':
+              path = Path('CardPilot/Features/Shared/Formatting.swift')
+              source = path.read_text()
+              anchor = '                    .datePickerStyle(.wheel)'
+              assert source.count(anchor) == 1
+              source = source.replace(anchor, anchor + '\n                    .frame(height: 291)', 1)
+              path.write_text(source)
+          PROBE
+      - name: Build and diagnose two flows
+        env:
+          AUDIT_VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
           xcodebuild -version
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          audit_cases=(-only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets)
+          if [ "$AUDIT_VARIANT" != fresh-schedule ]; then
+            audit_cases+=(-only-testing:CardPilotUITests/CoreFlowsUITests/testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment)
+          fi
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
+            "${audit_cases[@]}" \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
@@ -42,7 +88,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ios-test-results
+          name: native-audit-${{ matrix.variant }}
           path: |
             TestResults.xcresult
             summary.json
