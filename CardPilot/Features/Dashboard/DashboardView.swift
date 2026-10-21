@@ -728,12 +728,11 @@ private struct BillingItemRow: View {
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("查看 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
             }
             .font(.caption)
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
+            .accessibilityLabel("查看 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
             .accessibilityIdentifier("\(showsBank ? "dashboard.action.billingCycle" : "dashboard.billingCycle").\(item.id)")
         }
         .padding(.vertical, 10)
