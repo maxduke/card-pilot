@@ -81,7 +81,7 @@ index b2019d9..f93b453 100644
 +    }
 +
 diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
-index 2e751c3..5a0eba6 100644
+index 2e751c3..b92bebd 100644
 --- a/CardPilotUITests/CoreFlowsUITests.swift
 +++ b/CardPilotUITests/CoreFlowsUITests.swift
 @@ -36,0 +37,2 @@ final class CoreFlowsUITests: XCTestCase {
@@ -90,7 +90,12 @@ index 2e751c3..5a0eba6 100644
 @@ -41,0 +44,2 @@ final class CoreFlowsUITests: XCTestCase {
 +        // The complete navigation flow reached 175s in run 39537321815.
 +        executionTimeAllowance = 240
-@@ -2659,6 +2663,6 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2146 +2150,3 @@ final class CoreFlowsUITests: XCTestCase {
+-        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
++        let month = app.buttons["account.history.month"]
++        reveal(month, scrollTowardTopWhenMissing: true, fullyVisible: true)
++        month.tap()
+@@ -2659,6 +2665,6 @@ final class CoreFlowsUITests: XCTestCase {
 -        adjustBillingDateDay(accountEditor ? "account.editor.override.statementDate" : "billingDates.statementDate",
 -                             from: 5, to: 6, navigationBar: navigationBar, form: form)
 -        captureScreenshot("\(prefix)账单日期滚轮完整值")
@@ -103,7 +108,12 @@ index 2e751c3..5a0eba6 100644
 +        try adjustBillingDateDay(accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate",
 +                                 from: 15, to: 16, navigationBar: navigationBar, form: form,
 +                                 screenshot: "\(prefix)还款日期滚轮完整值", auditText: !accountEditor)
-@@ -2670,3 +2674,4 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2666,2 +2672,2 @@ final class CoreFlowsUITests: XCTestCase {
+-            // Include the complete date explanation before auditing text;
+-            // it was partly below the viewport after the last wheel edit.
++            // Read the complete date summary and explanation after returning
++            // from the two audited native date-selection pages.
+@@ -2670,3 +2676,4 @@ final class CoreFlowsUITests: XCTestCase {
 -            let repayment = app.datePickers["billingDates.repaymentDate"]
 -            let title = app.staticTexts["billingDates.repaymentDate.label"]
 -            for element in [title, repayment, explanation] {
@@ -111,7 +121,7 @@ index 2e751c3..5a0eba6 100644
 +            XCTAssertEqual(repayment.label, "还款日")
 +            XCTAssertTrue((repayment.value as? String ?? "").hasSuffix("16日"))
 +            for element in [repayment, explanation] {
-@@ -2679,9 +2683,0 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2679,9 +2685,0 @@ final class CoreFlowsUITests: XCTestCase {
 -            try app.performAccessibilityAudit(for: .textClipped) { issue in
 -                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
 -                let attachment = XCTAttachment(string: details)
@@ -121,7 +131,7 @@ index 2e751c3..5a0eba6 100644
 -                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
 -                return false
 -            }
-@@ -2708,5 +2704,14 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2708,5 +2706,14 @@ final class CoreFlowsUITests: XCTestCase {
 -                                     navigationBar: XCUIElement, form: XCUIElement) {
 -        let picker = app.datePickers[identifier]
 -        let title = app.staticTexts["\(identifier).label"]
@@ -141,19 +151,19 @@ index 2e751c3..5a0eba6 100644
 +        let selectionForm = app.collectionViews["\(identifier).selection"]
 +        let picker = app.datePickers["\(identifier).wheel"]
 +        reveal(picker, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
-@@ -2719 +2724 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2719 +2726 @@ final class CoreFlowsUITests: XCTestCase {
 -        reveal(day, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
 +        reveal(day, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
-@@ -2722 +2727,2 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2722 +2729,2 @@ final class CoreFlowsUITests: XCTestCase {
 -        for element in [title, picker] + wheels.allElementsBoundByIndex {
 +        XCTAssertTrue(selectionNavigation.staticTexts[title].exists)
 +        for element in [picker] + wheels.allElementsBoundByIndex {
-@@ -2725,2 +2731,2 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2725,2 +2733,2 @@ final class CoreFlowsUITests: XCTestCase {
 -            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
 -            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
 +            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, selectionNavigation.frame.maxY)
 +            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, selectionForm.frame.maxY))
-@@ -2731,0 +2738,17 @@ final class CoreFlowsUITests: XCTestCase {
+@@ -2731,0 +2740,17 @@ final class CoreFlowsUITests: XCTestCase {
 +        captureScreenshot(screenshot)
 +        if auditText {
 +            try app.performAccessibilityAudit(for: .textClipped) { issue in
@@ -171,3 +181,30 @@ index 2e751c3..5a0eba6 100644
 +        XCTAssertTrue(navigationBar.exists)
 +        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
 +        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", changedDay)))
+@@ -2920 +2945 @@ final class CoreFlowsUITests: XCTestCase {
+-        var previousFrame: CGRect?
++        var previousFrame = lastFour.frame
+@@ -2922 +2947,2 @@ final class CoreFlowsUITests: XCTestCase {
+-            guard lastFour.exists, !keyboard.exists else { return false }
++            // Read only this field while polling. Repeated full-viewport AX
++            // queries can consume the five-second wait before it returns.
+@@ -2925,4 +2951,5 @@ final class CoreFlowsUITests: XCTestCase {
+-            return !frame.isEmpty && frame == previousFrame
+-                && frame.minY >= max(navigationBar.frame.maxY, form.frame.minY)
+-                && frame.maxY < min(self.contentBottom, form.frame.maxY)
+-                && lastFour.isHittable
++            return !frame.isEmpty
++                && abs(frame.minX - previousFrame.minX) <= 0.001
++                && abs(frame.minY - previousFrame.minY) <= 0.001
++                && abs(frame.width - previousFrame.width) <= 0.001
++                && abs(frame.height - previousFrame.height) <= 0.001
+@@ -2930,0 +2958,5 @@ final class CoreFlowsUITests: XCTestCase {
++        let fieldFrame = lastFour.frame
++        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
++        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
++        XCTAssertFalse(keyboard.exists)
++        XCTAssertTrue(lastFour.isHittable)
+@@ -3019 +3051,2 @@ final class CoreFlowsUITests: XCTestCase {
+-        XCTAssertGreaterThanOrEqual(errorFrame.minY, fieldFrame.maxY)
++        // AX can round the same shared edge differently by a subpixel.
++        XCTAssertGreaterThanOrEqual(errorFrame.minY + 0.001, fieldFrame.maxY)
