@@ -722,8 +722,7 @@ private struct BillingItemRow: View {
             } label: {
                 HStack {
                     Text("查看账期")
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer()
                     Image(systemName: "chevron.right")
                         .accessibilityHidden(true)
                 }
@@ -733,6 +732,7 @@ private struct BillingItemRow: View {
             .font(.caption)
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
+            .accessibilityElement(children: .combine)
             .accessibilityLabel("查看 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
             .accessibilityIdentifier("\(showsBank ? "dashboard.action.billingCycle" : "dashboard.billingCycle").\(item.id)")
         }
