@@ -1,7 +1,7 @@
-import os
+import os,re
 from pathlib import Path
 variant = os.environ['AUDIT_VARIANT']
-assert variant in ('caption', 'text')
+assert variant in ('label_text', 'sections')
 
 path = Path('CardPilot/Features/Shared/Formatting.swift')
 source = path.read_text()
@@ -17,18 +17,27 @@ source = source.replace(anchor, anchor + '\n                                .pad
 start = source.index('struct BillingCycleRow: View {')
 end = source.index('private struct StatusPill: View {', start)
 row = source[start:end]
-lines = row.splitlines(keepends=True)
-row = ''.join(line + ('                    .padding(.vertical, 4)\n' if line.strip().startswith(('Label("账单 ', 'Label("还款 ')) else '') for line in lines)
-if variant == 'text':
-    anchor = '                    .font(.subheadline.weight(.semibold))'
-    assert row.count(anchor) == 1
-    row = row.replace(anchor, anchor + '\n                    .padding(.vertical, 4)', 1)
+anchor = '                    .font(.subheadline.weight(.semibold))'
+assert row.count(anchor) == 1
+row = row.replace(anchor, anchor + '\n                    .padding(.vertical, 4)', 1)
+def label(match):
+    indent,title,symbol = match.groups()
+    return indent + 'Label {\n' + indent + '    Text(' + title + ')\n' + indent + '        .padding(.vertical, 4)\n' + indent + '} icon: {\n' + indent + '    Image(systemName: "' + symbol + '")\n' + indent + '}\n'
+row,count = re.subn(r'^( +)Label\((.*), systemImage: "([^"]+)"\)\n', label, row, flags=re.M)
+assert count == 2
 source = source[:start] + row + source[end:]
-if variant == 'text':
-    start = source.index('private struct StatusPill: View {')
-    tail = source[start:]
-    anchor = '            .padding(.vertical, 3)'
-    assert tail.count(anchor) == 1
-    source = source[:start] + tail.replace(anchor, '            .padding(.vertical, 7)', 1)
+start = source.index('private struct StatusPill: View {')
+tail = source[start:]
+anchor = '            .padding(.vertical, 3)'
+assert tail.count(anchor) == 1
+source = source[:start] + tail.replace(anchor, '            .padding(.vertical, 4)', 1)
 path.write_text(source)
-print('Applied exact-flow text-padding candidate:', variant)
+
+if variant == 'sections':
+    path = Path('CardPilot/Features/Cards/BillingCycleDetailView.swift')
+    source = path.read_text()
+    anchor = '                        fieldError(.statement, issue: issue)\n                        Toggle("调整还款日", isOn: $overrideRepayment)'
+    assert source.count(anchor) == 1
+    source = source.replace(anchor, '                        fieldError(.statement, issue: issue)\n                    }\n                    Section {\n                        Toggle("调整还款日", isOn: $overrideRepayment)', 1)
+    path.write_text(source)
+print('Applied text-inside-label candidate:', variant)
