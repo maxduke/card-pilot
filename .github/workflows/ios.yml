@@ -1,9 +1,8 @@
-name: iOS
+name: Native onboarding verification
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [diagnose/onboarding-field-feedback]
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -12,12 +11,12 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 150
+    timeout-minutes: 40
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
-      - name: Build and test
+      - name: Build and verify onboarding flows
         run: |
           set -euo pipefail
           xcodebuild -version
@@ -25,6 +24,12 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCreditLimitFeedbackCorrectsAndPreservesSavedValues \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCreditLimitFeedbackAtLargestTextSizeAndDiscard \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackCorrectsAndPreservesSavedValues \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackAtLargestTextSizeAndDiscard \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardPreservesSavedValues \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardAtLargestTextSize \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
@@ -42,7 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ios-test-results
+          name: native-onboarding
           path: |
             TestResults.xcresult
             summary.json

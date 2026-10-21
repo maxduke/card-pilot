@@ -422,15 +422,21 @@ private struct NetworkChoiceTile: View {
 }
 
 private struct CardOnboardingView: View {
-    private enum NumericField: Hashable {
-        case creditLimit
-        case lastFour
+    private enum Field: String, Hashable {
+        case bankSearch = "onboarding.bankSearch"
+        case bankName = "onboarding.bankName"
+        case creditLimit = "onboarding.creditLimit"
+        case currency = "onboarding.currency"
+        case productName = "onboarding.productName"
+        case nickname = "onboarding.nickname"
+        case lastFour = "onboarding.lastFour"
+        case customNetwork = "onboarding.customNetwork"
     }
 
     @Environment(\.currentDay) private var currentDay
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @FocusState private var focusedNumericField: NumericField?
+    @FocusState private var focusedField: Field?
 
     let banks: [Bank]
     let accounts: [CreditCardAccount]
@@ -486,6 +492,7 @@ private struct CardOnboardingView: View {
     @State private var nickname = ""
     @State private var lastFour = ""
     @State private var errorMessage: String?
+    @State private var showingValidationErrors = false
     @State private var savedCard: Card?
 
     private var selectedPreset: BankPreset? {
@@ -541,25 +548,47 @@ private struct CardOnboardingView: View {
                     .padding(.horizontal)
                     .padding(.top, 4)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text(step.title)
-                            .font(.title2.weight(.bold))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text(step.title)
+                                .font(.title2.weight(.bold))
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                        switch step {
-                        case .bank: bankStep
-                        case .account: accountStep
-                        case .billing: billingStep
-                        case .card: cardStep
-                        }
+                            switch step {
+                            case .bank: bankStep
+                            case .account: accountStep
+                            case .billing: billingStep
+                            case .card: cardStep
+                            }
 
-                        if let errorMessage {
-                            InlineErrorView(message: errorMessage)
+                            if let errorMessage {
+                                InlineErrorView(message: errorMessage)
+                            }
                         }
+                        .padding()
+                        .contentShape(Rectangle())
                     }
-                    .padding()
-                    .contentShape(Rectangle())
+                    .scrollDismissesKeyboard(.immediately)
+                    .accessibilityIdentifier("onboarding.form")
+                    .safeAreaInset(edge: .bottom) {
+                        HStack(spacing: 12) {
+                            if step != .bank {
+                                Button("上一步") { previousStep() }
+                                    .buttonStyle(.bordered)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            Spacer()
+                            Button(step == .card ? "完成" : "继续") { advance(using: scrollProxy) }
+                                .buttonStyle(.borderedProminent)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .disabled(step == .bank && !bankIsReady)
+                                .accessibilityIdentifier("onboarding.advance")
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 10)
+                        .background(.bar)
+                    }
                 }
             }
             .navigationTitle("添加信用卡")
@@ -568,32 +597,18 @@ private struct CardOnboardingView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     EditorCancelButton()
                 }
-                if focusedNumericField != nil {
+                if focusedField == .creditLimit || focusedField == .lastFour {
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
-                        Button("收起键盘") { focusedNumericField = nil }
+                        Button("收起键盘") { focusedField = nil }
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityIdentifier("onboarding.keyboard.dismiss")
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 12) {
-                    if step != .bank {
-                        Button("上一步") { previousStep() }
-                            .buttonStyle(.bordered)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    Spacer()
-                    Button(step == .card ? "完成" : "继续") { advance() }
-                        .buttonStyle(.borderedProminent)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .disabled(step == .bank && !bankIsReady)
-                        .accessibilityIdentifier("onboarding.advance")
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(.bar)
+            .onChange(of: step) { _, _ in
+                focusedField = nil
+                showingValidationErrors = false
             }
             .onChange(of: selectedPresetCode) { _, _ in
                 if let selectedPreset { currencyCode = selectedPreset.defaultCurrencyCode }
@@ -635,6 +650,7 @@ private struct CardOnboardingView: View {
         TextField("搜索银行、英文名或代码", text: $bankQuery)
             .textFieldStyle(.roundedBorder)
             .textContentType(.organizationName)
+            .focused($focusedField, equals: .bankSearch)
             .accessibilityLabel("搜索银行")
 
         Picker("地区", selection: $region) {
@@ -695,6 +711,7 @@ private struct CardOnboardingView: View {
                 TextField("银行名称", text: $customBankName)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
+                    .focused($focusedField, equals: .bankName)
             }
         }
     }
@@ -809,11 +826,15 @@ private struct CardOnboardingView: View {
                 TextField("信用额度（可选）", text: $limitText)
                     .textFieldStyle(.roundedBorder)
                     .keyboardType(.decimalPad)
-                    .focused($focusedNumericField, equals: .creditLimit)
+                    .focused($focusedField, equals: .creditLimit)
+                    .id(Field.creditLimit)
+                fieldError(.creditLimit)
                 CurrencyPickerView(selection: $currencyCode)
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .id(Field.currency)
+                fieldError(.currency)
                 BillingDayPicker(title: "账单日", value: $statementDay, identifier: "onboarding.rule.statementDay")
                 Picker("还款规则", selection: $repaymentKind) {
                     Text("固定日").tag(RepaymentRuleKind.fixedDay)
@@ -848,13 +869,19 @@ private struct CardOnboardingView: View {
                 .font(.headline)
             TextField("卡产品名称", text: $productName)
                 .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .productName)
+                .id(Field.productName)
+            fieldError(.productName)
             TextField("昵称（可选）", text: $nickname)
                 .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .nickname)
             TextField("末四位", text: $lastFour)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.numberPad)
-                .focused($focusedNumericField, equals: .lastFour)
+                .focused($focusedField, equals: .lastFour)
                 .textContentType(.none)
+                .id(Field.lastFour)
+            fieldError(.lastFour)
             Text("卡组织组合")
                 .font(.subheadline.weight(.semibold))
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -874,6 +901,9 @@ private struct CardOnboardingView: View {
             if networkSelection == .other {
                 TextField("卡组织名称", text: $customNetworkName)
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedField, equals: .customNetwork)
+                    .id(Field.customNetwork)
+                fieldError(.customNetwork)
             }
             Text("不要录入完整卡号或 CVV。双标卡只保存实际的两个卡组织，不会自动扩大促销适用范围。")
                 .font(.caption)
@@ -881,8 +911,62 @@ private struct CardOnboardingView: View {
         }
     }
 
-    private func advance() {
+    private var validationFields: [Field] {
+        switch step {
+        case .billing: [.creditLimit, .currency]
+        case .card: [.productName, .lastFour, .customNetwork]
+        case .bank, .account: []
+        }
+    }
+
+    private func validationMessage(for field: Field) -> String? {
+        switch field {
+        case .creditLimit:
+            guard accountMode == .new else { return nil }
+            let text = limitText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty || CardPilotUI.decimal(limitText).map({ $0 > .zero }) == true
+                ? nil : "信用额度应为空，或填写大于 0 的数字。"
+        case .currency:
+            return accountMode == .existing || isValidCurrencyCode(currencyCode.uppercased())
+                ? nil : "请选择有效的额度币种。"
+        case .productName:
+            return productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "卡产品名称不能为空。" : nil
+        case .lastFour:
+            let normalized = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.utf8.count == 4 && normalized.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
+                ? nil : "末四位必须是 4 位数字。"
+        case .customNetwork:
+            guard networkSelection == .other else { return nil }
+            return customNetworkName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "请填写卡组织名称。" : nil
+        case .bankSearch, .bankName, .nickname:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func fieldError(_ field: Field) -> some View {
+        if showingValidationErrors, let message = validationMessage(for: field) {
+            InlineErrorView(message: message)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(field.rawValue).error")
+        }
+    }
+
+    private func advance(using scrollProxy: ScrollViewProxy) {
+        focusedField = nil
         errorMessage = nil
+        showingValidationErrors = true
+        if let field = validationFields.first(where: { validationMessage(for: $0) != nil }) {
+            let submittedStep = step
+            Task { @MainActor in
+                await Task.yield()
+                guard step == submittedStep, validationMessage(for: field) != nil else { return }
+                scrollProxy.scrollTo(field, anchor: .top)
+            }
+            return
+        }
         switch step {
         case .bank:
             guard bankIsReady else {
@@ -913,12 +997,8 @@ private struct CardOnboardingView: View {
     }
 
     private func validateBillingInput() -> Bool {
-        guard accountMode == .existing || isValidCurrencyCode(currencyCode.uppercased()) else {
-            errorMessage = "请选择有效的额度币种。"
-            return false
-        }
-        guard accountMode == .existing || limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || CardPilotUI.decimal(limitText).map({ $0 > .zero }) == true else {
-            errorMessage = "信用额度应为空，或填写大于 0 的数字。"
+        if let message = validationMessage(for: .currency) ?? validationMessage(for: .creditLimit) {
+            errorMessage = message
             return false
         }
         return true
@@ -927,14 +1007,13 @@ private struct CardOnboardingView: View {
     private func save() {
         guard savedCard == nil else { return }
         guard validateBillingInput() else { return }
-        guard !productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "卡产品名称不能为空。"
+        if let message = validationMessage(for: .productName) {
+            errorMessage = message
             return
         }
         let normalizedLastFour = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedLastFour.utf8.count == 4,
-              normalizedLastFour.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else {
-            errorMessage = "末四位必须是 4 位数字。"
+        if let message = validationMessage(for: .lastFour) {
+            errorMessage = message
             return
         }
         let initialCycle = previewCycle
@@ -1055,8 +1134,8 @@ private struct CardOnboardingView: View {
     private func resolveNetworks() -> [CardNetwork]? {
         if networkSelection == .other {
             let name = customNetworkName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else {
-                errorMessage = "请填写卡组织名称。"
+            if let message = validationMessage(for: .customNetwork) {
+                errorMessage = message
                 return nil
             }
             if let existing = networks.first(where: { !$0.isBuiltIn && $0.displayName.caseInsensitiveCompare(name) == .orderedSame }) {
