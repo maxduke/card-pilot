@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [control, fresh-schedule, intrinsic, vertical]
+        variant: [control, single, reduced, bare]
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -25,37 +25,7 @@ jobs:
         env:
           AUDIT_VARIANT: ${{ matrix.variant }}
         run: |
-          python3 - <<'PROBE'
-          import os
-          from pathlib import Path
-          variant = os.environ['AUDIT_VARIANT']
-          if variant in ('control', 'fresh-schedule'):
-              raise SystemExit(0)
-          path = Path('CardPilot/Features/Cards/CardDetailsView.swift')
-          source = path.read_text()
-          start = source.index('struct BillingCycleRow: View {')
-          end = source.index('private struct StatusPill: View {', start)
-          row = source[start:end]
-          anchor = '        .padding(.vertical, 4)'
-          assert row.count(anchor) == 1
-          row = row.replace(anchor, anchor + '\n        .fixedSize(horizontal: false, vertical: true)', 1)
-          if variant == 'vertical':
-              row = row.replace('dynamicTypeSize.isAccessibilitySize', 'true')
-          path.write_text(source[:start] + row + source[end:])
-          path = Path('CardPilot/Features/Cards/BillingCycleDetailView.swift')
-          source = path.read_text()
-          anchor = '                            .accessibilityIdentifier("billingDates.explanation")'
-          assert source.count(anchor) == 1
-          source = source.replace(anchor, anchor + '\n                            .fixedSize(horizontal: false, vertical: true)', 1)
-          path.write_text(source)
-          if variant == 'vertical':
-              path = Path('CardPilot/Features/Shared/Formatting.swift')
-              source = path.read_text()
-              anchor = '                    .datePickerStyle(.wheel)'
-              assert source.count(anchor) == 1
-              source = source.replace(anchor, anchor + '\n                    .frame(height: 291)', 1)
-              path.write_text(source)
-          PROBE
+          python3 .github/diagnostics/native-audit-probes.py
       - name: Build and diagnose two flows
         env:
           AUDIT_VARIANT: ${{ matrix.variant }}
@@ -63,14 +33,11 @@ jobs:
           set -euo pipefail
           xcodebuild -version
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
-          audit_cases=(-only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets)
-          if [ "$AUDIT_VARIANT" != fresh-schedule ]; then
-            audit_cases+=(-only-testing:CardPilotUITests/CoreFlowsUITests/testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment)
-          fi
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            "${audit_cases[@]}" \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeDateClippingIsolation \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNativeScheduleClippingIsolation \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
