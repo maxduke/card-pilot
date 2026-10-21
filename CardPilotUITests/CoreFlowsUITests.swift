@@ -171,6 +171,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountDateOverrideFeedbackAtLargestTextSizeAndDiscard() {
+        // The complete correction/discard/restart flow took 179.973s in
+        // run 39557142503. Keep it within the existing per-test maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyBillingDateFeedback(accountEditor: true, largestText: true)
     }
@@ -2147,7 +2150,9 @@ final class CoreFlowsUITests: XCTestCase {
         let future = accountHistoryMonth(offset: 5)
         tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[future.year])
-        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
+        let month = app.buttons["account.history.month"]
+        reveal(month, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        month.tap()
         tap(app.buttons[future.month])
         let status = app.buttons["account.history.status"]
         reveal(status, fullyVisible: true)
@@ -2940,17 +2945,24 @@ final class CoreFlowsUITests: XCTestCase {
         // Keyboard disappearance can precede the end of the Form's motion.
         // Establish a stable field before focusing the next keyboard type.
         reveal(lastFour, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-        var previousFrame: CGRect?
+        var previousFrame = lastFour.frame
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            guard lastFour.exists, !keyboard.exists else { return false }
+            // Read only this field while polling. Repeated full-viewport AX
+            // queries can consume the five-second wait before it returns.
             let frame = lastFour.frame
             defer { previousFrame = frame }
-            return !frame.isEmpty && frame == previousFrame
-                && frame.minY >= max(navigationBar.frame.maxY, form.frame.minY)
-                && frame.maxY < min(self.contentBottom, form.frame.maxY)
-                && lastFour.isHittable
+            return !frame.isEmpty
+                && abs(frame.minX - previousFrame.minX) <= 0.001
+                && abs(frame.minY - previousFrame.minY) <= 0.001
+                && abs(frame.width - previousFrame.width) <= 0.001
+                && abs(frame.height - previousFrame.height) <= 0.001
         }, object: lastFour)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        let fieldFrame = lastFour.frame
+        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
+        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertFalse(keyboard.exists)
+        XCTAssertTrue(lastFour.isHittable)
         lastFour.tap()
         XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
@@ -3039,7 +3051,8 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(frame.minY + 0.001, top)
             XCTAssertLessThanOrEqual(frame.maxY, bottom)
         }
-        XCTAssertGreaterThanOrEqual(errorFrame.minY, fieldFrame.maxY)
+        // AX can round the same shared edge differently by a subpixel.
+        XCTAssertGreaterThanOrEqual(errorFrame.minY + 0.001, fieldFrame.maxY)
         XCTAssertTrue(field.isHittable)
     }
 
