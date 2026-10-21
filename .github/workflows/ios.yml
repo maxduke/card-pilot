@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [date_navigation, date_navigation_keep_row]
+        variant: [status, month, dates, header_meta, account_meta, a11y_ignore, a11y_default]
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -36,8 +36,6 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountBillingDateWheelsAtLargestTextSizeSaveAndPreserveRepayment \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
