@@ -33,11 +33,147 @@ final class CoreFlowsUITests: XCTestCase {
         app = nil
     }
 
+    func testAccountBillingDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
+        // The two native selection pages and restart readback are one flow.
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        try verifyAccessibleBillingDateSave(accountEditor: true)
+    }
+
+    func testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
+        // The complete navigation flow reached 175s in run 39537321815.
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        try verifyAccessibleBillingDateSave(accountEditor: false)
+    }
+
+    func testBillingMonthSelectionAtLargestTextSizePreservesCycleOverridesOnDiscard() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("billingDateFeedback")
+        openBillingFeedbackAccount()
+        tap(app.navigationBars["账户详情"].buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑信用卡账户"]
+        let form = app.collectionViews["account.editor.form"]
+        let picker = app.buttons["account.editor.override.cycle"]
+        let currentMonth = futureRuleMonth(offset: 0)
+        let nextMonth = futureRuleMonth(offset: 1)
+        reveal(picker, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(picker.value as? String, currentMonth)
+        captureScreenshot("最大字号所选账期完整月份")
+        picker.tap()
+        let monthNavigation = app.navigationBars["账期"]
+        XCTAssertTrue(monthNavigation.waitForExistence(timeout: 10))
+        let selected = app.buttons[currentMonth]
+        // The long month list must open at the selection, without a test drag.
+        XCTAssertTrue(selected.waitForExistence(timeout: 10))
+        XCTAssertTrue(selected.isSelected)
+        XCTAssertTrue(selected.isHittable)
+        XCTAssertGreaterThanOrEqual(selected.frame.minY + 0.001, monthNavigation.frame.maxY)
+        XCTAssertLessThanOrEqual(selected.frame.maxY, contentBottom)
+        captureScreenshot("最大字号账期列表定位已选月份")
+        let next = app.buttons[nextMonth]
+        reveal(next, fullyVisible: true, navigationBar: monthNavigation)
+        next.tap()
+        XCTAssertTrue(monthNavigation.waitForNonExistence(timeout: 10))
+        XCTAssertEqual(picker.value as? String, nextMonth)
+        let statement = app.switches["account.editor.override.statement.enabled"]
+        reveal(statement, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(statement.value as? String, "0")
+        reveal(picker, scrollTowardTopWhenMissing: true, fullyVisible: true,
+               navigationBar: navigationBar, contentContainer: form)
+        picker.tap()
+        XCTAssertTrue(monthNavigation.waitForExistence(timeout: 10))
+        let previous = app.buttons[currentMonth]
+        reveal(previous, scrollTowardTopWhenMissing: true, fullyVisible: true, navigationBar: monthNavigation)
+        previous.tap()
+        XCTAssertTrue(monthNavigation.waitForNonExistence(timeout: 10))
+        XCTAssertEqual(picker.value as? String, currentMonth)
+        reveal(statement, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(statement.value as? String, "1")
+        captureScreenshot("最大字号切回账期保留日期覆盖")
+        setBillingDateToggle("account.editor.override.repayment.enabled", enabled: false)
+        navigationBar.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        openBillingFeedbackCycle(offset: 0)
+        assertBillingFeedbackDate("账单日", monthOffset: 0, day: 5)
+        assertBillingFeedbackDate("还款日", monthOffset: 0, day: 15)
+        let paid = app.staticTexts["状态、已还款"]
+        reveal(paid, fullyVisible: true)
+        XCTAssertTrue(paid.exists)
+        captureScreenshot("最大字号账期选择放弃后读回")
+    }
+
+    func testBillingRulePickersAtLargestTextSizeSaveEffectiveMonth() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("billingDateFeedback")
+        openBillingFeedbackAccount()
+        tap(app.navigationBars["账户详情"].buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑信用卡账户"]
+        let form = app.collectionViews["account.editor.form"]
+        let dayPicker = app.buttons["account.editor.rule.statementDay"]
+        reveal(dayPicker, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        dayPicker.tap()
+        let dayNavigation = app.navigationBars["账单日"]
+        XCTAssertTrue(dayNavigation.waitForExistence(timeout: 10))
+        let day = app.buttons["每月 21 日"]
+        reveal(day, fullyVisible: true, navigationBar: dayNavigation)
+        assertTouchTarget(day)
+        captureScreenshot("最大字号账单日完整选项")
+        day.tap()
+        if dayNavigation.exists { dayNavigation.buttons.element(boundBy: 0).tap() }
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        XCTAssertEqual(dayPicker.value as? String, "每月 21 日")
+        let effective = app.buttons["account.editor.rule.effectiveCycle"]
+        reveal(effective, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        effective.tap()
+        let monthNavigation = app.navigationBars["新规则生效账期"]
+        XCTAssertTrue(monthNavigation.waitForExistence(timeout: 10))
+        let initial = app.buttons[futureRuleMonth(offset: 1)]
+        XCTAssertTrue(initial.waitForExistence(timeout: 10))
+        XCTAssertTrue(initial.isSelected)
+        XCTAssertTrue(initial.isHittable)
+        captureScreenshot("最大字号生效月份完整选项")
+        let chosenMonth = futureRuleMonth(offset: 2)
+        let chosen = app.buttons[chosenMonth]
+        reveal(chosen, fullyVisible: true, navigationBar: monthNavigation)
+        chosen.tap()
+        XCTAssertTrue(monthNavigation.waitForNonExistence(timeout: 10))
+        reveal(effective, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(effective.value as? String, chosenMonth)
+        captureScreenshot("最大字号规则生效月份修改")
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        let rule = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "account.rule.", chosenMonth
+        ))
+        let saved = rule.firstMatch
+        reveal(saved, fullyVisible: true)
+        XCTAssertEqual(rule.count, 1)
+        XCTAssertTrue(saved.label.contains("每月 21 日出账"))
+        captureScreenshot("最大字号规则生效月份保存读回")
+        openBillingFeedbackCycle(offset: 0, scrollTowardTopWhenMissing: true)
+        assertBillingFeedbackDate("账单日", monthOffset: 0, day: 5)
+        assertBillingFeedbackDate("还款日", monthOffset: 0, day: 15)
+        let paid = app.staticTexts["状态、已还款"]
+        reveal(paid, fullyVisible: true)
+        XCTAssertTrue(paid.exists)
+    }
+
     func testAccountDateOverridesShowLocalErrorAndPreserveRepaymentOnSave() {
         verifyBillingDateFeedback(accountEditor: true, largestText: false)
     }
 
     func testAccountDateOverrideFeedbackAtLargestTextSizeAndDiscard() {
+        // The complete correction/discard/restart flow took 179.973s in
+        // run 39557142503. Keep it within the existing per-test maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyBillingDateFeedback(accountEditor: true, largestText: true)
     }
@@ -2014,7 +2150,9 @@ final class CoreFlowsUITests: XCTestCase {
         let future = accountHistoryMonth(offset: 5)
         tap(app.buttons["account.history.year"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[future.year])
-        tap(app.buttons["account.history.month"], scrollTowardTopWhenMissing: true)
+        let month = app.buttons["account.history.month"]
+        reveal(month, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        month.tap()
         tap(app.buttons[future.month])
         let status = app.buttons["account.history.status"]
         reveal(status, fullyVisible: true)
@@ -2232,8 +2370,31 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertGreaterThan(normalTitleHeight, 0)
         let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
         reveal(cycle)
+        for element in [title, cycle] {
+            XCTAssertFalse(element.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(element.frame))
+            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, app.navigationBars["卡片详情"].frame.maxY)
+            XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
+        }
         captureScreenshot("卡片账期日程")
-        try auditAccessibility(for: [.textClipped])
+        // Audit after the combined header has scrolled entirely out of the
+        // navigation bar, while the schedule and following promotion fit.
+        let followingPromotion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "UI Spend、")).firstMatch
+        let bank = app.staticTexts["银行、UI Test Bank"]
+        reveal(bank, fullyVisible: true, navigationBar: app.navigationBars["卡片详情"])
+        for element in [cycle, followingPromotion, bank] {
+            XCTAssertFalse(element.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(element.frame))
+            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, app.navigationBars["卡片详情"].frame.maxY)
+            XCTAssertLessThanOrEqual(element.frame.maxY, contentBottom)
+        }
+        let header = app.staticTexts.matching(identifier: "card.detail.title")
+            .matching(NSPredicate(format: "label CONTAINS %@", "UI Test Bank图标")).firstMatch
+        if header.exists {
+            XCTAssertLessThanOrEqual(header.frame.maxY, app.navigationBars["卡片详情"].frame.maxY)
+        }
+        captureScreenshot("普通字号账期审计阅读区域")
+        try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
         tap(app.tabBars.buttons["首页"])
         let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
@@ -2492,6 +2653,112 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("\(prefix)促销搜索清空后保留计入金额")
     }
 
+    private func verifyAccessibleBillingDateSave(accountEditor: Bool) throws {
+        let prefix = "最大字号" + (accountEditor ? "账户编辑" : "账期编辑")
+        launch("billingDateFeedback")
+        openBillingFeedbackAccount()
+        if accountEditor {
+            tap(app.navigationBars["账户详情"].buttons["编辑"])
+        } else {
+            openBillingFeedbackCycle(offset: 0)
+            tap(app.buttons["调整本期日期"])
+        }
+        let navigationBar = app.navigationBars[accountEditor ? "编辑信用卡账户" : "调整本期日期"]
+        let form = app.collectionViews[accountEditor ? "account.editor.form" : "billingDates.form"]
+        try adjustBillingDateDay(accountEditor ? "account.editor.override.statementDate" : "billingDates.statementDate",
+                                 from: 5, to: 6, navigationBar: navigationBar, form: form,
+                                 screenshot: "\(prefix)账单日期滚轮完整值", auditText: !accountEditor)
+        try adjustBillingDateDay(accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate",
+                                 from: 15, to: 16, navigationBar: navigationBar, form: form,
+                                 screenshot: "\(prefix)还款日期滚轮完整值", auditText: !accountEditor)
+        if !accountEditor {
+            // Read the complete date summary and explanation after returning
+            // from the two audited native date-selection pages.
+            let explanation = app.staticTexts["billingDates.explanation"]
+            reveal(explanation, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+            let repayment = app.buttons["billingDates.repaymentDate"]
+            XCTAssertEqual(repayment.label, "还款日")
+            XCTAssertTrue((repayment.value as? String ?? "").hasSuffix("16日"))
+            for element in [repayment, explanation] {
+                XCTAssertFalse(element.frame.isEmpty)
+                XCTAssertTrue(app.frame.contains(element.frame))
+                XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
+                XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
+            }
+            captureScreenshot("最大字号账期日期及说明完整阅读")
+        }
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        openBillingFeedbackCycle(offset: 0)
+        assertBillingFeedbackDate("账单日", monthOffset: 0, day: 6)
+        assertBillingFeedbackDate("还款日", monthOffset: 0, day: 16)
+        let paid = app.staticTexts["状态、已还款"]
+        reveal(paid, fullyVisible: true)
+        XCTAssertTrue(paid.exists)
+        captureScreenshot("\(prefix)滚轮日期保存读回")
+        let undo = app.buttons["撤销已还款"]
+        reveal(undo, fullyVisible: true)
+        XCTAssertTrue(undo.exists)
+        XCTAssertFalse(app.buttons["标记已还"].exists)
+    }
+
+    private func adjustBillingDateDay(_ identifier: String, from originalDay: Int, to changedDay: Int,
+                                     navigationBar: XCUIElement, form: XCUIElement,
+                                     screenshot: String, auditText: Bool) throws {
+        let entry = app.buttons[identifier]
+        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        let field = identifier.contains("statement") ? "账单日" : "还款日"
+        let title = identifier.hasPrefix("account.editor.") ? "实际" + field : field
+        XCTAssertEqual(entry.label, title)
+        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", originalDay)))
+        entry.tap()
+        let selectionNavigation = app.navigationBars[title]
+        XCTAssertTrue(selectionNavigation.waitForExistence(timeout: 10))
+        let selectionForm = app.collectionViews["\(identifier).selection"]
+        let picker = app.datePickers["\(identifier).wheel"]
+        reveal(picker, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
+        let wheels = picker.pickerWheels
+        XCTAssertEqual(wheels.count, 3)
+        let day = wheels.element(boundBy: 2)
+        XCTAssertEqual(day.value as? String, "\(originalDay)日")
+        // Native wheels report a taller AX frame than their DatePicker host.
+        // Reveal that actual input too, using the unchanged viewport guards.
+        reveal(day, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
+        day.adjust(toPickerWheelValue: "\(changedDay)日")
+        XCTAssertEqual(day.value as? String, "\(changedDay)日")
+        XCTAssertTrue(selectionNavigation.staticTexts[title].exists)
+        for element in [picker] + wheels.allElementsBoundByIndex {
+            XCTAssertFalse(element.frame.isEmpty)
+            XCTAssertTrue(app.frame.contains(element.frame))
+            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, selectionNavigation.frame.maxY)
+            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, selectionForm.frame.maxY))
+        }
+        for wheel in wheels.allElementsBoundByIndex {
+            XCTAssertTrue(wheel.isHittable)
+            assertTouchTarget(wheel)
+        }
+        captureScreenshot(screenshot)
+        if auditText {
+            try app.performAccessibilityAudit(for: .textClipped) { issue in
+                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+                let attachment = XCTAttachment(string: details)
+                attachment.name = "账期日期文字裁切审计元素"
+                attachment.lifetime = .keepAlways
+                self.add(attachment)
+                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
+                return false
+            }
+        }
+        selectionNavigation.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(selectionNavigation.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(navigationBar.exists)
+        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", changedDay)))
+    }
+
     private func verifyBillingDateFeedback(accountEditor: Bool, largestText: Bool) {
         let prefix = (largestText ? "最大字号" : "") + (accountEditor ? "账户编辑" : "账期编辑")
         launch("billingDateFeedback")
@@ -2569,7 +2836,11 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openBillingFeedbackCycle(offset: Int, scrollTowardTopWhenMissing: Bool = false) {
-        tap(app.buttons["account.cycleHistory"], scrollTowardTopWhenMissing: scrollTowardTopWhenMissing)
+        let history = app.buttons["account.cycleHistory"]
+        reveal(history, scrollTowardTopWhenMissing: scrollTowardTopWhenMissing, fullyVisible: true,
+               navigationBar: app.navigationBars["账户详情"])
+        history.tap()
+        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
         let month = accountHistoryMonth(offset: offset)
         tap(app.buttons["account.history.cycle.\(month.key)"])
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
@@ -2671,7 +2942,34 @@ final class CoreFlowsUITests: XCTestCase {
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
-        replaceText("123", in: lastFour)
+        // Keyboard disappearance can precede the end of the Form's motion.
+        // Establish a stable field before focusing the next keyboard type.
+        reveal(lastFour, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        var previousFrame = lastFour.frame
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            // Read only this field while polling. Repeated full-viewport AX
+            // queries can consume the five-second wait before it returns.
+            let frame = lastFour.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty
+                && abs(frame.minX - previousFrame.minX) <= 0.001
+                && abs(frame.minY - previousFrame.minY) <= 0.001
+                && abs(frame.width - previousFrame.width) <= 0.001
+                && abs(frame.height - previousFrame.height) <= 0.001
+        }, object: lastFour)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        let fieldFrame = lastFour.frame
+        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
+        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertFalse(keyboard.exists)
+        XCTAssertTrue(lastFour.isHittable)
+        lastFour.tap()
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        let previousLastFour = lastFour.value as? String ?? ""
+        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "123")
+        XCTAssertEqual(lastFour.value as? String, "123")
+        captureScreenshot("\(prefix)卡片末四位纠错准备")
         XCTAssertFalse(lastFourError.exists)
         dismissal.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -2753,7 +3051,8 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(frame.minY + 0.001, top)
             XCTAssertLessThanOrEqual(frame.maxY, bottom)
         }
-        XCTAssertGreaterThanOrEqual(errorFrame.minY, fieldFrame.maxY)
+        // AX can round the same shared edge differently by a subpixel.
+        XCTAssertGreaterThanOrEqual(errorFrame.minY + 0.001, fieldFrame.maxY)
         XCTAssertTrue(field.isHittable)
     }
 
@@ -3023,7 +3322,15 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(amount.isHittable)
     }
 
-    private func auditAccessibility(for types: XCUIAccessibilityAuditType) throws {
+    private func captureAccessibilityAuditContext(_ name: String) {
+        captureScreenshot("\(name)画面")
+        let attachment = XCTAttachment(string: app.debugDescription)
+        attachment.name = "\(name)层级"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func auditAccessibility(for types: XCUIAccessibilityAuditType, captureFailureContext: Bool = false) throws {
         let original = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = original }
@@ -3033,6 +3340,7 @@ final class CoreFlowsUITests: XCTestCase {
             attachment.name = "无障碍审计元素"
             attachment.lifetime = .keepAlways
             self.add(attachment)
+            if captureFailureContext { self.captureAccessibilityAuditContext("无障碍审计回调") }
             // iOS 18.5 reports clipping for this native placeholder even when it
             // is fully visible at both sizes (run 38068318067). Keep the report;
             // check actual scaling, screenshots and search interaction separately.

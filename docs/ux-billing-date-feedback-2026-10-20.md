@@ -39,3 +39,5 @@
 [合并后首轮 main CI](https://github.com/maxduke/card-pilot/actions/runs/39376886109) 为 287／288：222 项单元／集成和 65 项 UI 通过，零跳过；唯一失败为既有 `testNumericKeyboardDismissalAtLargestTextSize` 的第二次文字裁切审计后定位。实际失败截图显示计入金额框贴近固定操作区；断言记录字段底部 674 点，而实际可视区域底部为 665 点。两个数字键盘输入和直接收起检查、两次不带排除条件的文字裁切审计都已执行。
 
 该用例的定位调用未提供实际滚动容器，助手只按底部按钮估计边界；随后断言却同时采用实际滚动容器，准备条件与验收条件不一致。交付补修仅让该用例的七处定位调用传入已有 `transaction.form`，使用助手既有的 `contentContainer` 参数。应用、夹具、另外 65 项用例、通用助手、原有断言、两次完整审计、三张截图和执行额度保持不变；要求补修 HEAD 与合并主线重新完整通过 288 项，并实际检查该用例三张当前绿色 HEAD 原图。验证后才快进原工作区，随后按用户要求暂停，不开启下一批。
+
+最终 [PR #52](https://github.com/maxduke/card-pilot/pull/52) HEAD `e3cc98d1d89e7e7deaaaf6d79f132c4bf6c03afd` 的[完整 PR CI](https://github.com/maxduke/card-pilot/actions/runs/39388315594) 与合并提交 `48e9bbeb2a0a86b9774658bf6e664f47c8f2a5e7` 的[完整 main CI](https://github.com/maxduke/card-pilot/actions/runs/39399629277) 均通过 222＋66，零失败、零跳过、无重试、超时或测试进程重启。三张该绿色 HEAD 的原图已实际检查，输入框完整位于步骤说明与实际操作区之间，键盘收起入口及审计后的输入值可读。无待完成的适用审查或未解决 PR 发现，原干净主线已快进至验证提交，随后已按要求暂停。用户恢复后，日期／月份的最大字号适配进入[第二十二批](ux-billing-date-accessibility-2026-10-20.md)。

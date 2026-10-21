@@ -47,17 +47,82 @@ struct CurrencyOption: Identifiable, Hashable {
 }
 
 struct BillingDayPicker: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     @Binding var value: Int
     var isDayOfMonth = true
+    let identifier: String
 
     var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .fixedSize(horizontal: false, vertical: true)
+                picker
+                    .labelsHidden()
+                    .pickerStyle(.navigationLink)
+            }
+        } else {
+            picker.pickerStyle(.menu)
+        }
+    }
+
+    private var picker: some View {
         Picker(title, selection: $value) {
             ForEach(1...(isDayOfMonth ? 31 : 90), id: \.self) { day in
-                Text(isDayOfMonth ? "每月 \(day) 日" : "\(day) 天").tag(day)
+                Text(isDayOfMonth ? "每月 \(day) 日" : "\(day) 天")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .tag(day)
             }
         }
-        .pickerStyle(.menu)
+        .accessibilityIdentifier(identifier)
+        .accessibilityValue(isDayOfMonth ? "每月 \(value) 日" : "\(value) 天")
+    }
+}
+
+struct BillingDatePicker: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let title: String
+    @Binding var selection: Date
+    let identifier: String
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            NavigationLink {
+                Form {
+                    picker
+                        .labelsHidden()
+                        .datePickerStyle(.wheel)
+                        .accessibilityIdentifier("\(identifier).wheel")
+                }
+                .accessibilityIdentifier("\(identifier).selection")
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("\(identifier).label")
+                    Text(dateText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityIdentifier(identifier)
+            .accessibilityLabel(title)
+            .accessibilityValue(dateText)
+        } else {
+            picker
+        }
+    }
+
+    private var dateText: String {
+        CardPilotUI.dateText(CardPilotUI.localDate(from: selection))
+    }
+
+    private var picker: some View {
+        DatePicker(title, selection: $selection, displayedComponents: .date)
+            .accessibilityIdentifier(identifier)
     }
 }
 
