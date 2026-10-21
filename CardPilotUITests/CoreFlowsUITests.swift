@@ -34,11 +34,15 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountBillingDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
+        // The two native selection pages and restart readback are one flow.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         try verifyAccessibleBillingDateSave(accountEditor: true)
     }
 
     func testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
+        // The complete navigation flow reached 175s in run 39537321815.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         try verifyAccessibleBillingDateSave(accountEditor: false)
     }
@@ -2656,35 +2660,27 @@ final class CoreFlowsUITests: XCTestCase {
         }
         let navigationBar = app.navigationBars[accountEditor ? "编辑信用卡账户" : "调整本期日期"]
         let form = app.collectionViews[accountEditor ? "account.editor.form" : "billingDates.form"]
-        adjustBillingDateDay(accountEditor ? "account.editor.override.statementDate" : "billingDates.statementDate",
-                             from: 5, to: 6, navigationBar: navigationBar, form: form)
-        captureScreenshot("\(prefix)账单日期滚轮完整值")
-        adjustBillingDateDay(accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate",
-                             from: 15, to: 16, navigationBar: navigationBar, form: form)
-        captureScreenshot("\(prefix)还款日期滚轮完整值")
+        try adjustBillingDateDay(accountEditor ? "account.editor.override.statementDate" : "billingDates.statementDate",
+                                 from: 5, to: 6, navigationBar: navigationBar, form: form,
+                                 screenshot: "\(prefix)账单日期滚轮完整值", auditText: !accountEditor)
+        try adjustBillingDateDay(accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate",
+                                 from: 15, to: 16, navigationBar: navigationBar, form: form,
+                                 screenshot: "\(prefix)还款日期滚轮完整值", auditText: !accountEditor)
         if !accountEditor {
-            // Include the complete date explanation before auditing text;
-            // it was partly below the viewport after the last wheel edit.
+            // Read the complete date summary and explanation after returning
+            // from the two audited native date-selection pages.
             let explanation = app.staticTexts["billingDates.explanation"]
             reveal(explanation, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-            let repayment = app.datePickers["billingDates.repaymentDate"]
-            let title = app.staticTexts["billingDates.repaymentDate.label"]
-            for element in [title, repayment, explanation] {
+            let repayment = app.buttons["billingDates.repaymentDate"]
+            XCTAssertEqual(repayment.label, "还款日")
+            XCTAssertTrue((repayment.value as? String ?? "").hasSuffix("16日"))
+            for element in [repayment, explanation] {
                 XCTAssertFalse(element.frame.isEmpty)
                 XCTAssertTrue(app.frame.contains(element.frame))
                 XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
                 XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
             }
             captureScreenshot("最大字号账期日期及说明完整阅读")
-            try app.performAccessibilityAudit(for: .textClipped) { issue in
-                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
-                let attachment = XCTAttachment(string: details)
-                attachment.name = "账期日期文字裁切审计元素"
-                attachment.lifetime = .keepAlways
-                self.add(attachment)
-                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
-                return false
-            }
         }
         navigationBar.buttons["保存"].tap()
         XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
@@ -2705,30 +2701,57 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func adjustBillingDateDay(_ identifier: String, from originalDay: Int, to changedDay: Int,
-                                     navigationBar: XCUIElement, form: XCUIElement) {
-        let picker = app.datePickers[identifier]
-        let title = app.staticTexts["\(identifier).label"]
-        reveal(title, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-        reveal(picker, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+                                     navigationBar: XCUIElement, form: XCUIElement,
+                                     screenshot: String, auditText: Bool) throws {
+        let entry = app.buttons[identifier]
+        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        let field = identifier.contains("statement") ? "账单日" : "还款日"
+        let title = identifier.hasPrefix("account.editor.") ? "实际" + field : field
+        XCTAssertEqual(entry.label, title)
+        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", originalDay)))
+        entry.tap()
+        let selectionNavigation = app.navigationBars[title]
+        XCTAssertTrue(selectionNavigation.waitForExistence(timeout: 10))
+        let selectionForm = app.collectionViews["\(identifier).selection"]
+        let picker = app.datePickers["\(identifier).wheel"]
+        reveal(picker, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
         let wheels = picker.pickerWheels
         XCTAssertEqual(wheels.count, 3)
         let day = wheels.element(boundBy: 2)
         XCTAssertEqual(day.value as? String, "\(originalDay)日")
         // Native wheels report a taller AX frame than their DatePicker host.
         // Reveal that actual input too, using the unchanged viewport guards.
-        reveal(day, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        reveal(day, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
         day.adjust(toPickerWheelValue: "\(changedDay)日")
         XCTAssertEqual(day.value as? String, "\(changedDay)日")
-        for element in [title, picker] + wheels.allElementsBoundByIndex {
+        XCTAssertTrue(selectionNavigation.staticTexts[title].exists)
+        for element in [picker] + wheels.allElementsBoundByIndex {
             XCTAssertFalse(element.frame.isEmpty)
             XCTAssertTrue(app.frame.contains(element.frame))
-            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
-            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
+            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, selectionNavigation.frame.maxY)
+            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, selectionForm.frame.maxY))
         }
         for wheel in wheels.allElementsBoundByIndex {
             XCTAssertTrue(wheel.isHittable)
             assertTouchTarget(wheel)
         }
+        captureScreenshot(screenshot)
+        if auditText {
+            try app.performAccessibilityAudit(for: .textClipped) { issue in
+                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+                let attachment = XCTAttachment(string: details)
+                attachment.name = "账期日期文字裁切审计元素"
+                attachment.lifetime = .keepAlways
+                self.add(attachment)
+                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
+                return false
+            }
+        }
+        selectionNavigation.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(selectionNavigation.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(navigationBar.exists)
+        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", changedDay)))
     }
 
     private func verifyBillingDateFeedback(accountEditor: Bool, largestText: Bool) {

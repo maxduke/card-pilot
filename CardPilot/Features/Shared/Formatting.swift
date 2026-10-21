@@ -88,17 +88,36 @@ struct BillingDatePicker: View {
 
     var body: some View {
         if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("\(identifier).label")
-                picker
-                    .labelsHidden()
-                    .datePickerStyle(.wheel)
+            NavigationLink {
+                Form {
+                    picker
+                        .labelsHidden()
+                        .datePickerStyle(.wheel)
+                        .accessibilityIdentifier("\(identifier).wheel")
+                }
+                .accessibilityIdentifier("\(identifier).selection")
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("\(identifier).label")
+                    Text(dateText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .accessibilityIdentifier(identifier)
+            .accessibilityLabel(title)
+            .accessibilityValue(dateText)
         } else {
             picker
         }
+    }
+
+    private var dateText: String {
+        CardPilotUI.dateText(CardPilotUI.localDate(from: selection))
     }
 
     private var picker: some View {

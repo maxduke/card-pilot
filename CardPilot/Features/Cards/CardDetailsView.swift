@@ -29,6 +29,7 @@ struct CardDetailView: View {
                             Text("\(cardNetworkSummary(card.networks)) · •••• \(card.lastFour)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 0)
                         if card.status == .inactive {
@@ -559,30 +560,24 @@ struct BillingRuleRow: View {
 }
 
 struct BillingCycleRow: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let cycle: BillingCycle
     let today: LocalDate
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
-                : AnyLayout(HStackLayout())
-            layout {
-                Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
-                    .font(.subheadline.weight(.semibold))
-                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
-                StatusPill(title: statusTitle, color: statusColor)
-            }
-            layout {
-                Label("账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today))", systemImage: "doc.text")
-                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
-                Label("还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))", systemImage: "calendar.badge.clock")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-        }
+        (
+            Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.primary)
+            + Text("\n\(statusTitle)")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(statusColor)
+            + Text(" · 账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today)) · 还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))")
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+        .lineSpacing(7)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期，账单日 \(CardPilotUI.dateText(cycle.statementDate))，还款日 \(CardPilotUI.dateText(cycle.repaymentDate))，\(statusTitle)")
