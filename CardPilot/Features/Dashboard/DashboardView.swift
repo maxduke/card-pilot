@@ -722,7 +722,8 @@ private struct BillingItemRow: View {
             } label: {
                 HStack {
                     Text("查看账期")
-                    Spacer()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right")
                         .accessibilityHidden(true)
                 }
