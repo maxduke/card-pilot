@@ -300,23 +300,19 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testOnboardingCreditLimitFeedbackCorrectsAndPreservesSavedValues() {
-        executionTimeAllowance = 240
         verifyOnboardingCreditLimitFeedback(largestText: false)
     }
 
     func testOnboardingCreditLimitFeedbackAtLargestTextSizeAndDiscard() {
-        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyOnboardingCreditLimitFeedback(largestText: true)
     }
 
     func testOnboardingCardIdentityFeedbackCorrectsAndPreservesSavedValues() {
-        executionTimeAllowance = 240
         verifyOnboardingCardIdentityFeedback(largestText: false)
     }
 
     func testOnboardingCardIdentityFeedbackAtLargestTextSizeAndDiscard() {
-        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyOnboardingCardIdentityFeedback(largestText: true)
     }

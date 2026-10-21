@@ -1,4 +1,4 @@
-name: Native onboarding verification
+name: Native billing link verification
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
-      - name: Build and verify onboarding flows
+      - name: Build and verify billing schedule audit
         run: |
           set -euo pipefail
           xcodebuild -version
@@ -24,12 +24,7 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCreditLimitFeedbackCorrectsAndPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCreditLimitFeedbackAtLargestTextSizeAndDiscard \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackCorrectsAndPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackAtLargestTextSizeAndDiscard \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
@@ -47,7 +42,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: native-onboarding
+          name: native-billing-link
           path: |
             TestResults.xcresult
             summary.json
