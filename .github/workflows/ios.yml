@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [label_text, sections]
+        variant: [native_issue_details]
     runs-on: macos-15
     timeout-minutes: 20
     env:
