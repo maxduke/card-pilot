@@ -1,0 +1,202 @@
+diff --git a/CardPilot/Features/Cards/CardDetailsView.swift b/CardPilot/Features/Cards/CardDetailsView.swift
+index e987653..aacdcd8 100644
+--- a/CardPilot/Features/Cards/CardDetailsView.swift
++++ b/CardPilot/Features/Cards/CardDetailsView.swift
+@@ -29,6 +29,7 @@ struct CardDetailView: View {
+                             Text("\(cardNetworkSummary(card.networks)) · •••• \(card.lastFour)")
+                                 .font(.subheadline)
+                                 .foregroundStyle(.secondary)
++                                .fixedSize(horizontal: false, vertical: true)
+                         }
+                         Spacer(minLength: 0)
+                         if card.status == .inactive {
+@@ -571,17 +572,15 @@ struct BillingCycleRow: View {
+             layout {
+                 Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
+                     .font(.subheadline.weight(.semibold))
++                    .fixedSize(horizontal: false, vertical: true)
+                 if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                 StatusPill(title: statusTitle, color: statusColor)
+             }
+-            layout {
+-                Label("账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today))", systemImage: "doc.text")
+-                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+-                Label("还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))", systemImage: "calendar.badge.clock")
+-            }
+-            .font(.caption)
+-            .foregroundStyle(.secondary)
+-            .monospacedDigit()
++            Text("账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today)) · 还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))")
++                .font(.caption)
++                .foregroundStyle(.secondary)
++                .monospacedDigit()
++                .fixedSize(horizontal: false, vertical: true)
+         }
+         .padding(.vertical, 4)
+         .accessibilityElement(children: .combine)
+diff --git a/CardPilot/Features/Shared/Formatting.swift b/CardPilot/Features/Shared/Formatting.swift
+index b2019d9..f93b453 100644
+--- a/CardPilot/Features/Shared/Formatting.swift
++++ b/CardPilot/Features/Shared/Formatting.swift
+@@ -88,19 +88,38 @@ struct BillingDatePicker: View {
+ 
+     var body: some View {
+         if dynamicTypeSize.isAccessibilitySize {
+-            VStack(alignment: .leading, spacing: 8) {
+-                Text(title)
+-                    .fixedSize(horizontal: false, vertical: true)
+-                    .accessibilityIdentifier("\(identifier).label")
+-                picker
+-                    .labelsHidden()
+-                    .datePickerStyle(.wheel)
++            NavigationLink {
++                Form {
++                    picker
++                        .labelsHidden()
++                        .datePickerStyle(.wheel)
++                        .accessibilityIdentifier("\(identifier).wheel")
++                }
++                .accessibilityIdentifier("\(identifier).selection")
++                .navigationTitle(title)
++                .navigationBarTitleDisplayMode(.inline)
++            } label: {
++                VStack(alignment: .leading, spacing: 8) {
++                    Text(title)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .accessibilityIdentifier("\(identifier).label")
++                    Text(dateText)
++                        .foregroundStyle(.secondary)
++                        .fixedSize(horizontal: false, vertical: true)
++                }
+             }
++            .accessibilityIdentifier(identifier)
++            .accessibilityLabel(title)
++            .accessibilityValue(dateText)
+         } else {
+             picker
+         }
+     }
+ 
++    private var dateText: String {
++        CardPilotUI.dateText(CardPilotUI.localDate(from: selection))
++    }
++
+     private var picker: some View {
+         DatePicker(title, selection: $selection, displayedComponents: .date)
+             .accessibilityIdentifier(identifier)
+diff --git a/CardPilotUITests/CoreFlowsUITests.swift b/CardPilotUITests/CoreFlowsUITests.swift
+index 2e751c3..bffb9ef 100644
+--- a/CardPilotUITests/CoreFlowsUITests.swift
++++ b/CardPilotUITests/CoreFlowsUITests.swift
+@@ -2656,35 +2656,27 @@ final class CoreFlowsUITests: XCTestCase {
+         }
+         let navigationBar = app.navigationBars[accountEditor ? "编辑信用卡账户" : "调整本期日期"]
+         let form = app.collectionViews[accountEditor ? "account.editor.form" : "billingDates.form"]
+-        adjustBillingDateDay(accountEditor ? "account.editor.override.statementDate" : "billingDates.statementDate",
+-                             from: 5, to: 6, navigationBar: navigationBar, form: form)
+-        captureScreenshot("\(prefix)账单日期滚轮完整值")
+-        adjustBillingDateDay(accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate",
+-                             from: 15, to: 16, navigationBar: navigationBar, form: form)
+-        captureScreenshot("\(prefix)还款日期滚轮完整值")
++        try adjustBillingDateDay(accountEditor ? "account.editor.override.statementDate" : "billingDates.statementDate",
++                                 from: 5, to: 6, navigationBar: navigationBar, form: form,
++                                 screenshot: "\(prefix)账单日期滚轮完整值", auditText: !accountEditor)
++        try adjustBillingDateDay(accountEditor ? "account.editor.override.repaymentDate" : "billingDates.repaymentDate",
++                                 from: 15, to: 16, navigationBar: navigationBar, form: form,
++                                 screenshot: "\(prefix)还款日期滚轮完整值", auditText: !accountEditor)
+         if !accountEditor {
+             // Include the complete date explanation before auditing text;
+             // it was partly below the viewport after the last wheel edit.
+             let explanation = app.staticTexts["billingDates.explanation"]
+             reveal(explanation, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+-            let repayment = app.datePickers["billingDates.repaymentDate"]
+-            let title = app.staticTexts["billingDates.repaymentDate.label"]
+-            for element in [title, repayment, explanation] {
++            let repayment = app.buttons["billingDates.repaymentDate"]
++            XCTAssertEqual(repayment.label, "还款日")
++            XCTAssertTrue((repayment.value as? String ?? "").hasSuffix("16日"))
++            for element in [repayment, explanation] {
+                 XCTAssertFalse(element.frame.isEmpty)
+                 XCTAssertTrue(app.frame.contains(element.frame))
+                 XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
+                 XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
+             }
+             captureScreenshot("最大字号账期日期及说明完整阅读")
+-            try app.performAccessibilityAudit(for: .textClipped) { issue in
+-                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
+-                let attachment = XCTAttachment(string: details)
+-                attachment.name = "账期日期文字裁切审计元素"
+-                attachment.lifetime = .keepAlways
+-                self.add(attachment)
+-                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
+-                return false
+-            }
+         }
+         navigationBar.buttons["保存"].tap()
+         XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+@@ -2705,30 +2697,56 @@ final class CoreFlowsUITests: XCTestCase {
+     }
+ 
+     private func adjustBillingDateDay(_ identifier: String, from originalDay: Int, to changedDay: Int,
+-                                     navigationBar: XCUIElement, form: XCUIElement) {
+-        let picker = app.datePickers[identifier]
+-        let title = app.staticTexts["\(identifier).label"]
+-        reveal(title, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+-        reveal(picker, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
++                                     navigationBar: XCUIElement, form: XCUIElement,
++                                     screenshot: String, auditText: Bool) throws {
++        let entry = app.buttons[identifier]
++        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
++        let title = identifier.contains("statement") ? "账单日" : "还款日"
++        XCTAssertEqual(entry.label, title)
++        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", originalDay)))
++        entry.tap()
++        let selectionNavigation = app.navigationBars[title]
++        XCTAssertTrue(selectionNavigation.waitForExistence(timeout: 10))
++        let selectionForm = app.collectionViews["\(identifier).selection"]
++        let picker = app.datePickers["\(identifier).wheel"]
++        reveal(picker, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
+         let wheels = picker.pickerWheels
+         XCTAssertEqual(wheels.count, 3)
+         let day = wheels.element(boundBy: 2)
+         XCTAssertEqual(day.value as? String, "\(originalDay)日")
+         // Native wheels report a taller AX frame than their DatePicker host.
+         // Reveal that actual input too, using the unchanged viewport guards.
+-        reveal(day, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
++        reveal(day, fullyVisible: true, navigationBar: selectionNavigation, contentContainer: selectionForm)
+         day.adjust(toPickerWheelValue: "\(changedDay)日")
+         XCTAssertEqual(day.value as? String, "\(changedDay)日")
+-        for element in [title, picker] + wheels.allElementsBoundByIndex {
++        XCTAssertTrue(selectionNavigation.staticTexts[title].exists)
++        for element in [picker] + wheels.allElementsBoundByIndex {
+             XCTAssertFalse(element.frame.isEmpty)
+             XCTAssertTrue(app.frame.contains(element.frame))
+-            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
+-            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
++            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, selectionNavigation.frame.maxY)
++            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, selectionForm.frame.maxY))
+         }
+         for wheel in wheels.allElementsBoundByIndex {
+             XCTAssertTrue(wheel.isHittable)
+             assertTouchTarget(wheel)
+         }
++        captureScreenshot(screenshot)
++        if auditText {
++            try app.performAccessibilityAudit(for: .textClipped) { issue in
++                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
++                let attachment = XCTAttachment(string: details)
++                attachment.name = "账期日期文字裁切审计元素"
++                attachment.lifetime = .keepAlways
++                self.add(attachment)
++                self.captureAccessibilityAuditContext("账期日期文字裁切审计回调")
++                return false
++            }
++        }
++        selectionNavigation.buttons.element(boundBy: 0).tap()
++        XCTAssertTrue(selectionNavigation.waitForNonExistence(timeout: 10))
++        XCTAssertTrue(navigationBar.exists)
++        reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
++        XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", changedDay)))
+     }
+ 
+     private func verifyBillingDateFeedback(accountEditor: Bool, largestText: Bool) {
