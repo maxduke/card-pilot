@@ -268,10 +268,14 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBankNameFeedbackAndDiscardPreservesOriginalValues() {
+        // The complete discard/relaunch flow exceeded 180s in run 39732539668.
+        executionTimeAllowance = 240
         verifyBankNameFeedback(largestText: false, discard: true)
     }
 
     func testBankNameFeedbackAtLargestTextSizeAndDiscard() {
+        // Same complete discard/readback flow, plus scroll-away at largest text.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyBankNameFeedback(largestText: true, discard: true)
     }
@@ -3144,11 +3148,15 @@ final class CoreFlowsUITests: XCTestCase {
         let correctedName = "UI Bank"
         let noteText = (1...14).map { "UI note \($0)" }.joined(separator: "\n")
         launch("core")
-        tap(app.tabBars.buttons["卡片"])
+        selectCardsTab()
         if discard {
-            tap(app.buttons["编辑银行 \(originalName)"], scrollTowardTopWhenMissing: true)
+            let edit = bankEditButtons(named: originalName).element
+            reveal(edit, scrollTowardTopWhenMissing: true, fullyVisible: true)
+            assertTouchTarget(edit)
+            captureScreenshot("\(prefix)入口")
+            edit.tap()
         } else {
-            openNewBankEditor()
+            openNewBankEditor(screenshot: "\(prefix)入口")
         }
         let navigationBar = app.navigationBars[discard ? "编辑银行" : "添加银行"]
         let form = app.collectionViews["bank.editor.form"]
@@ -3170,23 +3178,49 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertFalse(error.exists)
         }
 
-        replaceText("   ", in: name)
+        if discard {
+            let archived = app.switches["归档"]
+            reveal(archived, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+            XCTAssertEqual(archived.value as? String, "0")
+            archived.switches.firstMatch.tap()
+            XCTAssertEqual(archived.value as? String, "1")
+        }
+        reveal(name, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentContainer: form)
+        if discard {
+            XCTAssertEqual(name.value as? String, originalName)
+            // The field's center can put the caret inside the existing name
+            // at large text sizes. Its trailing edge is beyond this full name.
+            name.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: originalName.count) + "   ")
+        } else {
+            replaceText("   ", in: name)
+        }
+        XCTAssertEqual(name.value as? String, "   ")
         reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         notes.tap()
         notes.typeText(noteText)
         XCTAssertFalse(error.exists)
-        if discard {
-            let archived = app.switches["归档"]
-            reveal(archived, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-            archived.tap()
-            XCTAssertEqual(archived.value as? String, "1")
-        }
-        scrollEditorTowardBottom(form)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        if largestText, name.exists {
-            let frame = name.frame
-            XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= navigationBar.frame.maxY
-                && frame.maxY <= min(contentBottom, form.frame.maxY))
+        if largestText {
+            // The Form's AX frame extends behind the keyboard. Begin the
+            // dismissal drag above the focused input's actually clipped edge.
+            let top = max(navigationBar.frame.maxY, form.frame.minY)
+            let bottom = min(contentBottom, notes.frame.maxY)
+            XCTAssertGreaterThan(bottom - top, 60)
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let x = form.frame.minX + form.frame.width * 0.03
+            origin.withOffset(CGVector(dx: x, dy: bottom - 25))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: x, dy: top + 25)),
+                       withVelocity: .slow, thenHoldForDuration: 0.2)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            scrollEditorTowardBottom(form)
+            if name.exists {
+                let frame = name.frame
+                XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= navigationBar.frame.maxY
+                    && frame.maxY <= min(contentBottom, form.frame.maxY))
+            }
+        } else {
+            // Saving must also dismiss a multiline text keyboard directly.
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
         }
         navigationBar.buttons["保存"].tap()
         assertEditorFieldErrorVisible(name, error: error, navigationBar: navigationBar, form: form)
@@ -3209,17 +3243,15 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        selectCardsTab()
         let search = app.searchFields["搜索银行、卡片或末四位"]
         enter(discard ? originalName : correctedName, into: search)
         search.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         if discard {
-            XCTAssertFalse(app.buttons["编辑银行 \(correctedName)"].exists)
+            XCTAssertEqual(bankEditButtons(named: correctedName).count, 0)
         }
-        let savedBanks = app.buttons.matching(NSPredicate(
-            format: "label == %@", "编辑银行 \(discard ? originalName : correctedName)"
-        ))
+        let savedBanks = bankEditButtons(named: discard ? originalName : correctedName)
         XCTAssertEqual(savedBanks.count, 1)
         let savedBank = savedBanks.element
         reveal(savedBank, fullyVisible: true)
@@ -3245,8 +3277,37 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
-    private func openNewBankEditor() {
-        tap(app.buttons["卡片与银行管理"])
+    private func bankEditButtons(named name: String) -> XCUIElementQuery {
+        // Native section headers capitalize their accessibility labels.
+        app.buttons.matching(NSPredicate(format: "label ==[c] %@", "编辑银行 \(name)"))
+    }
+
+    private func selectCardsTab() {
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let tabBar = app.tabBars.firstMatch
+        let cards = tabBar.buttons["卡片"]
+        XCTAssertTrue(cards.waitForExistence(timeout: 10))
+        XCTAssertTrue(cards.isEnabled)
+        XCTAssertTrue(cards.isHittable)
+        XCTAssertTrue(tabBar.frame.contains(cards.frame))
+        cards.tap()
+        let selection = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: cards)
+        XCTAssertEqual(XCTWaiter.wait(for: [selection], timeout: 10), .completed)
+        XCTAssertTrue(app.navigationBars["卡片"].waitForExistence(timeout: 10))
+    }
+
+    private func openNewBankEditor(screenshot: String? = nil) {
+        let navigationBar = app.navigationBars["卡片"]
+        let management = navigationBar.buttons["卡片与银行管理"]
+        XCTAssertTrue(management.waitForExistence(timeout: 10))
+        let isHittable = management.isHittable
+        if !isHittable { captureAccessibilityAuditContext("银行管理入口") }
+        XCTAssertTrue(isHittable)
+        assertTouchTarget(management)
+        XCTAssertTrue(navigationBar.frame.contains(management.frame))
+        if let screenshot { captureScreenshot(screenshot) }
+        // A fixed toolbar action does not belong to the scrolling viewport.
+        management.tap()
         tap(app.buttons["添加银行"])
     }
 
@@ -3399,7 +3460,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func restartAndSearchOnboardingCard(_ name: String) -> XCUIElement {
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        selectCardsTab()
         let search = app.searchFields["搜索银行、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText(name + "\n")
