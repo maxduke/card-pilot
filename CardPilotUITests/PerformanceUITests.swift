@@ -196,32 +196,45 @@ final class PerformanceUITests: XCTestCase {
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 30))
         search.tap()
+        var hasQuery = false
         measure(metrics: interactionMetrics, options: options) {
+            if hasQuery {
+                // Reset before the next sample; leave the final result ready for its screenshot.
+                search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
+                assertResultCount(profile.rawValue)
+            }
             startMeasuring()
             search.typeText("73519")
             assertResultCount(profile.rawValue / 100)
             stopMeasuring()
-            // Reset outside the window; every sample starts with the same list.
-            search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
-            assertResultCount(profile.rawValue)
+            hasQuery = true
         }
-        search.typeText("73519")
-        assertResultCount(profile.rawValue / 100)
         capture("性能基线\(profile.rawValue)-搜索结果")
     }
 
     private func measureScroll(_ profile: Profile) {
         prepare(profile)
+        freshLaunch()
+        open(.transactions, profile: profile)
+        let list = app.collectionViews.firstMatch
+        let latest = app.buttons["transaction.Baseline Latest"]
+        let initialListFrame = list.frame
+        let initialRowFrame = latest.frame
         measure(metrics: interactionMetrics + [XCTOSSignpostMetric.scrollingAndDecelerationMetric], options: options) {
-            freshLaunch()
-            open(.transactions, profile: profile)
-            let list = app.collectionViews.firstMatch
+            // Restore the same content position outside the window, without
+            // measuring app relaunch work as part of a scrolling-only case.
+            for _ in 0..<4 {
+                if latest.exists && latest.frame == initialRowFrame && list.frame == initialListFrame { break }
+                list.swipeDown(velocity: .fast)
+            }
+            XCTAssertEqual(latest.frame, initialRowFrame)
+            XCTAssertEqual(list.frame, initialListFrame)
             XCTAssertTrue(list.isHittable)
             startMeasuring()
             list.swipeUp(velocity: .fast)
             list.swipeUp(velocity: .fast)
             stopMeasuring()
-            XCTAssertFalse(app.buttons["transaction.Baseline Latest"].isHittable)
+            XCTAssertFalse(latest.exists && latest.isHittable)
         }
         capture("性能基线\(profile.rawValue)-交易滚动")
     }
