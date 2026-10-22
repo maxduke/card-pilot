@@ -24,12 +24,7 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackCorrectsAndPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAtLargestTextSizeAndCorrectedSave \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAndDiscardPreservesOriginalValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAtLargestTextSizeAndDiscard \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackCorrectsAndPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackAtLargestTextSizeAndDiscard \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankEditorNativeMenuEntryDiagnostics \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \

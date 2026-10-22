@@ -258,6 +258,25 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("规则纠正后账期日期读回")
     }
 
+    func testBankEditorNativeMenuEntryDiagnostics() {
+        launch("core")
+        selectCardsTab()
+        let management = app.navigationBars["卡片"].buttons["卡片与银行管理"]
+        XCTAssertTrue(management.waitForExistence(timeout: 10))
+        let detail = XCTAttachment(string: "frame=\(management.frame), hittable=\(management.isHittable), enabled=\(management.isEnabled)\n" + app.debugDescription)
+        detail.name = "银行管理入口原生层级"
+        detail.lifetime = .keepAlways
+        add(detail)
+        captureScreenshot("银行管理入口原生画面")
+        management.tap()
+        let action = app.buttons["添加银行"]
+        XCTAssertTrue(action.waitForExistence(timeout: 10))
+        captureAccessibilityAuditContext("银行管理菜单")
+        action.tap()
+        XCTAssertTrue(app.navigationBars["添加银行"].waitForExistence(timeout: 10))
+        captureAccessibilityAuditContext("原生菜单进入银行编辑器")
+    }
+
     func testBankNameFeedbackCorrectsAndPreservesSavedValues() {
         verifyBankNameFeedback(largestText: false, discard: false)
     }
@@ -3170,23 +3189,29 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertFalse(error.exists)
         }
 
-        replaceText("   ", in: name)
-        reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-        notes.tap()
-        notes.typeText(noteText)
-        XCTAssertFalse(error.exists)
         if discard {
             let archived = app.switches["归档"]
             reveal(archived, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
             archived.tap()
             XCTAssertEqual(archived.value as? String, "1")
         }
-        scrollEditorTowardBottom(form)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        if largestText, name.exists {
-            let frame = name.frame
-            XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= navigationBar.frame.maxY
-                && frame.maxY <= min(contentBottom, form.frame.maxY))
+        reveal(name, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentContainer: form)
+        replaceText("   ", in: name)
+        reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        notes.tap()
+        notes.typeText(noteText)
+        XCTAssertFalse(error.exists)
+        if largestText {
+            scrollEditorTowardBottom(form)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            if name.exists {
+                let frame = name.frame
+                XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= navigationBar.frame.maxY
+                    && frame.maxY <= min(contentBottom, form.frame.maxY))
+            }
+        } else {
+            // Saving must also dismiss a multiline text keyboard directly.
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
         }
         navigationBar.buttons["保存"].tap()
         assertEditorFieldErrorVisible(name, error: error, navigationBar: navigationBar, form: form)
