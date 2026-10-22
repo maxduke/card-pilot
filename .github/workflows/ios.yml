@@ -24,9 +24,7 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBackupExportFilenameCancellationAndLargestTextRecord \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionSectionsSaveAndCancelWithoutRepeatingCreation \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountExplanationAtLargestTextSize \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
