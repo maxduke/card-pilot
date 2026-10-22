@@ -3849,8 +3849,8 @@ final class CoreFlowsUITests: XCTestCase {
         // A valid native tap point alone did not open the dialog in run
         // 39768699985. Require foreground readiness and stable navigation
         // geometry before the single activation; keep the result assertion.
-        var previousEditFrame: CGRect?
-        var previousNavigationFrame: CGRect?
+        var previousEditFrame = edit.frame
+        var previousNavigationFrame = navigationBar.frame
         let entryReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard self.app.state == .runningForeground, navigationBar.exists, edit.exists else { return false }
             let frame = edit.frame
@@ -3872,7 +3872,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(option.waitForExistence(timeout: 10))
         // Native dialog actions can have invalid AX activation points despite
         // visible frames. Select one stable, enabled action at its real center.
-        var previousFrame: CGRect?
+        // Seed with a real snapshot: starting at nil forces a failed first
+        // poll whose native debug capture consumed the entire 10s budget in
+        // run 39812907310 before a second stability check could run.
+        var previousFrame = option.frame
         var selectionPoint: CGVector?
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard option.exists else { return false }
