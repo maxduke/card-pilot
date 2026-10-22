@@ -1,4 +1,4 @@
-#if DEBUG && targetEnvironment(simulator)
+#if (DEBUG || PERFORMANCE_TESTING) && targetEnvironment(simulator)
 import Foundation
 import SwiftData
 
@@ -21,6 +21,18 @@ enum UITestBootstrap {
         case accountHistory
         case futureRules
         case billingDateFeedback
+        case performanceSmall
+        case performanceMedium
+        case performanceLarge
+
+        var performanceTransactionCount: Int? {
+            switch self {
+            case .performanceSmall: 100
+            case .performanceMedium: 5_000
+            case .performanceLarge: 20_000
+            default: nil
+            }
+        }
     }
 
     static func makeStore() -> BackupStore? {
@@ -35,8 +47,12 @@ enum UITestBootstrap {
             let url = directory.appendingPathComponent("test.store")
             let isNew = !FileManager.default.fileExists(atPath: url.path)
             let container = try CardPilotPersistence.makeContainer(at: url)
+            let reportURL = directory.appendingPathComponent("performance-fixture.json")
             if isNew && scenario != .empty {
-                try seed(container.mainContext, scenario: scenario)
+                try seed(container.mainContext, scenario: scenario, performanceReportURL: reportURL)
+            }
+            if scenario.performanceTransactionCount != nil && !FileManager.default.fileExists(atPath: reportURL.path) {
+                throw PerformanceFixture.InvalidFixture(message: "Missing completed performance fixture report")
             }
             return container
         })
@@ -45,8 +61,16 @@ enum UITestBootstrap {
     static func seed(
         _ context: ModelContext,
         scenario: Scenario = .core,
-        today: LocalDate = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!)
+        today: LocalDate = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!),
+        performanceReportURL: URL? = nil
     ) throws {
+        if let count = scenario.performanceTransactionCount {
+            let report = try PerformanceFixture.seed(context, transactionCount: count, today: today)
+            if let performanceReportURL {
+                try JSONEncoder().encode(report).write(to: performanceReportURL, options: .atomic)
+            }
+            return
+        }
         guard scenario != .empty else { return }
         let bank = Bank(name: "UI Test Bank")
         let networks = CardNetwork.makeBuiltIns()

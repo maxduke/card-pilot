@@ -116,7 +116,7 @@ struct CardPilotApp: App {
     @StateObject private var store: BackupStore
 
     init() {
-        #if DEBUG && targetEnvironment(simulator)
+        #if (DEBUG || PERFORMANCE_TESTING) && targetEnvironment(simulator)
         _store = StateObject(wrappedValue: UITestBootstrap.makeStore() ?? BackupStore())
         #else
         _store = StateObject(wrappedValue: BackupStore())
