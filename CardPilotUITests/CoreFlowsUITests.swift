@@ -468,6 +468,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed() {
+        // This full correction/save/relaunch flow reached 180.950s including
+        // teardown in run 39736406449, beyond the workflow's default budget.
+        executionTimeAllowance = 240
         launch("core")
         openPromotion("UI Spend")
         openPromotionEditor("基本信息")
