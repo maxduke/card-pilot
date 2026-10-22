@@ -1,0 +1,93 @@
+name: iOS Performance Diagnostic
+
+on:
+  push:
+    branches: [diagnose/performance-baseline]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record configuration and device
+        run: |
+          set -euo pipefail
+          mkdir -p performance-evidence
+          xcodebuild -version | tee performance-evidence/xcode-version.txt
+          sw_vers > performance-evidence/macos-version.txt
+          system_profiler SPHardwareDataType > performance-evidence/host-hardware.txt
+          xcrun simctl list devices available -j > performance-evidence/simulators.json
+          device_id=$(python3 -c 'import json; devices=json.load(open("performance-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          echo "BENCH_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+          git rev-parse HEAD > performance-evidence/source-revision.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > performance-evidence/started-at.txt
+          xcrun xcresulttool help get test-results metrics > performance-evidence/metrics-help.txt
+          xcodebuild -project CardPilot.xcodeproj -scheme CardPilotPerformance \
+            -configuration Release -destination "platform=iOS Simulator,id=$device_id" \
+            -showBuildSettings -json SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
+            CODE_SIGNING_ALLOWED=NO > performance-evidence/build-settings.json
+          python3 - <<'PY'
+          import json
+          settings = json.load(open("performance-evidence/build-settings.json"))
+          app = next(item["buildSettings"] for item in settings if item["target"] == "CardPilot")
+          assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
+          assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+          flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+          assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
+          PY
+      - name: Measure isolated Release scenarios
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilotPerformance -configuration Release \
+            -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
+            -resultBundlePath PerformanceResults.xcresult \
+            -only-testing:CardPilotUITests/PerformanceUITests/testLargeColdLaunch \
+            -only-testing:CardPilotUITests/PerformanceUITests/testLargeTransactionSearch \
+            -only-testing:CardPilotUITests/PerformanceUITests/testLargeTransactionScroll \
+            -parallel-testing-enabled NO \
+            -enableCodeCoverage NO \
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 \
+            -maximum-test-execution-time-allowance 600 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
+            CODE_SIGNING_ALLOWED=NO | tee performance-evidence/xcodebuild.log
+      - name: Export native measurements and fixture reports
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path PerformanceResults.xcresult > performance-evidence/summary.json
+          xcrun xcresulttool get test-results metrics --path PerformanceResults.xcresult > performance-evidence/metrics.json
+          xcrun xcresulttool export attachments --path PerformanceResults.xcresult --output-path performance-evidence/attachments
+          app_data=$(xcrun simctl get_app_container "$BENCH_DEVICE_ID" com.maxduke.CardPilot data)
+          export BENCH_APP_DATA="$app_data"
+          python3 - <<'PY'
+          import os, pathlib, shutil
+          source = pathlib.Path(os.environ["BENCH_APP_DATA"]) / "tmp/CardPilotUITests"
+          destination = pathlib.Path("performance-evidence/fixtures")
+          destination.mkdir(parents=True, exist_ok=True)
+          for report in source.glob("*/performance-fixture.json"):
+              shutil.copyfile(report, destination / f"{report.parent.name}.json")
+          PY
+      - name: Upload raw performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-performance-results
+          path: |
+            PerformanceResults.xcresult
+            performance-evidence
+          retention-days: 14
+          if-no-files-found: error
