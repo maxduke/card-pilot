@@ -2617,9 +2617,10 @@ final class CoreFlowsUITests: XCTestCase {
         tap(export)
         let picker = app.otherElements["Browse View (Picker)"]
         let filename = picker.textFields.firstMatch
-        // Wait for the actual control using the existing combined 20s + 15s
-        // readiness budget; a cold system picker can appear after the first 20s.
-        XCTAssertTrue(filename.waitForExistence(timeout: 35))
+        // In run 39768699985 the native picker first rendered its filename
+        // about 46s after Export (recording at 59.72s, tap at 13.29s).
+        // Wait for that real control without reopening or retrying the export.
+        XCTAssertTrue(filename.waitForExistence(timeout: 60))
         XCTAssertTrue(picker.exists)
         // The native picker exposes an abbreviated value until editing starts.
         // Focus the real filename field without changing the proposed name.
@@ -3842,9 +3843,29 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openPromotionEditor(_ section: String) {
-        XCTAssertTrue(app.buttons["promotion.edit"].waitForExistence(timeout: 10))
-        assertTouchTarget(app.buttons["promotion.edit"])
-        tap(app.buttons["promotion.edit"])
+        let navigationBar = app.navigationBars.containing(.button, identifier: "promotion.edit").firstMatch
+        let edit = navigationBar.buttons["promotion.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 10))
+        // A valid native tap point alone did not open the dialog in run
+        // 39768699985. Require foreground readiness and stable navigation
+        // geometry before the single activation; keep the result assertion.
+        var previousEditFrame: CGRect?
+        var previousNavigationFrame: CGRect?
+        let entryReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, navigationBar.exists, edit.exists else { return false }
+            let frame = edit.frame
+            let navigationFrame = navigationBar.frame
+            defer {
+                previousEditFrame = frame
+                previousNavigationFrame = navigationFrame
+            }
+            return !frame.isEmpty && frame == previousEditFrame && navigationFrame == previousNavigationFrame
+                && self.app.frame.contains(frame) && navigationFrame.contains(CGPoint(x: frame.midX, y: frame.midY))
+                && edit.isEnabled && edit.isHittable
+        }, object: edit)
+        XCTAssertEqual(XCTWaiter.wait(for: [entryReady], timeout: 10), .completed)
+        assertTouchTarget(edit)
+        edit.tap()
         let options = app.sheets["编辑促销"]
         XCTAssertTrue(options.waitForExistence(timeout: 10))
         let option = options.buttons["编辑\(section)"]
