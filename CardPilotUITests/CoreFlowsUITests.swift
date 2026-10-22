@@ -3177,7 +3177,8 @@ final class CoreFlowsUITests: XCTestCase {
         if discard {
             let archived = app.switches["归档"]
             reveal(archived, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-            archived.tap()
+            XCTAssertEqual(archived.value as? String, "0")
+            archived.switches.firstMatch.tap()
             XCTAssertEqual(archived.value as? String, "1")
         }
         reveal(name, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentContainer: form)
@@ -3187,8 +3188,18 @@ final class CoreFlowsUITests: XCTestCase {
         notes.typeText(noteText)
         XCTAssertFalse(error.exists)
         if largestText {
-            scrollEditorTowardBottom(form)
+            // The Form's AX frame extends behind the keyboard. Begin the
+            // dismissal drag above the focused input's actually clipped edge.
+            let top = max(navigationBar.frame.maxY, form.frame.minY)
+            let bottom = min(contentBottom, notes.frame.maxY)
+            XCTAssertGreaterThan(bottom - top, 60)
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let x = form.frame.minX + form.frame.width * 0.03
+            origin.withOffset(CGVector(dx: x, dy: bottom - 25))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: x, dy: top + 25)),
+                       withVelocity: .slow, thenHoldForDuration: 0.2)
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            scrollEditorTowardBottom(form)
             if name.exists {
                 let frame = name.frame
                 XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= navigationBar.frame.maxY
