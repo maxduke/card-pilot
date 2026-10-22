@@ -144,7 +144,8 @@ final class PerformanceUITests: XCTestCase {
 
     private func assertResultCount(_ count: Int) {
         let result = app.staticTexts["transactions.results.count"]
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "共 \(count) 笔交易"), object: result)
+        let displayedCount = count.formatted(.number.locale(Locale(identifier: "zh_CN")))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "共 \(displayedCount) 笔交易"), object: result)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 30), .completed)
     }
 
