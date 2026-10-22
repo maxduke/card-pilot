@@ -1261,6 +1261,11 @@ private struct CardRow: View {
 }
 
 private struct BankEditorView: View {
+    private enum Field: Hashable {
+        case name
+        case notes
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let bank: Bank?
@@ -1268,6 +1273,8 @@ private struct BankEditorView: View {
     @State private var notes: String
     @State private var archived: Bool
     @State private var errorMessage: String?
+    @State private var showingValidationErrors = false
+    @FocusState private var focusedField: Field?
 
     init(bank: Bank?) {
         self.bank = bank
@@ -1282,31 +1289,61 @@ private struct BankEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("银行") {
-                    TextField("名称", text: $name)
-                        .accessibilityLabel("银行名称")
-                    TextField("备注（可选）", text: $notes, axis: .vertical)
-                    if bank != nil {
-                        Toggle("归档", isOn: $archived)
+            ScrollViewReader { scrollProxy in
+                Form {
+                    Section("银行") {
+                        TextField("名称", text: $name)
+                            .accessibilityLabel("银行名称")
+                            .accessibilityIdentifier("bank.name")
+                            .focused($focusedField, equals: .name)
+                            .id(Field.name)
+                        if showingValidationErrors, let message = nameValidationMessage {
+                            InlineErrorView(message: message)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("bank.name.error")
+                        }
+                        TextField("备注（可选）", text: $notes, axis: .vertical)
+                            .accessibilityIdentifier("bank.notes")
+                            .focused($focusedField, equals: .notes)
+                        if bank != nil {
+                            Toggle("归档", isOn: $archived)
+                        }
+                    }
+                    if let errorMessage {
+                        InlineErrorView(message: errorMessage)
                     }
                 }
-                if let errorMessage {
-                    InlineErrorView(message: errorMessage)
+                .scrollDismissesKeyboard(.immediately)
+                .accessibilityIdentifier("bank.editor.form")
+                .navigationTitle(bank == nil ? "添加银行" : "编辑银行")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") { save(using: scrollProxy) }
+                    }
                 }
-            }
-            .navigationTitle(bank == nil ? "添加银行" : "编辑银行")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
             }
         }
         .protectEdits(snapshot: editSnapshot)
     }
 
-    private func save() {
+    private var nameValidationMessage: String? {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "银行名称不能为空。" : nil
+    }
+
+    private func save(using scrollProxy: ScrollViewProxy) {
+        focusedField = nil
+        errorMessage = nil
+        showingValidationErrors = true
+        guard nameValidationMessage == nil else {
+            Task { @MainActor in
+                await Task.yield()
+                guard nameValidationMessage != nil else { return }
+                scrollProxy.scrollTo(Field.name, anchor: .top)
+            }
+            return
+        }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { errorMessage = "银行名称不能为空。"; return }
         let target = bank ?? Bank(name: trimmed, notes: notes)
         target.name = trimmed
         target.notes = notes

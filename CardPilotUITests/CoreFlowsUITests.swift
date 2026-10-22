@@ -258,6 +258,24 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("规则纠正后账期日期读回")
     }
 
+    func testBankNameFeedbackCorrectsAndPreservesSavedValues() {
+        verifyBankNameFeedback(largestText: false, discard: false)
+    }
+
+    func testBankNameFeedbackAtLargestTextSizeAndCorrectedSave() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyBankNameFeedback(largestText: true, discard: false)
+    }
+
+    func testBankNameFeedbackAndDiscardPreservesOriginalValues() {
+        verifyBankNameFeedback(largestText: false, discard: true)
+    }
+
+    func testBankNameFeedbackAtLargestTextSizeAndDiscard() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyBankNameFeedback(largestText: true, discard: true)
+    }
+
     func testAccountEditorFieldFeedbackAndCorrectedSave() {
         verifyAccountEditorFieldFeedback(largestText: false)
     }
@@ -3118,6 +3136,118 @@ final class CoreFlowsUITests: XCTestCase {
         // AX can round the same shared edge differently by a subpixel.
         XCTAssertGreaterThanOrEqual(errorFrame.minY + 0.001, fieldFrame.maxY)
         XCTAssertTrue(field.isHittable)
+    }
+
+    private func verifyBankNameFeedback(largestText: Bool, discard: Bool) {
+        let prefix = (largestText ? "最大字号" : "") + (discard ? "编辑银行" : "添加银行")
+        let originalName = "UI Test Bank"
+        let correctedName = "UI Bank"
+        let noteText = (1...14).map { "UI note \($0)" }.joined(separator: "\n")
+        launch("core")
+        tap(app.tabBars.buttons["卡片"])
+        if discard {
+            tap(app.buttons["编辑银行 \(originalName)"], scrollTowardTopWhenMissing: true)
+        } else {
+            openNewBankEditor()
+        }
+        let navigationBar = app.navigationBars[discard ? "编辑银行" : "添加银行"]
+        let form = app.collectionViews["bank.editor.form"]
+        let name = app.textFields["bank.name"]
+        let notes = app.descendants(matching: .any).matching(identifier: "bank.notes").firstMatch
+        let error = app.staticTexts["bank.name.error"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        XCTAssertFalse(error.exists)
+
+        if !discard && !largestText {
+            // Feedback alone is not an edit and must not require discarding.
+            navigationBar.buttons["保存"].tap()
+            assertEditorFieldErrorVisible(name, error: error, navigationBar: navigationBar, form: form)
+            navigationBar.buttons["取消"].tap()
+            XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["放弃修改"].exists)
+            openNewBankEditor()
+            XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+            XCTAssertFalse(error.exists)
+        }
+
+        replaceText("   ", in: name)
+        reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        notes.tap()
+        notes.typeText(noteText)
+        XCTAssertFalse(error.exists)
+        if discard {
+            let archived = app.switches["归档"]
+            reveal(archived, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+            archived.tap()
+            XCTAssertEqual(archived.value as? String, "1")
+        }
+        scrollEditorTowardBottom(form)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        if largestText, name.exists {
+            let frame = name.frame
+            XCTAssertFalse(!frame.isEmpty && frame.minY + 0.001 >= navigationBar.frame.maxY
+                && frame.maxY <= min(contentBottom, form.frame.maxY))
+        }
+        navigationBar.buttons["保存"].tap()
+        assertEditorFieldErrorVisible(name, error: error, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(error.label, "错误：银行名称不能为空。")
+        XCTAssertEqual(notes.value as? String, noteText)
+        captureScreenshot("\(prefix)名称首错定位")
+
+        replaceText(" \(correctedName) ", in: name)
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(name.value as? String, " \(correctedName) ")
+        XCTAssertEqual(notes.value as? String, noteText)
+        captureScreenshot("\(prefix)名称纠正后错误消失")
+        if discard {
+            navigationBar.buttons["取消"].tap()
+            tap(app.buttons["放弃修改"])
+        } else {
+            navigationBar.buttons["保存"].tap()
+        }
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        tap(app.tabBars.buttons["卡片"])
+        let search = app.searchFields["搜索银行、卡片或末四位"]
+        enter(discard ? originalName : correctedName, into: search)
+        search.typeText("\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        if discard {
+            XCTAssertFalse(app.buttons["编辑银行 \(correctedName)"].exists)
+        }
+        let savedBanks = app.buttons.matching(NSPredicate(
+            format: "label == %@", "编辑银行 \(discard ? originalName : correctedName)"
+        ))
+        XCTAssertEqual(savedBanks.count, 1)
+        let savedBank = savedBanks.element
+        reveal(savedBank, fullyVisible: true)
+        savedBank.tap()
+        let savedNavigation = app.navigationBars["编辑银行"]
+        XCTAssertTrue(savedNavigation.waitForExistence(timeout: 10))
+        XCTAssertEqual(name.value as? String, discard ? originalName : correctedName)
+        if discard {
+            XCTAssertTrue(["", "备注（可选）"].contains(notes.value as? String ?? ""))
+        } else {
+            XCTAssertEqual(notes.value as? String, noteText)
+        }
+        XCTAssertFalse(error.exists)
+        captureScreenshot("\(prefix)\(discard ? "放弃后原值读回" : "保存后读回")")
+        if discard {
+            let archived = app.switches["归档"]
+            reveal(archived, fullyVisible: true, navigationBar: savedNavigation,
+                   contentContainer: app.collectionViews["bank.editor.form"])
+            XCTAssertEqual(archived.value as? String, "0")
+        }
+        savedNavigation.buttons["取消"].tap()
+        XCTAssertTrue(savedNavigation.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    private func openNewBankEditor() {
+        tap(app.buttons["卡片与银行管理"])
+        tap(app.buttons["添加银行"])
     }
 
     private func verifyAccountEditorNumericKeyboard(largestText: Bool) {
