@@ -436,6 +436,28 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
+    func testPromotionCreationTitleFeedbackCorrectsAndPersists() {
+        verifyPromotionCreationTitleFeedback(largestText: false)
+    }
+
+    func testPromotionCreationTitleFeedbackAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyPromotionCreationTitleFeedback(largestText: true)
+    }
+
+    func testPromotionCollapsedAmountFeedbackRevealsFirstErrorAndPersists() {
+        // The comparable full correction/save/relaunch promotion flow reached
+        // 180.950s in run 39736406449; retain the existing 240s case budget.
+        executionTimeAllowance = 240
+        verifyPromotionAmountFieldFeedback(perTransaction: false)
+    }
+
+    func testPromotionPerTransactionFieldFeedbackAtLargestTextSize() {
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyPromotionAmountFieldFeedback(perTransaction: true)
+    }
+
     func testPromotionSectionsSaveAndCancelWithoutRepeatingCreation() {
         launch("core")
         openPromotion("UI Spend")
@@ -2587,6 +2609,156 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(enrollment.count, 1)
         captureScreenshot("最大字号首页今日待办")
         try auditAccessibility(for: [.hitRegion])
+    }
+
+    private func verifyPromotionCreationTitleFeedback(largestText: Bool) {
+        let prefix = (largestText ? "最大字号" : "") + "创建促销"
+        launch("core")
+        openNewPromotionEditor()
+        let navigationBar = app.navigationBars["添加促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        let title = app.textFields["promotion.title"]
+        let error = app.staticTexts["promotion.error.title"]
+        let advance = app.buttons["promotion.editor.advance"]
+        let threshold = app.textFields["累计达标门槛（可选）"]
+
+        if !largestText {
+            // Merely revealing an error is not an edit and must not require
+            // discarding an otherwise untouched new promotion.
+            tap(title)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            advance.tap()
+            assertEditorFieldErrorVisible(title, error: error, navigationBar: navigationBar, form: form)
+            navigationBar.buttons["取消"].tap()
+            XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["放弃修改"].exists)
+            openNewPromotionEditor()
+        }
+
+        replacePromotionAmount("125.50", in: threshold, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        if largestText {
+            let frame = title.exists ? title.frame : .zero
+            let top = max(navigationBar.frame.maxY, form.frame.minY)
+            XCTAssertFalse(title.exists && !frame.isEmpty && frame.minY + 0.001 >= top
+                           && frame.maxY <= min(contentBottom, form.frame.maxY))
+        }
+        advance.tap()
+        assertEditorFieldErrorVisible(title, error: error, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(error.label, "错误：请先填写活动标题。")
+        captureScreenshot("\(prefix)标题首错定位")
+        title.tap()
+        title.typeText(" UI Feedback ")
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, " UI Feedback ")
+        captureScreenshot("\(prefix)标题纠正后错误消失")
+        advance.tap()
+        XCTAssertTrue(app.staticTexts["主办方"].waitForExistence(timeout: 10))
+        advance.tap()
+        let save = app.buttons["promotion.editor.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        save.tap()
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Feedback")
+        openPromotionEditor("基本信息")
+        let editingNavigationBar = app.navigationBars["编辑促销"]
+        XCTAssertEqual(title.value as? String, "UI Feedback")
+        XCTAssertFalse(error.exists)
+        captureScreenshot("\(prefix)保存标题读回")
+        reveal(threshold, fullyVisible: true, navigationBar: editingNavigationBar, contentContainer: form)
+        XCTAssertEqual(threshold.value as? String, "125.5")
+        captureScreenshot("\(prefix)保存金额读回")
+        editingNavigationBar.buttons["取消"].tap()
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    private func verifyPromotionAmountFieldFeedback(perTransaction: Bool) {
+        let prefix = perTransaction ? "最大字号逐笔促销" : "累计促销"
+        let name = perTransaction ? "UI Available" : "UI Spend"
+        launch(perTransaction ? "promotionOverview" : "core")
+        openPromotion(name)
+        openPromotionEditor("基本信息")
+        let navigationBar = app.navigationBars["编辑促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        let first = app.textFields[perTransaction ? "优惠笔数上限" : "累计计入上限（可选）"]
+        let second = app.textFields[perTransaction ? "单笔满足金额（可选）" : "单笔计入门槛（可选）"]
+        let firstError = app.staticTexts["promotion.error.\(perTransaction ? "benefitTransactionCap" : "qualifyingCap")"]
+        let secondError = app.staticTexts["promotion.error.perTransactionThreshold"]
+        let additional = app.buttons["其他金额条件（可选）"]
+        if !perTransaction { tap(additional) }
+        replacePromotionAmount("0", in: first, navigationBar: navigationBar, form: form)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        replacePromotionAmount("0", in: second, navigationBar: navigationBar, form: form)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        if !perTransaction {
+            tap(additional, scrollTowardTopWhenMissing: true)
+            XCTAssertFalse(first.exists)
+        }
+        selectPromotionEditorSection("适用范围")
+        app.buttons["promotion.editor.save"].tap()
+        assertEditorFieldErrorVisible(first, error: firstError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(firstError.label, perTransaction ? "错误：优惠笔数上限应为大于 0 的整数。"
+                       : "错误：累计计入上限应为大于 0 的数字，或留空。")
+        captureScreenshot("\(prefix)金额首错定位")
+        replacePromotionAmount(perTransaction ? "5" : "5000", in: first, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(firstError.waitForNonExistence(timeout: 5))
+        captureScreenshot("\(prefix)首项纠正后错误消失")
+        app.buttons["promotion.editor.save"].tap()
+        assertEditorFieldErrorVisible(second, error: secondError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(secondError.label, perTransaction ? "错误：单笔满足金额应为大于 0 的数字，或留空。"
+                       : "错误：单笔计入门槛应为大于 0 的数字，或留空。")
+        captureScreenshot("\(prefix)下一错误定位")
+        replacePromotionAmount("100", in: second, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(secondError.waitForNonExistence(timeout: 5))
+        captureScreenshot("\(prefix)金额纠正后错误消失")
+        app.buttons["promotion.editor.save"].tap()
+        XCTAssertTrue(app.navigationBars[name].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion(name)
+        openPromotionEditor("基本信息")
+        XCTAssertEqual(app.textFields["promotion.title"].value as? String, name)
+        reveal(first, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(first.value as? String, perTransaction ? "5" : "5000")
+        XCTAssertFalse(firstError.exists)
+        captureScreenshot("\(prefix)首项保存读回")
+        reveal(second, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(second.value as? String, "100")
+        XCTAssertFalse(secondError.exists)
+        captureScreenshot("\(prefix)金额保存读回")
+        navigationBar.buttons["取消"].tap()
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    private func openNewPromotionEditor() {
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let tab = app.tabBars.buttons["促销"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10))
+        XCTAssertTrue(tab.isEnabled && tab.isHittable)
+        XCTAssertTrue(app.frame.contains(tab.frame))
+        tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: tab)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed)
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        tap(app.buttons["添加促销活动"])
+        XCTAssertTrue(app.navigationBars["添加促销"].waitForExistence(timeout: 10))
+    }
+
+    private func replacePromotionAmount(_ text: String, in field: XCUIElement,
+                                        navigationBar: XCUIElement, form: XCUIElement) {
+        reveal(field, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        let old = field.value as? String ?? ""
+        // Values here fit in the field. Place the caret after the actual text
+        // before deleting, rather than deleting from a center-tap caret.
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+        XCTAssertEqual(field.value as? String, text)
     }
 
     private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
