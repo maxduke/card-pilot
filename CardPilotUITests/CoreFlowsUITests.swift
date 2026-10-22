@@ -258,25 +258,6 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("规则纠正后账期日期读回")
     }
 
-    func testBankEditorNativeMenuEntryDiagnostics() {
-        launch("core")
-        selectCardsTab()
-        let management = app.navigationBars["卡片"].buttons["卡片与银行管理"]
-        XCTAssertTrue(management.waitForExistence(timeout: 10))
-        let detail = XCTAttachment(string: "frame=\(management.frame), hittable=\(management.isHittable), enabled=\(management.isEnabled)\n" + app.debugDescription)
-        detail.name = "银行管理入口原生层级"
-        detail.lifetime = .keepAlways
-        add(detail)
-        captureScreenshot("银行管理入口原生画面")
-        management.tap()
-        let action = app.buttons["添加银行"]
-        XCTAssertTrue(action.waitForExistence(timeout: 10))
-        captureAccessibilityAuditContext("银行管理菜单")
-        action.tap()
-        XCTAssertTrue(app.navigationBars["添加银行"].waitForExistence(timeout: 10))
-        captureAccessibilityAuditContext("原生菜单进入银行编辑器")
-    }
-
     func testBankNameFeedbackCorrectsAndPreservesSavedValues() {
         verifyBankNameFeedback(largestText: false, discard: false)
     }
@@ -3165,9 +3146,13 @@ final class CoreFlowsUITests: XCTestCase {
         launch("core")
         selectCardsTab()
         if discard {
-            tap(bankEditButtons(named: originalName).element, scrollTowardTopWhenMissing: true)
+            let edit = bankEditButtons(named: originalName).element
+            reveal(edit, scrollTowardTopWhenMissing: true, fullyVisible: true)
+            assertTouchTarget(edit)
+            captureScreenshot("\(prefix)入口")
+            edit.tap()
         } else {
-            openNewBankEditor()
+            openNewBankEditor(screenshot: "\(prefix)入口")
         }
         let navigationBar = app.navigationBars[discard ? "编辑银行" : "添加银行"]
         let form = app.collectionViews["bank.editor.form"]
@@ -3287,12 +3272,16 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片"].waitForExistence(timeout: 10))
     }
 
-    private func openNewBankEditor() {
+    private func openNewBankEditor(screenshot: String? = nil) {
         let navigationBar = app.navigationBars["卡片"]
         let management = navigationBar.buttons["卡片与银行管理"]
         XCTAssertTrue(management.waitForExistence(timeout: 10))
-        XCTAssertTrue(management.isHittable)
+        let isHittable = management.isHittable
+        if !isHittable { captureAccessibilityAuditContext("银行管理入口") }
+        XCTAssertTrue(isHittable)
+        assertTouchTarget(management)
         XCTAssertTrue(navigationBar.frame.contains(management.frame))
+        if let screenshot { captureScreenshot(screenshot) }
         // A fixed toolbar action does not belong to the scrolling viewport.
         management.tap()
         tap(app.buttons["添加银行"])

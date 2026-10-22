@@ -88,6 +88,7 @@ struct CardsView: View {
                                 HStack {
                                     BankBadge(bank: bank)
                                     Text(bank.name)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     if bank.archivedAt != nil {
                                         Text("已归档")
                                             .font(.caption)
@@ -99,6 +100,8 @@ struct CardsView: View {
                                         showingBankEditor = true
                                     } label: {
                                         Image(systemName: "pencil")
+                                            .frame(minWidth: 44, minHeight: 44)
+                                            .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.borderless)
                                     .accessibilityLabel("编辑银行 \(bank.name)")
@@ -147,9 +150,10 @@ struct CardsView: View {
                             Label("添加银行", systemImage: "building.columns")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Label("卡片与银行管理", systemImage: "ellipsis.circle")
+                            .labelStyle(.iconOnly)
+                            .frame(minWidth: 44, minHeight: 44)
                     }
-                    .accessibilityLabel("卡片与银行管理")
                 }
             }
             .trackedSheet(isPresented: $showingBankEditor) {
