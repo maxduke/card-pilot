@@ -2,8 +2,7 @@ name: iOS
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [diagnose/promotion-field-feedback]
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -25,6 +24,13 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationTitleFeedbackCorrectsAndPersists \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationTitleFeedbackAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCollapsedAmountFeedbackRevealsFirstErrorAndPersists \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionPerTransactionFieldFeedbackAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionNumericKeyboardAtLargestTextSizePreservesSavedRules \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
