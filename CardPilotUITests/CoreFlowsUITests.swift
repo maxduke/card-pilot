@@ -3144,9 +3144,9 @@ final class CoreFlowsUITests: XCTestCase {
         let correctedName = "UI Bank"
         let noteText = (1...14).map { "UI note \($0)" }.joined(separator: "\n")
         launch("core")
-        tap(app.tabBars.buttons["卡片"])
+        selectCardsTab()
         if discard {
-            tap(app.buttons["编辑银行 \(originalName)"], scrollTowardTopWhenMissing: true)
+            tap(bankEditButtons(named: originalName).element, scrollTowardTopWhenMissing: true)
         } else {
             openNewBankEditor()
         }
@@ -3209,17 +3209,15 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        selectCardsTab()
         let search = app.searchFields["搜索银行、卡片或末四位"]
         enter(discard ? originalName : correctedName, into: search)
         search.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         if discard {
-            XCTAssertFalse(app.buttons["编辑银行 \(correctedName)"].exists)
+            XCTAssertEqual(bankEditButtons(named: correctedName).count, 0)
         }
-        let savedBanks = app.buttons.matching(NSPredicate(
-            format: "label == %@", "编辑银行 \(discard ? originalName : correctedName)"
-        ))
+        let savedBanks = bankEditButtons(named: discard ? originalName : correctedName)
         XCTAssertEqual(savedBanks.count, 1)
         let savedBank = savedBanks.element
         reveal(savedBank, fullyVisible: true)
@@ -3245,8 +3243,33 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
+    private func bankEditButtons(named name: String) -> XCUIElementQuery {
+        // Native section headers capitalize their accessibility labels.
+        app.buttons.matching(NSPredicate(format: "label ==[c] %@", "编辑银行 \(name)"))
+    }
+
+    private func selectCardsTab() {
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let tabBar = app.tabBars.firstMatch
+        let cards = tabBar.buttons["卡片"]
+        XCTAssertTrue(cards.waitForExistence(timeout: 10))
+        XCTAssertTrue(cards.isEnabled)
+        XCTAssertTrue(cards.isHittable)
+        XCTAssertTrue(tabBar.frame.contains(cards.frame))
+        cards.tap()
+        let selection = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: cards)
+        XCTAssertEqual(XCTWaiter.wait(for: [selection], timeout: 10), .completed)
+        XCTAssertTrue(app.navigationBars["卡片"].waitForExistence(timeout: 10))
+    }
+
     private func openNewBankEditor() {
-        tap(app.buttons["卡片与银行管理"])
+        let navigationBar = app.navigationBars["卡片"]
+        let management = navigationBar.buttons["卡片与银行管理"]
+        XCTAssertTrue(management.waitForExistence(timeout: 10))
+        XCTAssertTrue(management.isHittable)
+        XCTAssertTrue(navigationBar.frame.contains(management.frame))
+        // A fixed toolbar action does not belong to the scrolling viewport.
+        management.tap()
         tap(app.buttons["添加银行"])
     }
 
@@ -3399,7 +3422,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func restartAndSearchOnboardingCard(_ name: String) -> XCUIElement {
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        selectCardsTab()
         let search = app.searchFields["搜索银行、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText(name + "\n")
