@@ -33,6 +33,7 @@ struct TransactionsView: View {
     }
 
     var body: some View {
+        let filtered = filteredTransactions
         NavigationStack {
             Group {
                 if transactions.isEmpty {
@@ -58,12 +59,12 @@ struct TransactionsView: View {
                             .buttonStyle(.borderedProminent)
                         }
                     }
-                } else if filteredTransactions.isEmpty {
+                } else if filtered.isEmpty {
                     VStack(spacing: 0) {
                         if hasActiveFilters {
                             activeFilterSummary
                         }
-                        resultCount
+                        resultCount(filtered.count)
                         EmptyStateView(
                             title: "没有匹配交易",
                             systemImage: "line.3.horizontal.decrease.circle",
@@ -71,14 +72,15 @@ struct TransactionsView: View {
                         )
                     }
                 } else {
+                    let sections = groupedTransactionsByDate(filtered)
                     VStack(spacing: 0) {
                         if hasActiveFilters {
                             activeFilterSummary
                         }
-                        resultCount
+                        resultCount(filtered.count)
                         List {
-                            ForEach(transactionSections.indices, id: \.self) { sectionIndex in
-                                let section = transactionSections[sectionIndex]
+                            ForEach(sections.indices, id: \.self) { sectionIndex in
+                                let section = sections[sectionIndex]
                                 Section {
                                     ForEach(section.transactions, id: \.id) { transaction in
                                         Button {
@@ -233,18 +235,14 @@ struct TransactionsView: View {
         filterDatePeriod.range(today: currentDay.today, customRange: customDateRange)
     }
 
-    private var resultCount: some View {
-        Text("共 \(filteredTransactions.count) 笔交易")
+    private func resultCount(_ count: Int) -> some View {
+        Text("共 \(count) 笔交易")
             .font(.caption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .accessibilityIdentifier("transactions.results.count")
-    }
-
-    private var transactionSections: [(date: Int, transactions: [Transaction])] {
-        groupedTransactionsByDate(filteredTransactions)
     }
 
     private var activeFilterCount: Int {
