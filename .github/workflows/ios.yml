@@ -24,8 +24,8 @@ jobs:
           xcodebuild test \
             -project CardPilot.xcodeproj \
             -scheme CardPilot \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountsRevealInvalidFieldsAndPersistWhenCollapsed \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOptionalAmountExplanationAtLargestTextSize \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAndDiscardPreservesOriginalValues \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAtLargestTextSizeAndDiscard \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
