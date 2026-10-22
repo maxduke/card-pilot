@@ -3199,6 +3199,11 @@ final class CoreFlowsUITests: XCTestCase {
         } else {
             replaceText("   ", in: name)
         }
+        // The final screen was blank in run 39819298070, but an immediate AX
+        // read still returned the intermediate deletion value "UI Te". Await
+        // the exact input state, without tapping or typing a second time.
+        let blankName = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "   "), object: name)
+        XCTAssertEqual(XCTWaiter.wait(for: [blankName], timeout: 10), .completed)
         XCTAssertEqual(name.value as? String, "   ")
         reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         notes.tap()
