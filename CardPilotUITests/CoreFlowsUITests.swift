@@ -268,10 +268,14 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBankNameFeedbackAndDiscardPreservesOriginalValues() {
+        // The complete discard/relaunch flow exceeded 180s in run 39732539668.
+        executionTimeAllowance = 240
         verifyBankNameFeedback(largestText: false, discard: true)
     }
 
     func testBankNameFeedbackAtLargestTextSizeAndDiscard() {
+        // Same complete discard/readback flow, plus scroll-away at largest text.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyBankNameFeedback(largestText: true, discard: true)
     }
@@ -3182,7 +3186,16 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertEqual(archived.value as? String, "1")
         }
         reveal(name, scrollTowardTopWhenMissing: true, navigationBar: navigationBar, contentContainer: form)
-        replaceText("   ", in: name)
+        if discard {
+            XCTAssertEqual(name.value as? String, originalName)
+            // The field's center can put the caret inside the existing name
+            // at large text sizes. Its trailing edge is beyond this full name.
+            name.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: originalName.count) + "   ")
+        } else {
+            replaceText("   ", in: name)
+        }
+        XCTAssertEqual(name.value as? String, "   ")
         reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         notes.tap()
         notes.typeText(noteText)
