@@ -1565,11 +1565,28 @@ final class CoreFlowsUITests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
         tap(app.tabBars.buttons["交易"])
-        tap(app.buttons["transaction.UI Unlinked Refund"])
+        let transactionsNavigation = app.navigationBars["交易"]
+        let resultCount = app.staticTexts["transactions.results.count"]
+        func openTransaction(_ merchant: String) {
+            let row = app.buttons["transaction.\(merchant)"]
+            reveal(row, fullyVisible: true, navigationBar: transactionsNavigation)
+            let frame = row.frame
+            let top = max(frame.minY, max(transactionsNavigation.frame.maxY, resultCount.frame.maxY))
+            let bottom = min(frame.maxY, contentBottom)
+            XCTAssertGreaterThanOrEqual(bottom - top, 44)
+            let windowFrame = app.frame
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: frame.midX - windowFrame.minX,
+                dy: (top + bottom) / 2 - windowFrame.minY
+            )).tap()
+            XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        }
+        openTransaction("UI Unlinked Refund")
         reveal(app.staticTexts["未关联原消费"])
         XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
         tap(app.navigationBars["交易详情"].buttons["完成"])
-        tap(app.buttons["transaction.UI Reversed Purchase"])
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForNonExistence(timeout: 10))
+        openTransaction("UI Reversed Purchase")
         XCTAssertTrue(app.staticTexts["UI Reversed Purchase"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["已冲正"].exists)
         let recordRefund = app.buttons["transaction.recordRefund"]
@@ -1577,21 +1594,31 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(recordRefund)
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
-        enter("10", into: app.textFields["transactionAmount"])
+        let editorNavigation = app.navigationBars["添加交易"]
+        XCTAssertTrue(editorNavigation.waitForExistence(timeout: 10))
+        let steps = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
+        let amount = app.textFields["transactionAmount"]
+        reveal(amount, navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
+        amount.tap()
+        amount.typeText("10")
         tap(app.buttons["transaction.keyboard.dismiss"])
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
-               navigationBar: app.navigationBars["添加交易"],
-               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
+               navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         let original = app.buttons["transaction.original"]
-        reveal(original, fullyVisible: true)
+        reveal(original, fullyVisible: true, navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
         XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Reversed Purchase"))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
-        reveal(reversedMessage, fullyVisible: true)
+        reveal(reversedMessage, fullyVisible: true, navigationBar: editorNavigation,
+               contentHeader: steps, contentContainer: form)
         captureScreenshot("最大字号已冲正原消费退款说明")
-        enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
+        let merchant = app.textFields["商户（可选）"]
+        reveal(merchant, navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
+        merchant.tap()
+        merchant.typeText("UI Reversed Original Refund")
         tap(app.buttons["saveTransaction"])
         let feedback = app.buttons["transaction.saveFeedback"]
         XCTAssertTrue(feedback.waitForExistence(timeout: 10))
@@ -2766,8 +2793,9 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         // Accessibility bounds can contain subpixel floating-point rounding.
-        XCTAssertGreaterThanOrEqual(element.frame.width + 0.001, 44, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(element.frame.height + 0.001, 44, file: file, line: line)
+        let frame = element.frame
+        XCTAssertGreaterThanOrEqual(frame.width + 0.001, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(frame.height + 0.001, 44, file: file, line: line)
     }
 
     private func relaunchAtLargestTextSize() {
@@ -2956,11 +2984,15 @@ final class CoreFlowsUITests: XCTestCase {
             let repayment = app.buttons["billingDates.repaymentDate"]
             XCTAssertEqual(repayment.label, "还款日")
             XCTAssertTrue((repayment.value as? String ?? "").hasSuffix("16日"))
+            let windowFrame = app.frame
+            let visibleTop = navigationBar.frame.maxY
+            let visibleBottom = min(contentBottom, form.frame.maxY)
             for element in [repayment, explanation] {
-                XCTAssertFalse(element.frame.isEmpty)
-                XCTAssertTrue(app.frame.contains(element.frame))
-                XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
-                XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
+                let frame = element.frame
+                XCTAssertFalse(frame.isEmpty)
+                XCTAssertTrue(windowFrame.contains(frame))
+                XCTAssertGreaterThanOrEqual(frame.minY + 0.001, visibleTop)
+                XCTAssertLessThanOrEqual(frame.maxY, visibleBottom)
             }
             captureScreenshot("最大字号账期日期及说明完整阅读")
         }
@@ -3007,13 +3039,18 @@ final class CoreFlowsUITests: XCTestCase {
         day.adjust(toPickerWheelValue: "\(changedDay)日")
         XCTAssertEqual(day.value as? String, "\(changedDay)日")
         XCTAssertTrue(selectionNavigation.staticTexts[title].exists)
-        for element in [picker] + wheels.allElementsBoundByIndex {
-            XCTAssertFalse(element.frame.isEmpty)
-            XCTAssertTrue(app.frame.contains(element.frame))
-            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, selectionNavigation.frame.maxY)
-            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, selectionForm.frame.maxY))
+        let selectedWheels = wheels.allElementsBoundByIndex
+        let windowFrame = app.frame
+        let visibleTop = selectionNavigation.frame.maxY
+        let visibleBottom = min(contentBottom, selectionForm.frame.maxY)
+        for element in [picker] + selectedWheels {
+            let frame = element.frame
+            XCTAssertFalse(frame.isEmpty)
+            XCTAssertTrue(windowFrame.contains(frame))
+            XCTAssertGreaterThanOrEqual(frame.minY + 0.001, visibleTop)
+            XCTAssertLessThanOrEqual(frame.maxY, visibleBottom)
         }
-        for wheel in wheels.allElementsBoundByIndex {
+        for wheel in selectedWheels {
             XCTAssertTrue(wheel.isHittable)
             assertTouchTarget(wheel)
         }
@@ -4128,14 +4165,17 @@ final class CoreFlowsUITests: XCTestCase {
         if tabBar.exists && tabBar.isHittable { bottom = min(bottom, tabBar.frame.minY) }
         let keyboard = app.keyboards.firstMatch
         if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
-        for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"] {
-            let footer = app.buttons[identifier]
-            if footer.exists {
-                // The save button's AX frame excludes its 10pt outer padding
-                // and the footer divider. The Form ends above that whole bar.
-                let topInset: CGFloat = identifier == "saveTransaction" ? 11 : 0
-                bottom = min(bottom, footer.frame.minY - topInset)
-            }
+        let footerNames = ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"]
+        // One remote query preserves the identifier-or-label matching of
+        // buttons[name], without scanning for four absent editor footers.
+        let footers = app.buttons.matching(NSPredicate(
+            format: "identifier IN %@ OR label IN %@", argumentArray: [footerNames, footerNames]
+        ))
+        for footer in footers.allElementsBoundByIndex {
+            // The save button's AX frame excludes its 10pt outer padding
+            // and the footer divider. The Form ends above that whole bar.
+            let topInset: CGFloat = footer.identifier == "saveTransaction" ? 11 : 0
+            bottom = min(bottom, footer.frame.minY - topInset)
         }
         return bottom
     }
