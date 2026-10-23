@@ -18,6 +18,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
+      - name: Validate performance report calculations
+        run: python3 -m unittest discover -s scripts/tests -p 'test_performance_summary.py'
       - name: Record configuration and device
         run: |
           set -euo pipefail
@@ -41,6 +43,7 @@ jobs:
           app = next(item["buildSettings"] for item in settings if item["target"] == "CardPilot")
           assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
           assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+          assert app.get("ENABLE_TESTABILITY", "NO") == "NO", app.get("ENABLE_TESTABILITY")
           flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
           assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
           PY
@@ -79,6 +82,11 @@ jobs:
           for report in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
               shutil.copyfile(report, destination / f"{report.parent.name}.json")
           PY
+      - name: Summarize complete baseline
+        run: |
+          set -euo pipefail
+          python3 scripts/summarize_performance.py performance-evidence
+          cat performance-evidence/baseline.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw performance evidence
         if: always()
         uses: actions/upload-artifact@v7

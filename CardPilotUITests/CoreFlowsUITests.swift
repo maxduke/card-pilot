@@ -108,6 +108,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBillingRulePickersAtLargestTextSizeSaveEffectiveMonth() {
+        // The complete picker/save/relaunch/history flow reached its final
+        // checks at 194.74s in run 39900003418. Keep the existing 240s maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("billingDateFeedback")
         openBillingFeedbackAccount()
@@ -434,6 +437,88 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["onboarding.reminders.configure"].exists)
         openCard("UI Additional")
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+    }
+
+    func testPromotionCreationTitleFeedbackCorrectsAndPersists() {
+        verifyPromotionCreationTitleFeedback(largestText: false)
+    }
+
+    func testPromotionCreationTitleFeedbackAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyPromotionCreationTitleFeedback(largestText: true)
+    }
+
+    func testPromotionCollapsedAmountFeedbackRevealsFirstErrorAndPersists() {
+        // The comparable full correction/save/relaunch promotion flow reached
+        // 180.950s in run 39736406449; retain the existing 240s case budget.
+        executionTimeAllowance = 240
+        verifyPromotionAmountFieldFeedback(perTransaction: false)
+    }
+
+    func testPromotionPerTransactionFieldFeedbackAtLargestTextSize() {
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyPromotionAmountFieldFeedback(perTransaction: true)
+    }
+
+    func testPromotionBasicDatesAtLargestTextSizeKeepValuesAndReadableProgress() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("core")
+        openNewPromotionEditor()
+        let navigationBar = app.navigationBars["添加促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        try verifyPromotionDateField("promotion.startDate", title: "开始日期",
+                                     navigationBar: navigationBar, form: form)
+        try verifyPromotionDateField("promotion.endDate", title: "结束日期",
+                                     navigationBar: navigationBar, form: form)
+        setBillingDateToggle("每月重复", enabled: true, navigationBar: navigationBar, contentContainer: form)
+        try verifyPromotionDateField("promotion.repeatUntilDate", title: "系列结束日期",
+                                     navigationBar: navigationBar, form: form)
+        let cumulative = app.buttons["累计消费"]
+        reveal(cumulative, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertTrue(cumulative.isSelected)
+        let perTransaction = app.buttons["逐笔优惠"]
+        reveal(perTransaction, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        perTransaction.tap()
+        XCTAssertTrue(perTransaction.isSelected)
+        XCTAssertFalse(cumulative.isSelected)
+        captureScreenshot("最大字号促销进度类型完整选项")
+        navigationBar.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+    }
+
+    func testPromotionEnrollmentDatesAtLargestTextSizeDiscardChanges() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("promotionOverview")
+        openPromotion("UI Available")
+        openPromotionEditor("报名与规则")
+        let navigationBar = app.navigationBars["编辑促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        tap(app.buttons["已报名"])
+        XCTAssertTrue(app.buttons["已报名"].isSelected)
+        setBillingDateToggle("记录报名日期", enabled: true, navigationBar: navigationBar, contentContainer: form)
+        try verifyPromotionDateField("promotion.enrolledOn", title: "报名日期",
+                                     navigationBar: navigationBar, form: form)
+        setBillingDateToggle("设置报名截止日", enabled: true, navigationBar: navigationBar, contentContainer: form)
+        try verifyPromotionDateField("promotion.enrollmentDeadline", title: "报名截止日",
+                                     navigationBar: navigationBar, form: form)
+        navigationBar.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openPromotion("UI Available")
+        openPromotionEditor("报名与规则")
+        XCTAssertTrue(app.buttons["不需要报名"].isSelected)
+        XCTAssertFalse(app.switches["记录报名日期"].exists)
+        XCTAssertFalse(app.switches["设置报名截止日"].exists)
+        XCTAssertFalse(app.buttons["promotion.enrolledOn"].exists)
+        XCTAssertFalse(app.buttons["promotion.enrollmentDeadline"].exists)
+        captureScreenshot("最大字号促销日期放弃修改读回")
+        navigationBar.buttons["取消"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
     func testPromotionSectionsSaveAndCancelWithoutRepeatingCreation() {
@@ -1540,11 +1625,28 @@ final class CoreFlowsUITests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
         tap(app.tabBars.buttons["交易"])
-        tap(app.buttons["transaction.UI Unlinked Refund"])
+        let transactionsNavigation = app.navigationBars["交易"]
+        let resultCount = app.staticTexts["transactions.results.count"]
+        func openTransaction(_ merchant: String) {
+            let row = app.buttons["transaction.\(merchant)"]
+            reveal(row, fullyVisible: true, navigationBar: transactionsNavigation)
+            let frame = row.frame
+            let top = max(frame.minY, max(transactionsNavigation.frame.maxY, resultCount.frame.maxY))
+            let bottom = min(frame.maxY, contentBottom)
+            XCTAssertGreaterThanOrEqual(bottom - top, 44)
+            let windowFrame = app.frame
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: frame.midX - windowFrame.minX,
+                dy: (top + bottom) / 2 - windowFrame.minY
+            )).tap()
+            XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        }
+        openTransaction("UI Unlinked Refund")
         reveal(app.staticTexts["未关联原消费"])
         XCTAssertFalse(app.buttons["transaction.recordRefund"].exists)
         tap(app.navigationBars["交易详情"].buttons["完成"])
-        tap(app.buttons["transaction.UI Reversed Purchase"])
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForNonExistence(timeout: 10))
+        openTransaction("UI Reversed Purchase")
         XCTAssertTrue(app.staticTexts["UI Reversed Purchase"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["已冲正"].exists)
         let recordRefund = app.buttons["transaction.recordRefund"]
@@ -1552,21 +1654,31 @@ final class CoreFlowsUITests: XCTestCase {
         assertTouchTarget(recordRefund)
         captureScreenshot("最大字号原消费退款入口")
         tap(recordRefund)
-        enter("10", into: app.textFields["transactionAmount"])
+        let editorNavigation = app.navigationBars["添加交易"]
+        XCTAssertTrue(editorNavigation.waitForExistence(timeout: 10))
+        let steps = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
+        let amount = app.textFields["transactionAmount"]
+        reveal(amount, navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
+        amount.tap()
+        amount.typeText("10")
         tap(app.buttons["transaction.keyboard.dismiss"])
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         reveal(app.segmentedControls.buttons["退款"], fullyVisible: true,
-               navigationBar: app.navigationBars["添加交易"],
-               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch)
+               navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         let original = app.buttons["transaction.original"]
-        reveal(original, fullyVisible: true)
+        reveal(original, fullyVisible: true, navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
         XCTAssertTrue((original.label + (original.value as? String ?? "")).contains("UI Reversed Purchase"))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let reversedMessage = app.staticTexts["原消费已冲正；退款仍是独立记录，请按银行记录确认退款及促销分配。"]
-        reveal(reversedMessage, fullyVisible: true)
+        reveal(reversedMessage, fullyVisible: true, navigationBar: editorNavigation,
+               contentHeader: steps, contentContainer: form)
         captureScreenshot("最大字号已冲正原消费退款说明")
-        enter("UI Reversed Original Refund", into: app.textFields["商户（可选）"])
+        let merchant = app.textFields["商户（可选）"]
+        reveal(merchant, navigationBar: editorNavigation, contentHeader: steps, contentContainer: form)
+        merchant.tap()
+        merchant.typeText("UI Reversed Original Refund")
         tap(app.buttons["saveTransaction"])
         let feedback = app.buttons["transaction.saveFeedback"]
         XCTAssertTrue(feedback.waitForExistence(timeout: 10))
@@ -2589,10 +2701,178 @@ final class CoreFlowsUITests: XCTestCase {
         try auditAccessibility(for: [.hitRegion])
     }
 
+    private func verifyPromotionDateField(_ identifier: String, title: String,
+                                          navigationBar: XCUIElement, form: XCUIElement) throws {
+        let field = app.buttons[identifier]
+        reveal(field, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        let original = try XCTUnwrap(field.value as? String)
+        XCTAssertEqual(field.label, title)
+        XCTAssertNotNil(original.range(of: "^[0-9]{4}年[0-9]{2}月[0-9]{2}日$", options: .regularExpression))
+        let originalDay = try XCTUnwrap(Int(original.suffix(3).prefix(2)))
+        let changedDay = originalDay == 1 ? 2 : originalDay - 1
+        try adjustBillingDateDay(identifier, from: originalDay, to: changedDay,
+                                 navigationBar: navigationBar, form: form,
+                                 screenshot: "最大字号促销\(title)滚轮完整值", auditText: true, titleOverride: title)
+        let expected = String(original.dropLast(3)) + String(format: "%02d日", changedDay)
+        XCTAssertEqual(field.value as? String, expected)
+        captureScreenshot("最大字号促销\(title)完整日期")
+    }
+
+    private func verifyPromotionCreationTitleFeedback(largestText: Bool) {
+        let prefix = (largestText ? "最大字号" : "") + "创建促销"
+        launch("core")
+        openNewPromotionEditor()
+        let navigationBar = app.navigationBars["添加促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        let title = app.textFields["promotion.title"]
+        let error = app.staticTexts["promotion.error.title"]
+        let advance = app.buttons["promotion.editor.advance"]
+        let threshold = app.textFields["累计达标门槛（可选）"]
+
+        if !largestText {
+            // Merely revealing an error is not an edit and must not require
+            // discarding an otherwise untouched new promotion.
+            tap(title)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            advance.tap()
+            assertEditorFieldErrorVisible(title, error: error, navigationBar: navigationBar, form: form)
+            navigationBar.buttons["取消"].tap()
+            XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["放弃修改"].exists)
+            openNewPromotionEditor()
+        }
+
+        replacePromotionAmount("125.50", in: threshold, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        if largestText {
+            let frame = title.exists ? title.frame : .zero
+            let top = max(navigationBar.frame.maxY, form.frame.minY)
+            XCTAssertFalse(title.exists && !frame.isEmpty && frame.minY + 0.001 >= top
+                           && frame.maxY <= min(contentBottom, form.frame.maxY))
+        }
+        advance.tap()
+        assertEditorFieldErrorVisible(title, error: error, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(error.label, "错误：请先填写活动标题。")
+        captureScreenshot("\(prefix)标题首错定位")
+        title.tap()
+        title.typeText(" UI Feedback ")
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, " UI Feedback ")
+        captureScreenshot("\(prefix)标题纠正后错误消失")
+        advance.tap()
+        XCTAssertTrue(app.staticTexts["主办方"].waitForExistence(timeout: 10))
+        advance.tap()
+        let save = app.buttons["promotion.editor.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        save.tap()
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion("UI Feedback")
+        openPromotionEditor("基本信息")
+        let editingNavigationBar = app.navigationBars["编辑促销"]
+        XCTAssertEqual(title.value as? String, "UI Feedback")
+        XCTAssertFalse(error.exists)
+        captureScreenshot("\(prefix)保存标题读回")
+        reveal(threshold, fullyVisible: true, navigationBar: editingNavigationBar, contentContainer: form)
+        XCTAssertEqual(threshold.value as? String, "125.5")
+        captureScreenshot("\(prefix)保存金额读回")
+        editingNavigationBar.buttons["取消"].tap()
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    private func verifyPromotionAmountFieldFeedback(perTransaction: Bool) {
+        let prefix = perTransaction ? "最大字号逐笔促销" : "累计促销"
+        let name = perTransaction ? "UI Available" : "UI Spend"
+        launch(perTransaction ? "promotionOverview" : "core")
+        openPromotion(name)
+        openPromotionEditor("基本信息")
+        let navigationBar = app.navigationBars["编辑促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        let first = app.textFields[perTransaction ? "优惠笔数上限" : "累计计入上限（可选）"]
+        let second = app.textFields[perTransaction ? "单笔满足金额（可选）" : "单笔计入门槛（可选）"]
+        let firstError = app.staticTexts["promotion.error.\(perTransaction ? "benefitTransactionCap" : "qualifyingCap")"]
+        let secondError = app.staticTexts["promotion.error.perTransactionThreshold"]
+        let additional = app.buttons["其他金额条件（可选）"]
+        if !perTransaction { tap(additional) }
+        replacePromotionAmount("0", in: first, navigationBar: navigationBar, form: form)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        replacePromotionAmount("0", in: second, navigationBar: navigationBar, form: form)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        if !perTransaction {
+            tap(additional, scrollTowardTopWhenMissing: true)
+            XCTAssertFalse(first.exists)
+        }
+        selectPromotionEditorSection("适用范围")
+        app.buttons["promotion.editor.save"].tap()
+        assertEditorFieldErrorVisible(first, error: firstError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(firstError.label, perTransaction ? "错误：优惠笔数上限应为大于 0 的整数。"
+                       : "错误：累计计入上限应为大于 0 的数字，或留空。")
+        captureScreenshot("\(prefix)金额首错定位")
+        replacePromotionAmount(perTransaction ? "5" : "5000", in: first, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(firstError.waitForNonExistence(timeout: 5))
+        captureScreenshot("\(prefix)首项纠正后错误消失")
+        app.buttons["promotion.editor.save"].tap()
+        assertEditorFieldErrorVisible(second, error: secondError, navigationBar: navigationBar, form: form)
+        XCTAssertEqual(secondError.label, perTransaction ? "错误：单笔满足金额应为大于 0 的数字，或留空。"
+                       : "错误：单笔计入门槛应为大于 0 的数字，或留空。")
+        captureScreenshot("\(prefix)下一错误定位")
+        replacePromotionAmount("100", in: second, navigationBar: navigationBar, form: form)
+        XCTAssertTrue(secondError.waitForNonExistence(timeout: 5))
+        captureScreenshot("\(prefix)金额纠正后错误消失")
+        app.buttons["promotion.editor.save"].tap()
+        XCTAssertTrue(app.navigationBars[name].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openPromotion(name)
+        openPromotionEditor("基本信息")
+        XCTAssertEqual(app.textFields["promotion.title"].value as? String, name)
+        reveal(first, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(first.value as? String, perTransaction ? "5" : "5000")
+        XCTAssertFalse(firstError.exists)
+        captureScreenshot("\(prefix)首项保存读回")
+        reveal(second, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(second.value as? String, "100")
+        XCTAssertFalse(secondError.exists)
+        captureScreenshot("\(prefix)金额保存读回")
+        navigationBar.buttons["取消"].tap()
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    private func openNewPromotionEditor() {
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let tab = app.tabBars.buttons["促销"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10))
+        XCTAssertTrue(tab.isEnabled && tab.isHittable)
+        XCTAssertTrue(app.frame.contains(tab.frame))
+        tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: tab)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed)
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        tap(app.buttons["添加促销活动"])
+        XCTAssertTrue(app.navigationBars["添加促销"].waitForExistence(timeout: 10))
+    }
+
+    private func replacePromotionAmount(_ text: String, in field: XCUIElement,
+                                        navigationBar: XCUIElement, form: XCUIElement) {
+        reveal(field, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        let old = field.value as? String ?? ""
+        // Values here fit in the field. Place the caret after the actual text
+        // before deleting, rather than deleting from a center-tap caret.
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+        XCTAssertEqual(field.value as? String, text)
+    }
+
     private func assertTouchTarget(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         // Accessibility bounds can contain subpixel floating-point rounding.
-        XCTAssertGreaterThanOrEqual(element.frame.width + 0.001, 44, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(element.frame.height + 0.001, 44, file: file, line: line)
+        let frame = element.frame
+        XCTAssertGreaterThanOrEqual(frame.width + 0.001, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(frame.height + 0.001, 44, file: file, line: line)
     }
 
     private func relaunchAtLargestTextSize() {
@@ -2617,9 +2897,10 @@ final class CoreFlowsUITests: XCTestCase {
         tap(export)
         let picker = app.otherElements["Browse View (Picker)"]
         let filename = picker.textFields.firstMatch
-        // Wait for the actual control using the existing combined 20s + 15s
-        // readiness budget; a cold system picker can appear after the first 20s.
-        XCTAssertTrue(filename.waitForExistence(timeout: 35))
+        // In run 39768699985 the native picker first rendered its filename
+        // about 46s after Export (recording at 59.72s, tap at 13.29s).
+        // Wait for that real control without reopening or retrying the export.
+        XCTAssertTrue(filename.waitForExistence(timeout: 60))
         XCTAssertTrue(picker.exists)
         // The native picker exposes an abbreviated value until editing starts.
         // Focus the real filename field without changing the proposed name.
@@ -2630,13 +2911,17 @@ final class CoreFlowsUITests: XCTestCase {
             options: .regularExpression
         ))
         captureScreenshot("系统备份导出文件名")
-        // This directory page shows Browse and Move. Return to Browse to use
-        // the visible native Cancel button, rather than its hidden AX proxy.
-        let browse = picker.navigationBars.buttons["浏览"]
-        XCTAssertTrue(browse.waitForExistence(timeout: 10))
-        browse.tap()
-        let cancel = app.buttons["取消"].firstMatch
+        // Files may open at Browse or inside a directory. Use its visible
+        // Cancel control directly, or return to Browse when it is hidden.
+        let cancel = picker.navigationBars.buttons["取消"].firstMatch
+        if !cancel.exists || !cancel.isHittable {
+            let browse = picker.navigationBars.buttons["浏览"]
+            XCTAssertTrue(browse.waitForExistence(timeout: 10))
+            XCTAssertTrue(browse.isHittable)
+            browse.tap()
+        }
         XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        XCTAssertTrue(cancel.isHittable)
         cancel.tap()
         let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: picker)
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
@@ -2674,16 +2959,24 @@ final class CoreFlowsUITests: XCTestCase {
         launch("core")
         openCard("UI Primary")
         tap(app.buttons["card.addTransaction"])
-        enter("125.50", into: app.textFields["transactionAmount"])
+        let navigationBar = app.navigationBars["添加交易"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
+        XCTAssertTrue(progress.exists)
+        // The fixed step header also covers the initial amount row after a
+        // scroll; use the same viewport as the confirmation inputs below.
+        let amount = app.textFields["transactionAmount"]
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
+        amount.tap()
+        amount.typeText("125.50")
         tap(app.buttons["transaction.keyboard.dismiss"])
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
         tap(app.buttons["saveTransaction"])
         XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
 
-        let navigationBar = app.navigationBars["添加交易"]
-        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
-        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
         let search = app.textFields["allocation.search"]
         reveal(search, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(search.label, "搜索其他促销")
@@ -2768,11 +3061,15 @@ final class CoreFlowsUITests: XCTestCase {
             let repayment = app.buttons["billingDates.repaymentDate"]
             XCTAssertEqual(repayment.label, "还款日")
             XCTAssertTrue((repayment.value as? String ?? "").hasSuffix("16日"))
+            let windowFrame = app.frame
+            let visibleTop = navigationBar.frame.maxY
+            let visibleBottom = min(contentBottom, form.frame.maxY)
             for element in [repayment, explanation] {
-                XCTAssertFalse(element.frame.isEmpty)
-                XCTAssertTrue(app.frame.contains(element.frame))
-                XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, navigationBar.frame.maxY)
-                XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, form.frame.maxY))
+                let frame = element.frame
+                XCTAssertFalse(frame.isEmpty)
+                XCTAssertTrue(windowFrame.contains(frame))
+                XCTAssertGreaterThanOrEqual(frame.minY + 0.001, visibleTop)
+                XCTAssertLessThanOrEqual(frame.maxY, visibleBottom)
             }
             captureScreenshot("最大字号账期日期及说明完整阅读")
         }
@@ -2796,11 +3093,11 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func adjustBillingDateDay(_ identifier: String, from originalDay: Int, to changedDay: Int,
                                      navigationBar: XCUIElement, form: XCUIElement,
-                                     screenshot: String, auditText: Bool) throws {
+                                     screenshot: String, auditText: Bool, titleOverride: String? = nil) throws {
         let entry = app.buttons[identifier]
         reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         let field = identifier.contains("statement") ? "账单日" : "还款日"
-        let title = identifier.hasPrefix("account.editor.") ? "实际" + field : field
+        let title = titleOverride ?? (identifier.hasPrefix("account.editor.") ? "实际" + field : field)
         XCTAssertEqual(entry.label, title)
         XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", originalDay)))
         entry.tap()
@@ -2819,13 +3116,18 @@ final class CoreFlowsUITests: XCTestCase {
         day.adjust(toPickerWheelValue: "\(changedDay)日")
         XCTAssertEqual(day.value as? String, "\(changedDay)日")
         XCTAssertTrue(selectionNavigation.staticTexts[title].exists)
-        for element in [picker] + wheels.allElementsBoundByIndex {
-            XCTAssertFalse(element.frame.isEmpty)
-            XCTAssertTrue(app.frame.contains(element.frame))
-            XCTAssertGreaterThanOrEqual(element.frame.minY + 0.001, selectionNavigation.frame.maxY)
-            XCTAssertLessThanOrEqual(element.frame.maxY, min(contentBottom, selectionForm.frame.maxY))
+        let selectedWheels = wheels.allElementsBoundByIndex
+        let windowFrame = app.frame
+        let visibleTop = selectionNavigation.frame.maxY
+        let visibleBottom = min(contentBottom, selectionForm.frame.maxY)
+        for element in [picker] + selectedWheels {
+            let frame = element.frame
+            XCTAssertFalse(frame.isEmpty)
+            XCTAssertTrue(windowFrame.contains(frame))
+            XCTAssertGreaterThanOrEqual(frame.minY + 0.001, visibleTop)
+            XCTAssertLessThanOrEqual(frame.maxY, visibleBottom)
         }
-        for wheel in wheels.allElementsBoundByIndex {
+        for wheel in selectedWheels {
             XCTAssertTrue(wheel.isHittable)
             assertTouchTarget(wheel)
         }
@@ -2907,9 +3209,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["标记已还"].exists)
     }
 
-    private func setBillingDateToggle(_ identifier: String, enabled: Bool) {
+    private func setBillingDateToggle(_ identifier: String, enabled: Bool,
+                                      navigationBar: XCUIElement? = nil, contentContainer: XCUIElement? = nil) {
         let toggle = app.switches[identifier]
-        reveal(toggle, fullyVisible: true)
+        reveal(toggle, fullyVisible: true, navigationBar: navigationBar, contentContainer: contentContainer)
         XCTAssertEqual(toggle.value as? String, enabled ? "0" : "1")
         toggle.switches.firstMatch.tap()
         XCTAssertEqual(toggle.value as? String, enabled ? "1" : "0")
@@ -2929,9 +3232,13 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(history, scrollTowardTopWhenMissing: scrollTowardTopWhenMissing, fullyVisible: true,
                navigationBar: app.navigationBars["账户详情"])
         history.tap()
-        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
+        let navigationBar = app.navigationBars["全部账期"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
         let month = accountHistoryMonth(offset: offset)
-        tap(app.buttons["account.history.cycle.\(month.key)"])
+        let cycle = app.buttons["account.history.cycle.\(month.key)"]
+        // A partly exposed row can be hittable at the tab bar's edge.
+        reveal(cycle, fullyVisible: true, navigationBar: navigationBar)
+        cycle.tap()
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
 
@@ -3018,16 +3325,19 @@ final class CoreFlowsUITests: XCTestCase {
         let lastFour = app.textFields["末四位"]
         let lastFourError = app.staticTexts.matching(identifier: "card.lastFour.error").firstMatch
         replaceText("", in: product)
-        // The candidate bar can extend above the Keyboard AX frame. Use the
-        // already-verified content gutter before approaching the numeric field.
+        // Start inside the focused row: the Form's AX frame includes an outer
+        // gutter where a drag may never reach the scroll view's pan recognizer.
         let contentTop = max(navigationBar.frame.maxY, form.frame.minY)
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let gutterX = form.frame.minX + form.frame.width * 0.03 - app.frame.minX
-        let startY = (contentTop + keyboard.frame.minY) / 2 - app.frame.minY
+        let productFrame = product.frame
+        XCTAssertGreaterThan(productFrame.midY, contentTop)
+        XCTAssertLessThan(productFrame.midY, keyboard.frame.minY)
+        let dragX = productFrame.midX - app.frame.minX
+        let startY = productFrame.midY - app.frame.minY
         let endY = contentTop + 24 - app.frame.minY
-        origin.withOffset(CGVector(dx: gutterX, dy: startY)).press(
+        origin.withOffset(CGVector(dx: dragX, dy: startY)).press(
             forDuration: 0.05,
-            thenDragTo: origin.withOffset(CGVector(dx: gutterX, dy: endY)),
+            thenDragTo: origin.withOffset(CGVector(dx: dragX, dy: endY)),
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -3198,6 +3508,11 @@ final class CoreFlowsUITests: XCTestCase {
         } else {
             replaceText("   ", in: name)
         }
+        // The final screen was blank in run 39819298070, but an immediate AX
+        // read still returned the intermediate deletion value "UI Te". Await
+        // the exact input state, without tapping or typing a second time.
+        let blankName = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "   "), object: name)
+        XCTAssertEqual(XCTWaiter.wait(for: [blankName], timeout: 10), .completed)
         XCTAssertEqual(name.value as? String, "   ")
         reveal(notes, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         notes.tap()
@@ -3842,16 +4157,39 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openPromotionEditor(_ section: String) {
-        XCTAssertTrue(app.buttons["promotion.edit"].waitForExistence(timeout: 10))
-        assertTouchTarget(app.buttons["promotion.edit"])
-        tap(app.buttons["promotion.edit"])
+        let navigationBar = app.navigationBars.containing(.button, identifier: "promotion.edit").firstMatch
+        let edit = navigationBar.buttons["promotion.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 10))
+        // A valid native tap point alone did not open the dialog in run
+        // 39768699985. Require foreground readiness and stable navigation
+        // geometry before the single activation; keep the result assertion.
+        var previousEditFrame = edit.frame
+        var previousNavigationFrame = navigationBar.frame
+        let entryReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, navigationBar.exists, edit.exists else { return false }
+            let frame = edit.frame
+            let navigationFrame = navigationBar.frame
+            defer {
+                previousEditFrame = frame
+                previousNavigationFrame = navigationFrame
+            }
+            return !frame.isEmpty && frame == previousEditFrame && navigationFrame == previousNavigationFrame
+                && self.app.frame.contains(frame) && navigationFrame.contains(CGPoint(x: frame.midX, y: frame.midY))
+                && edit.isEnabled && edit.isHittable
+        }, object: edit)
+        XCTAssertEqual(XCTWaiter.wait(for: [entryReady], timeout: 10), .completed)
+        assertTouchTarget(edit)
+        edit.tap()
         let options = app.sheets["编辑促销"]
         XCTAssertTrue(options.waitForExistence(timeout: 10))
         let option = options.buttons["编辑\(section)"]
         XCTAssertTrue(option.waitForExistence(timeout: 10))
         // Native dialog actions can have invalid AX activation points despite
         // visible frames. Select one stable, enabled action at its real center.
-        var previousFrame: CGRect?
+        // Seed with a real snapshot: starting at nil forces a failed first
+        // poll whose native debug capture consumed the entire 10s budget in
+        // run 39812907310 before a second stability check could run.
+        var previousFrame = option.frame
         var selectionPoint: CGVector?
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard option.exists else { return false }
@@ -3905,14 +4243,17 @@ final class CoreFlowsUITests: XCTestCase {
         if tabBar.exists && tabBar.isHittable { bottom = min(bottom, tabBar.frame.minY) }
         let keyboard = app.keyboards.firstMatch
         if keyboard.exists { bottom = min(bottom, keyboard.frame.minY) }
-        for identifier in ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"] {
-            let footer = app.buttons[identifier]
-            if footer.exists {
-                // The save button's AX frame excludes its 10pt outer padding
-                // and the footer divider. The Form ends above that whole bar.
-                let topInset: CGFloat = identifier == "saveTransaction" ? 11 : 0
-                bottom = min(bottom, footer.frame.minY - topInset)
-            }
+        let footerNames = ["saveTransaction", "返回修改交易", "onboarding.advance", "onboarding.reminders.finish"]
+        // One remote query preserves the identifier-or-label matching of
+        // buttons[name], without scanning for four absent editor footers.
+        let footers = app.buttons.matching(NSPredicate(
+            format: "identifier IN %@ OR label IN %@", argumentArray: [footerNames, footerNames]
+        ))
+        for footer in footers.allElementsBoundByIndex {
+            // The save button's AX frame excludes its 10pt outer padding
+            // and the footer divider. The Form ends above that whole bar.
+            let topInset: CGFloat = footer.identifier == "saveTransaction" ? 11 : 0
+            bottom = min(bottom, footer.frame.minY - topInset)
         }
         return bottom
     }

@@ -2153,6 +2153,14 @@ struct CardEditorView: View {
                             Button("收起键盘") { focusedField = nil }
                                 .frame(minWidth: 44, minHeight: 44)
                                 .accessibilityIdentifier("card.keyboard.dismiss")
+                                .onGeometryChange(for: CGRect.self) { geometry in
+                                    geometry.frame(in: .global)
+                                } action: { frame in
+                                    // Focus and keyboard notifications can precede
+                                    // the accessory's final position.
+                                    guard !frame.isEmpty else { return }
+                                    revealLastFour(using: scrollProxy)
+                                }
                         }
                     }
                 }
