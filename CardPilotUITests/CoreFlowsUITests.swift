@@ -471,7 +471,7 @@ final class CoreFlowsUITests: XCTestCase {
                                      navigationBar: navigationBar, form: form)
         try verifyPromotionDateField("promotion.endDate", title: "结束日期",
                                      navigationBar: navigationBar, form: form)
-        tap(app.switches["每月重复"])
+        setBillingDateToggle("每月重复", enabled: true, navigationBar: navigationBar, contentContainer: form)
         try verifyPromotionDateField("promotion.repeatUntilDate", title: "系列结束日期",
                                      navigationBar: navigationBar, form: form)
         let cumulative = app.buttons["累计消费"]
@@ -496,10 +496,11 @@ final class CoreFlowsUITests: XCTestCase {
         let navigationBar = app.navigationBars["编辑促销"]
         let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
         tap(app.buttons["已报名"])
-        tap(app.switches["记录报名日期"])
+        XCTAssertTrue(app.buttons["已报名"].isSelected)
+        setBillingDateToggle("记录报名日期", enabled: true, navigationBar: navigationBar, contentContainer: form)
         try verifyPromotionDateField("promotion.enrolledOn", title: "报名日期",
                                      navigationBar: navigationBar, form: form)
-        tap(app.switches["设置报名截止日"])
+        setBillingDateToggle("设置报名截止日", enabled: true, navigationBar: navigationBar, contentContainer: form)
         try verifyPromotionDateField("promotion.enrollmentDeadline", title: "报名截止日",
                                      navigationBar: navigationBar, form: form)
         navigationBar.buttons["取消"].tap()
@@ -509,6 +510,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         openPromotion("UI Available")
         openPromotionEditor("报名与规则")
+        XCTAssertTrue(app.buttons["不需要报名"].isSelected)
         XCTAssertFalse(app.switches["记录报名日期"].exists)
         XCTAssertFalse(app.switches["设置报名截止日"].exists)
         XCTAssertFalse(app.buttons["promotion.enrolledOn"].exists)
@@ -3207,9 +3209,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["标记已还"].exists)
     }
 
-    private func setBillingDateToggle(_ identifier: String, enabled: Bool) {
+    private func setBillingDateToggle(_ identifier: String, enabled: Bool,
+                                      navigationBar: XCUIElement? = nil, contentContainer: XCUIElement? = nil) {
         let toggle = app.switches[identifier]
-        reveal(toggle, fullyVisible: true)
+        reveal(toggle, fullyVisible: true, navigationBar: navigationBar, contentContainer: contentContainer)
         XCTAssertEqual(toggle.value as? String, enabled ? "0" : "1")
         toggle.switches.firstMatch.tap()
         XCTAssertEqual(toggle.value as? String, enabled ? "1" : "0")
