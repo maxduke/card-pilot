@@ -3191,16 +3191,19 @@ final class CoreFlowsUITests: XCTestCase {
         let lastFour = app.textFields["末四位"]
         let lastFourError = app.staticTexts.matching(identifier: "card.lastFour.error").firstMatch
         replaceText("", in: product)
-        // The candidate bar can extend above the Keyboard AX frame. Use the
-        // already-verified content gutter before approaching the numeric field.
+        // Start inside the focused row: the Form's AX frame includes an outer
+        // gutter where a drag may never reach the scroll view's pan recognizer.
         let contentTop = max(navigationBar.frame.maxY, form.frame.minY)
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let gutterX = form.frame.minX + form.frame.width * 0.03 - app.frame.minX
-        let startY = (contentTop + keyboard.frame.minY) / 2 - app.frame.minY
+        let productFrame = product.frame
+        XCTAssertGreaterThan(productFrame.midY, contentTop)
+        XCTAssertLessThan(productFrame.midY, keyboard.frame.minY)
+        let dragX = productFrame.midX - app.frame.minX
+        let startY = productFrame.midY - app.frame.minY
         let endY = contentTop + 24 - app.frame.minY
-        origin.withOffset(CGVector(dx: gutterX, dy: startY)).press(
+        origin.withOffset(CGVector(dx: dragX, dy: startY)).press(
             forDuration: 0.05,
-            thenDragTo: origin.withOffset(CGVector(dx: gutterX, dy: endY)),
+            thenDragTo: origin.withOffset(CGVector(dx: dragX, dy: endY)),
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
