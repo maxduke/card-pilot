@@ -2847,16 +2847,24 @@ final class CoreFlowsUITests: XCTestCase {
         launch("core")
         openCard("UI Primary")
         tap(app.buttons["card.addTransaction"])
-        enter("125.50", into: app.textFields["transactionAmount"])
+        let navigationBar = app.navigationBars["添加交易"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
+        XCTAssertTrue(progress.exists)
+        // The fixed step header also covers the initial amount row after a
+        // scroll; use the same viewport as the confirmation inputs below.
+        let amount = app.textFields["transactionAmount"]
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
+        amount.tap()
+        amount.typeText("125.50")
         tap(app.buttons["transaction.keyboard.dismiss"])
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
         tap(app.buttons["saveTransaction"])
         XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
 
-        let navigationBar = app.navigationBars["添加交易"]
-        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
-        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
         let search = app.textFields["allocation.search"]
         reveal(search, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
         XCTAssertEqual(search.label, "搜索其他促销")
