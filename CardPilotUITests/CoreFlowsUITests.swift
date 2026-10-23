@@ -3117,9 +3117,13 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(history, scrollTowardTopWhenMissing: scrollTowardTopWhenMissing, fullyVisible: true,
                navigationBar: app.navigationBars["账户详情"])
         history.tap()
-        XCTAssertTrue(app.navigationBars["全部账期"].waitForExistence(timeout: 10))
+        let navigationBar = app.navigationBars["全部账期"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
         let month = accountHistoryMonth(offset: offset)
-        tap(app.buttons["account.history.cycle.\(month.key)"])
+        let cycle = app.buttons["account.history.cycle.\(month.key)"]
+        // A partly exposed row can be hittable at the tab bar's edge.
+        reveal(cycle, fullyVisible: true, navigationBar: navigationBar)
+        cycle.tap()
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
 
