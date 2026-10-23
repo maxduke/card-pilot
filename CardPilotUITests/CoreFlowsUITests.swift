@@ -2806,13 +2806,17 @@ final class CoreFlowsUITests: XCTestCase {
             options: .regularExpression
         ))
         captureScreenshot("系统备份导出文件名")
-        // This directory page shows Browse and Move. Return to Browse to use
-        // the visible native Cancel button, rather than its hidden AX proxy.
-        let browse = picker.navigationBars.buttons["浏览"]
-        XCTAssertTrue(browse.waitForExistence(timeout: 10))
-        browse.tap()
-        let cancel = app.buttons["取消"].firstMatch
+        // Files may open at Browse or inside a directory. Use its visible
+        // Cancel control directly, or return to Browse when it is hidden.
+        let cancel = picker.navigationBars.buttons["取消"].firstMatch
+        if !cancel.exists || !cancel.isHittable {
+            let browse = picker.navigationBars.buttons["浏览"]
+            XCTAssertTrue(browse.waitForExistence(timeout: 10))
+            XCTAssertTrue(browse.isHittable)
+            browse.tap()
+        }
         XCTAssertTrue(cancel.waitForExistence(timeout: 10))
+        XCTAssertTrue(cancel.isHittable)
         cancel.tap()
         let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: picker)
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
