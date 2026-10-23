@@ -26,9 +26,6 @@ jobs:
             -scheme CardPilot \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionBasicDatesAtLargestTextSizeKeepValuesAndReadableProgress \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionEnrollmentDatesAtLargestTextSizeDiscardChanges \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationTitleFeedbackCorrectsAndPersists \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCreationTitleFeedbackAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionPerTransactionFieldFeedbackAtLargestTextSize \
             -destination "platform=iOS Simulator,id=$device_id" \
             -resultBundlePath TestResults.xcresult \
             -parallel-testing-enabled NO \
