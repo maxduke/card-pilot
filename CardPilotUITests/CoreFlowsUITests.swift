@@ -108,6 +108,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBillingRulePickersAtLargestTextSizeSaveEffectiveMonth() {
+        // The complete picker/save/relaunch/history flow reached its final
+        // checks at 194.74s in run 39900003418. Keep the existing 240s maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("billingDateFeedback")
         openBillingFeedbackAccount()
