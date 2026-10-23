@@ -461,6 +461,64 @@ final class CoreFlowsUITests: XCTestCase {
         verifyPromotionAmountFieldFeedback(perTransaction: true)
     }
 
+    func testPromotionBasicDatesAtLargestTextSizeKeepValuesAndReadableProgress() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("core")
+        openNewPromotionEditor()
+        let navigationBar = app.navigationBars["添加促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        try verifyPromotionDateField("promotion.startDate", title: "开始日期",
+                                     navigationBar: navigationBar, form: form)
+        try verifyPromotionDateField("promotion.endDate", title: "结束日期",
+                                     navigationBar: navigationBar, form: form)
+        tap(app.switches["每月重复"])
+        try verifyPromotionDateField("promotion.repeatUntilDate", title: "系列结束日期",
+                                     navigationBar: navigationBar, form: form)
+        let cumulative = app.buttons["累计消费"]
+        reveal(cumulative, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertTrue(cumulative.isSelected)
+        let perTransaction = app.buttons["逐笔优惠"]
+        reveal(perTransaction, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        perTransaction.tap()
+        XCTAssertTrue(perTransaction.isSelected)
+        XCTAssertFalse(cumulative.isSelected)
+        captureScreenshot("最大字号促销进度类型完整选项")
+        navigationBar.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+    }
+
+    func testPromotionEnrollmentDatesAtLargestTextSizeDiscardChanges() throws {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("promotionOverview")
+        openPromotion("UI Available")
+        openPromotionEditor("报名与规则")
+        let navigationBar = app.navigationBars["编辑促销"]
+        let form = app.descendants(matching: .any).matching(identifier: "promotion.editor.form").firstMatch
+        tap(app.buttons["已报名"])
+        tap(app.switches["记录报名日期"])
+        try verifyPromotionDateField("promotion.enrolledOn", title: "报名日期",
+                                     navigationBar: navigationBar, form: form)
+        tap(app.switches["设置报名截止日"])
+        try verifyPromotionDateField("promotion.enrollmentDeadline", title: "报名截止日",
+                                     navigationBar: navigationBar, form: form)
+        navigationBar.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openPromotion("UI Available")
+        openPromotionEditor("报名与规则")
+        XCTAssertFalse(app.switches["记录报名日期"].exists)
+        XCTAssertFalse(app.switches["设置报名截止日"].exists)
+        XCTAssertFalse(app.buttons["promotion.enrolledOn"].exists)
+        XCTAssertFalse(app.buttons["promotion.enrollmentDeadline"].exists)
+        captureScreenshot("最大字号促销日期放弃修改读回")
+        navigationBar.buttons["取消"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
     func testPromotionSectionsSaveAndCancelWithoutRepeatingCreation() {
         launch("core")
         openPromotion("UI Spend")
@@ -2641,6 +2699,23 @@ final class CoreFlowsUITests: XCTestCase {
         try auditAccessibility(for: [.hitRegion])
     }
 
+    private func verifyPromotionDateField(_ identifier: String, title: String,
+                                          navigationBar: XCUIElement, form: XCUIElement) throws {
+        let field = app.buttons[identifier]
+        reveal(field, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        let original = try XCTUnwrap(field.value as? String)
+        XCTAssertEqual(field.label, title)
+        XCTAssertNotNil(original.range(of: "^[0-9]{4}年[0-9]{2}月[0-9]{2}日$", options: .regularExpression))
+        let originalDay = try XCTUnwrap(Int(original.suffix(3).prefix(2)))
+        let changedDay = originalDay == 1 ? 2 : originalDay - 1
+        try adjustBillingDateDay(identifier, from: originalDay, to: changedDay,
+                                 navigationBar: navigationBar, form: form,
+                                 screenshot: "最大字号促销\(title)滚轮完整值", auditText: true, titleOverride: title)
+        let expected = String(original.dropLast(3)) + String(format: "%02d日", changedDay)
+        XCTAssertEqual(field.value as? String, expected)
+        captureScreenshot("最大字号促销\(title)完整日期")
+    }
+
     private func verifyPromotionCreationTitleFeedback(largestText: Bool) {
         let prefix = (largestText ? "最大字号" : "") + "创建促销"
         launch("core")
@@ -3016,11 +3091,11 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func adjustBillingDateDay(_ identifier: String, from originalDay: Int, to changedDay: Int,
                                      navigationBar: XCUIElement, form: XCUIElement,
-                                     screenshot: String, auditText: Bool) throws {
+                                     screenshot: String, auditText: Bool, titleOverride: String? = nil) throws {
         let entry = app.buttons[identifier]
         reveal(entry, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         let field = identifier.contains("statement") ? "账单日" : "还款日"
-        let title = identifier.hasPrefix("account.editor.") ? "实际" + field : field
+        let title = titleOverride ?? (identifier.hasPrefix("account.editor.") ? "实际" + field : field)
         XCTAssertEqual(entry.label, title)
         XCTAssertTrue((entry.value as? String ?? "").hasSuffix(String(format: "%02d日", originalDay)))
         entry.tap()

@@ -944,16 +944,17 @@ private struct PromotionEditorView: View {
                     .accessibilityIdentifier("promotion.title")
                     .id(Field.title)
                 fieldError(.title)
-                DatePicker("开始日期", selection: $startDate, displayedComponents: .date)
+                BillingDatePicker(title: "开始日期", selection: $startDate, identifier: "promotion.startDate")
                     .disabled(promotion?.seriesID != nil)
-                DatePicker("结束日期", selection: $endDate, displayedComponents: .date)
+                BillingDatePicker(title: "结束日期", selection: $endDate, identifier: "promotion.endDate")
                     .disabled(promotion?.seriesID != nil)
                     .id(Field.endDate)
                 fieldError(.endDate)
                 if promotion == nil {
                     Toggle("每月重复", isOn: $repeatsMonthly)
                     if repeatsMonthly {
-                        DatePicker("系列结束日期", selection: $repeatUntilDate, displayedComponents: .date)
+                        BillingDatePicker(title: "系列结束日期", selection: $repeatUntilDate,
+                                          identifier: "promotion.repeatUntilDate")
                             .id(Field.repeatUntilDate)
                         fieldError(.repeatUntilDate)
                         Text("将创建 \(monthlyPeriodPreview.count) 个完整周期")
@@ -967,10 +968,10 @@ private struct PromotionEditorView: View {
                 }
             }
             Section("金额与进度") {
-                Picker("进度类型", selection: $progressMode) {
-                    ForEach(PromotionProgressMode.allCases, id: \.self) { mode in
-                        Text(mode.title).tag(mode)
-                    }
+                if dynamicTypeSize.isAccessibilitySize {
+                    progressModePicker.pickerStyle(.inline)
+                } else {
+                    progressModePicker
                 }
                 if progressMode == .perTransaction {
                     VStack(alignment: .leading, spacing: 5) {
@@ -1099,13 +1100,14 @@ private struct PromotionEditorView: View {
                 if enrollmentStatus == .enrolled {
                     Toggle("记录报名日期", isOn: $hasEnrolledOn)
                     if hasEnrolledOn {
-                        DatePicker("报名日期", selection: $enrolledOn, displayedComponents: .date)
+                        BillingDatePicker(title: "报名日期", selection: $enrolledOn, identifier: "promotion.enrolledOn")
                     }
                 }
                 if enrollmentStatus != .notRequired {
                     Toggle("设置报名截止日", isOn: $hasEnrollmentDeadline)
                     if hasEnrollmentDeadline {
-                        DatePicker("报名截止日", selection: $enrollmentDeadline, displayedComponents: .date)
+                        BillingDatePicker(title: "报名截止日", selection: $enrollmentDeadline,
+                                          identifier: "promotion.enrollmentDeadline")
                             .id(Field.enrollmentDeadline)
                         fieldError(.enrollmentDeadline)
                     }
@@ -1162,6 +1164,14 @@ private struct PromotionEditorView: View {
                 .focused($focusedField, equals: field)
                 .accessibilityLabel(title)
                 .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private var progressModePicker: some View {
+        Picker("进度类型", selection: $progressMode) {
+            ForEach(PromotionProgressMode.allCases, id: \.self) { mode in
+                Text(mode.title).tag(mode)
+            }
         }
     }
 
