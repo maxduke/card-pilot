@@ -377,6 +377,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testLargeCardHistoryScopesRowsAndRefreshesAfterRecording() {
+        // Run 40087999091 spent 99s preparing the Debug store and reached
+        // the first save at 176s. Keep the existing workflow's 240s maximum.
+        executionTimeAllowance = 240
         launch("performanceLarge")
         tap(app.tabBars.buttons["卡片"])
         enter("Baseline Card 19", into: app.searchFields.firstMatch)
