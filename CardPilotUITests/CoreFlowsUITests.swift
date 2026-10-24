@@ -376,6 +376,48 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
     }
 
+    func testLargeCardHistoryScopesRowsAndRefreshesAfterRecording() {
+        // Run 40087999091 spent 99s preparing the Debug store and reached
+        // the first save at 176s. Keep the existing workflow's 240s maximum.
+        executionTimeAllowance = 240
+        launch("performanceLarge")
+        tap(app.tabBars.buttons["卡片"])
+        enter("Baseline Card 19", into: app.searchFields.firstMatch)
+        tap(app.buttons["card.Baseline Card 19"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        let history = app.buttons["card.transactions"]
+        XCTAssertTrue(history.label.contains("共 1000 笔"))
+        tap(history)
+        let navigationBar = app.navigationBars["Baseline Card 19"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let latest = app.buttons["transaction.Baseline Latest"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 10))
+        XCTAssertTrue(latest.label.contains("Baseline Card 19"))
+        let second = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "transaction.")).element(boundBy: 1)
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
+        XCTAssertTrue(second.label.contains("Baseline Card 19"))
+        captureScreenshot("两万笔单卡交易历史")
+
+        tap(app.buttons["使用这张卡添加交易"])
+        enter("10", into: app.textFields["transactionAmount"])
+        enter("UI Card History Added", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["添加交易"].waitForNonExistence(timeout: 10))
+        let added = app.buttons["transaction.UI Card History Added"]
+        XCTAssertTrue(added.waitForExistence(timeout: 10))
+        XCTAssertTrue(added.label.contains("Baseline Card 19"))
+        XCTAssertTrue(added.label.contains("10 CNY"))
+        XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Card History Added").count, 1)
+        captureScreenshot("两万笔单卡新增后即时刷新")
+
+        tap(navigationBar.buttons.element(boundBy: 0))
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        XCTAssertTrue(history.label.contains("共 1001 笔"))
+        captureScreenshot("两万笔单卡新增后统计")
+    }
+
     func testFirstCardReminderSettingsPersistAndRemainAccessible() throws {
         // These preferences are changed through the app, so launch overrides
         // must not hide their persisted values on the subsequent launch.
