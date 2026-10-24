@@ -43,18 +43,29 @@ enum UITestBootstrap {
               let session = UUID(uuidString: rawID) else { return nil }
         let directory = URL.temporaryDirectory.appendingPathComponent("CardPilotUITests/\(session.uuidString)", isDirectory: true)
         return BackupStore(directory: directory, openLegacy: {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent("test.store")
-            let isNew = !FileManager.default.fileExists(atPath: url.path)
-            let container = try CardPilotPersistence.makeContainer(at: url)
-            let reportURL = directory.appendingPathComponent("performance-fixture.json")
-            if isNew && scenario != .empty {
-                try seed(container.mainContext, scenario: scenario, performanceReportURL: reportURL)
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let url = directory.appendingPathComponent("test.store")
+                let isNew = !FileManager.default.fileExists(atPath: url.path)
+                let container = try CardPilotPersistence.makeContainer(at: url)
+                let reportURL = directory.appendingPathComponent("performance-fixture.json")
+                if isNew && scenario != .empty {
+                    try seed(container.mainContext, scenario: scenario, performanceReportURL: reportURL)
+                }
+                if scenario.performanceTransactionCount != nil && !FileManager.default.fileExists(atPath: reportURL.path) {
+                    throw PerformanceFixture.InvalidFixture(message: "Missing completed performance fixture report")
+                }
+                return container
+            } catch {
+                if scenario.performanceTransactionCount != nil {
+                    // Only synthetic performance stores may export their setup error.
+                    try? String(describing: error).write(
+                        to: directory.appendingPathComponent("performance-fixture-error.txt"),
+                        atomically: true, encoding: .utf8
+                    )
+                }
+                throw error
             }
-            if scenario.performanceTransactionCount != nil && !FileManager.default.fileExists(atPath: reportURL.path) {
-                throw PerformanceFixture.InvalidFixture(message: "Missing completed performance fixture report")
-            }
-            return container
         })
     }
 

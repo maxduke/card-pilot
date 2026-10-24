@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class PerformanceFixtureTests: XCTestCase {
     func testPerformanceFixtureRestoresSharedAccountsHistoryAndMonthlyAllocations() throws {
-        for rawDate in [20260228, 20261231] {
+        for rawDate in [20260228, 20261024, 20261231] {
             let today = try LocalDate(rawValue: rawDate)
             let container = try CardPilotPersistence.makeContainer(inMemory: true)
             let report = try PerformanceFixture.seed(container.mainContext, transactionCount: 100, today: today)
