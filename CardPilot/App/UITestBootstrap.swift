@@ -1,4 +1,4 @@
-#if DEBUG && targetEnvironment(simulator)
+#if (DEBUG || PERFORMANCE_TESTING) && targetEnvironment(simulator)
 import Foundation
 import SwiftData
 
@@ -21,6 +21,18 @@ enum UITestBootstrap {
         case accountHistory
         case futureRules
         case billingDateFeedback
+        case performanceSmall
+        case performanceMedium
+        case performanceLarge
+
+        var performanceTransactionCount: Int? {
+            switch self {
+            case .performanceSmall: 100
+            case .performanceMedium: 5_000
+            case .performanceLarge: 20_000
+            default: nil
+            }
+        }
     }
 
     static func makeStore() -> BackupStore? {
@@ -31,22 +43,45 @@ enum UITestBootstrap {
               let session = UUID(uuidString: rawID) else { return nil }
         let directory = URL.temporaryDirectory.appendingPathComponent("CardPilotUITests/\(session.uuidString)", isDirectory: true)
         return BackupStore(directory: directory, openLegacy: {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent("test.store")
-            let isNew = !FileManager.default.fileExists(atPath: url.path)
-            let container = try CardPilotPersistence.makeContainer(at: url)
-            if isNew && scenario != .empty {
-                try seed(container.mainContext, scenario: scenario)
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let url = directory.appendingPathComponent("test.store")
+                let isNew = !FileManager.default.fileExists(atPath: url.path)
+                let container = try CardPilotPersistence.makeContainer(at: url)
+                let reportURL = directory.appendingPathComponent("performance-fixture.json")
+                if isNew && scenario != .empty {
+                    try seed(container.mainContext, scenario: scenario, performanceReportURL: reportURL)
+                }
+                if scenario.performanceTransactionCount != nil && !FileManager.default.fileExists(atPath: reportURL.path) {
+                    throw PerformanceFixture.InvalidFixture(message: "Missing completed performance fixture report")
+                }
+                return container
+            } catch {
+                if scenario.performanceTransactionCount != nil {
+                    // Only synthetic performance stores may export their setup error.
+                    try? String(describing: error).write(
+                        to: directory.appendingPathComponent("performance-fixture-error.txt"),
+                        atomically: true, encoding: .utf8
+                    )
+                }
+                throw error
             }
-            return container
         })
     }
 
     static func seed(
         _ context: ModelContext,
         scenario: Scenario = .core,
-        today: LocalDate = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!)
+        today: LocalDate = LocalDate(date: .now, timeZone: TimeZone(identifier: "Asia/Shanghai")!),
+        performanceReportURL: URL? = nil
     ) throws {
+        if let count = scenario.performanceTransactionCount {
+            let report = try PerformanceFixture.seed(context, transactionCount: count, today: today)
+            if let performanceReportURL {
+                try JSONEncoder().encode(report).write(to: performanceReportURL, options: .atomic)
+            }
+            return
+        }
         guard scenario != .empty else { return }
         let bank = Bank(name: "UI Test Bank")
         let networks = CardNetwork.makeBuiltIns()
