@@ -401,15 +401,8 @@ private struct CardTransactionHistoryView: View {
     @State private var detailTransaction: Transaction?
     @State private var showingEditor = false
 
-    private var transactions: [Transaction] {
-        allTransactions.filter { $0.card.id == card.id }
-    }
-
-    private var transactionSections: [(date: Int, transactions: [Transaction])] {
-        groupedTransactionsByDate(transactions)
-    }
-
     var body: some View {
+        let transactions = allTransactions.filter { $0.card.id == card.id }
         Group {
             if transactions.isEmpty {
                 ContentUnavailableView {
@@ -421,9 +414,10 @@ private struct CardTransactionHistoryView: View {
                         .buttonStyle(.borderedProminent)
                 }
             } else {
+                let sections = groupedTransactionsByDate(transactions)
                 List {
-                    ForEach(transactionSections.indices, id: \.self) { index in
-                        let section = transactionSections[index]
+                    ForEach(sections.indices, id: \.self) { index in
+                        let section = sections[index]
                         Section(CardPilotUI.dateText(section.date)) {
                             ForEach(section.transactions, id: \.id) { transaction in
                                 Button {
