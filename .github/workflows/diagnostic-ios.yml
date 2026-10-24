@@ -31,7 +31,42 @@ jobs:
       - name: Validate large card history and refresh
         run: |
           set -euo pipefail
-          xcodebuild test \
+          mkdir -p save-diagnostics
+          sample_after_confirmation() {
+            set +e
+            history_deadline=$((SECONDS + 1200))
+            while (( SECONDS < history_deadline )); do
+              history_save_taps=$(awk '/t =.*Tap "saveTransaction" Button/ { count++ } END { print count+0 }' xcodebuild.log 2>/dev/null)
+              if [ "${history_save_taps:-0}" -ge 2 ]; then
+                date -u +%Y-%m-%dT%H:%M:%SZ > save-diagnostics/triggered-at.txt
+                tail -n 25 xcodebuild.log > save-diagnostics/trigger-events.log
+                ps -axo pid,ppid,pcpu,rss,etime,comm > save-diagnostics/processes.txt
+                /usr/bin/sample -h > save-diagnostics/sample-help.txt 2>&1
+                history_app_pid=$(pgrep -x CardPilot | head -n 1)
+                history_runner_pid=$(pgrep -f '/CardPilotUITests-Runner.app/CardPilotUITests-Runner' | head -n 1)
+                printf 'app=%s\nrunner=%s\n' "$history_app_pid" "$history_runner_pid" > save-diagnostics/pids.txt
+                if [ -n "$history_app_pid" ]; then
+                  ( /usr/bin/sample "$history_app_pid" 5 10 -mayDie -file save-diagnostics/app-sample.txt > save-diagnostics/app-sample.log 2>&1
+                    printf '%s\n' "$?" > save-diagnostics/app-sample-exit.txt ) &
+                  history_app_sample=$!
+                fi
+                if [ -n "$history_runner_pid" ]; then
+                  ( /usr/bin/sample "$history_runner_pid" 5 10 -mayDie -file save-diagnostics/runner-sample.txt > save-diagnostics/runner-sample.log 2>&1
+                    printf '%s\n' "$?" > save-diagnostics/runner-sample-exit.txt ) &
+                  history_runner_sample=$!
+                fi
+                if [ -n "${history_app_sample:-}" ]; then wait "$history_app_sample"; fi
+                if [ -n "${history_runner_sample:-}" ]; then wait "$history_runner_sample"; fi
+                return
+              fi
+              sleep 1
+            done
+            printf 'Confirmation save was not observed before sampler deadline.\n' > save-diagnostics/not-triggered.txt
+          }
+          sample_after_confirmation &
+          history_sampler_pid=$!
+          trap 'kill "$history_sampler_pid" 2>/dev/null || :' EXIT
+          NSUnbufferedIO=YES xcodebuild test \
             -project CardPilot.xcodeproj -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$HISTORY_DEVICE_ID" \
             -resultBundlePath CardHistoryResults.xcresult \
@@ -74,5 +109,6 @@ jobs:
             macos-version.txt
             simulators.json
             source-revision.txt
+            save-diagnostics
           retention-days: 14
           if-no-files-found: error
