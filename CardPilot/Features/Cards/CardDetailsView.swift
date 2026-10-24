@@ -402,7 +402,7 @@ private struct CardTransactionHistoryView: View {
     @State private var showingEditor = false
 
     var body: some View {
-        let transactions = allTransactions.filter { $0.card.id == card.id }
+        let transactions = card.transactions
         Group {
             if transactions.isEmpty {
                 ContentUnavailableView {
