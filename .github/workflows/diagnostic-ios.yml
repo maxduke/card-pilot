@@ -1,4 +1,4 @@
-name: iOS Performance Startup Diagnostic
+name: iOS Performance Diagnostic
 
 on:
   push:
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   baseline:
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
@@ -56,7 +56,7 @@ jobs:
             -scheme CardPilotPerformance -configuration Release \
             -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
             -resultBundlePath PerformanceResults.xcresult \
-            -only-testing:CardPilotUITests/PerformanceUITests/testSmallWarmActivation \
+            -only-testing:CardPilotUITests/PerformanceUITests \
             -parallel-testing-enabled NO \
             -enableCodeCoverage NO \
             -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
@@ -69,14 +69,9 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          if [ -d FixtureResults.xcresult ]; then
-            xcrun xcresulttool get test-results summary --path FixtureResults.xcresult > performance-evidence/fixture-test-summary.json
-          fi
-          if [ -d PerformanceResults.xcresult ]; then
-            xcrun xcresulttool get test-results summary --path PerformanceResults.xcresult > performance-evidence/summary.json
-            xcrun xcresulttool get test-results metrics --path PerformanceResults.xcresult > performance-evidence/metrics.json
-            xcrun xcresulttool export attachments --path PerformanceResults.xcresult --output-path performance-evidence/attachments
-          fi
+          xcrun xcresulttool get test-results summary --path PerformanceResults.xcresult > performance-evidence/summary.json
+          xcrun xcresulttool get test-results metrics --path PerformanceResults.xcresult > performance-evidence/metrics.json
+          xcrun xcresulttool export attachments --path PerformanceResults.xcresult --output-path performance-evidence/attachments
           python3 - <<'PY'
           import json, os, pathlib, shutil
           simulators = json.load(open("performance-evidence/simulators.json"))["devices"]
@@ -92,10 +87,10 @@ jobs:
           for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
               shutil.copyfile(error, errors / f"{error.parent.name}.txt")
           PY
-      - name: Summarize isolated warm activation diagnostic
+      - name: Summarize complete baseline
         run: |
           set -euo pipefail
-          python3 scripts/summarize_performance.py performance-evidence --expected-tests 1
+          python3 scripts/summarize_performance.py performance-evidence
           cat performance-evidence/baseline.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw performance evidence
         if: always()
@@ -104,7 +99,6 @@ jobs:
           name: ios-performance-results
           path: |
             PerformanceResults.xcresult
-            FixtureResults.xcresult
             performance-evidence
           retention-days: 14
           if-no-files-found: error
