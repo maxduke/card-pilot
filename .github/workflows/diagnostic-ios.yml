@@ -1,4 +1,4 @@
-name: iOS Performance Diagnostic
+name: iOS Performance Startup Diagnostic
 
 on:
   push:
@@ -48,6 +48,19 @@ jobs:
           flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
           assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
           PY
+      - name: Validate native small fixture and restore
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CardPilot.xcodeproj -scheme CardPilot \
+            -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
+            -resultBundlePath FixtureResults.xcresult \
+            -only-testing:CardPilotTests/PerformanceFixtureTests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGNING_ALLOWED=NO | tee performance-evidence/fixture-test.log
       - name: Measure isolated Release scenarios
         run: |
           set -euo pipefail
@@ -56,7 +69,7 @@ jobs:
             -scheme CardPilotPerformance -configuration Release \
             -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
             -resultBundlePath PerformanceResults.xcresult \
-            -only-testing:CardPilotUITests/PerformanceUITests \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallColdLaunch \
             -parallel-testing-enabled NO \
             -enableCodeCoverage NO \
             -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
@@ -69,9 +82,14 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          xcrun xcresulttool get test-results summary --path PerformanceResults.xcresult > performance-evidence/summary.json
-          xcrun xcresulttool get test-results metrics --path PerformanceResults.xcresult > performance-evidence/metrics.json
-          xcrun xcresulttool export attachments --path PerformanceResults.xcresult --output-path performance-evidence/attachments
+          if [ -d FixtureResults.xcresult ]; then
+            xcrun xcresulttool get test-results summary --path FixtureResults.xcresult > performance-evidence/fixture-test-summary.json
+          fi
+          if [ -d PerformanceResults.xcresult ]; then
+            xcrun xcresulttool get test-results summary --path PerformanceResults.xcresult > performance-evidence/summary.json
+            xcrun xcresulttool get test-results metrics --path PerformanceResults.xcresult > performance-evidence/metrics.json
+            xcrun xcresulttool export attachments --path PerformanceResults.xcresult --output-path performance-evidence/attachments
+          fi
           python3 - <<'PY'
           import json, os, pathlib, shutil
           simulators = json.load(open("performance-evidence/simulators.json"))["devices"]
@@ -82,11 +100,15 @@ jobs:
           # Read the recorded device's files even after a failed run shuts it down.
           for report in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
               shutil.copyfile(report, destination / f"{report.parent.name}.json")
+          errors = pathlib.Path("performance-evidence/fixture-errors")
+          errors.mkdir(parents=True, exist_ok=True)
+          for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
+              shutil.copyfile(error, errors / f"{error.parent.name}.txt")
           PY
-      - name: Summarize complete baseline
+      - name: Summarize isolated startup diagnostic
         run: |
           set -euo pipefail
-          python3 scripts/summarize_performance.py performance-evidence
+          python3 scripts/summarize_performance.py performance-evidence --expected-tests 1
           cat performance-evidence/baseline.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw performance evidence
         if: always()
@@ -95,6 +117,7 @@ jobs:
           name: ios-performance-results
           path: |
             PerformanceResults.xcresult
+            FixtureResults.xcresult
             performance-evidence
           retention-days: 14
           if-no-files-found: error
