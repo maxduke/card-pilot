@@ -24,6 +24,10 @@ O19 指出了全量交易查询、交易分组、重复账期计算、逐次草�
 
 接着先执行已有的小数据完整备份回归，[运行 40051169219](https://github.com/maxduke/card-pilot/actions/runs/40051169219) 在造数阶段抛出 `invalidNetworkCombination`，后续 Release 测量按门禁跳过。源码确认大场景每 500 笔会保存，小场景却在首次保存前校验卡组织关系。夹具现统一在保存完整关系后执行全部领域校验，保留每笔消费／分配校验及报告数量检查。回归增加实际失败日期 `20261024`，并严格检查恢复后 20 张卡与 Visa 的双向关系；下一次仅验证受影响的小数据七条路径。只为显式选择的合成性能存储保留准备错误文本并随结果导出，普通存储仍不输出底层错误。
 
+该修复的[运行 40052150961](https://github.com/maxduke/card-pilot/actions/runs/40052150961) 已通过夹具完整备份及全部关系断言，七份小数据报告均完整；冷启动、三页首次进入、搜索和滚动六项通过，每指标十个样本。恢复前台用例在按 Home 后的通用谓词等待后台状态时失败，尚未开始测量；实际原图为系统桌面，原进程仍响应，没有崩溃报告。依据 Apple 对 `state` 异步更新的说明，该处改为一次读取状态并使用应用专用 `wait(for:timeout:)` 等待，仍只接受后台运行／后台挂起，保留十秒上限，不接受进程退出。先单独验证该路径，不重跑未修改的六项。
+
+已完成的 20 个性能用例执行时间合计约 111 分钟，尚不含小数据恢复前台及编译、证据导出；原先 90 分钟不足以执行完整基线。工作流作业总预算据此调整为 150 分钟，与普通回归工作流一致；各性能用例 600 秒预算、十个有效样本、断言和串行执行保持原样。
+
 ## 场景与隔离
 
 三个场景分别含 100、5000、20000 笔交易，均有 10 家银行、10 个共享账户、20 张卡、5 年追踪范围内的 610 个显式账期，以及两个各含 12 期的月度促销系列。历史账期均标记已还，当前期保留未还；消费均为 CNY，日期均匀分布，近期消费具有合法促销分配。它们是明确的合成场景，不代表用户真实数据分布。
@@ -61,5 +65,6 @@ O19 指出了全量交易查询、交易分组、重复账期计算、逐次草�
 - [Apple：编写和运行性能测试](https://developer.apple.com/documentation/xcode/writing-and-running-performance-tests)：Release、调试／诊断设置和指标测量。
 - [Apple：采样次数](https://developer.apple.com/documentation/xctest/xctmeasureoptions/iterationcount)：预热轮和有效样本的区别。
 - [Apple：应用启动指标](https://developer.apple.com/documentation/xctest/xctapplicationlaunchmetric/init(waituntilresponsive:))：首次响应边界。
+- [Apple：应用状态](https://developer.apple.com/documentation/xcuiautomation/xcuiapplication/state-swift.property)及[等待指定状态](https://developer.apple.com/documentation/xctest/xcuiapplication/wait(for:timeout:))：状态异步更新及原生等待方法。
 - [Apple：滚动与减速指标](https://developer.apple.com/documentation/xctest/xctossignpostmetric/scrollinganddecelerationmetric)：原生滚动测量。
 - [Apple：Xcode 16.3 发布说明](https://developer.apple.com/documentation/xcode-release-notes/xcode-16_3-release-notes)：原生指标 JSON 导出命令。
