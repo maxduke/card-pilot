@@ -81,6 +81,10 @@ jobs:
           # Read the recorded device's files even after a failed run shuts it down.
           for report in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
               shutil.copyfile(report, destination / f"{report.parent.name}.json")
+          errors = pathlib.Path("performance-evidence/fixture-errors")
+          errors.mkdir(parents=True, exist_ok=True)
+          for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
+              shutil.copyfile(error, errors / f"{error.parent.name}.txt")
           PY
       - name: Summarize complete baseline
         run: |
