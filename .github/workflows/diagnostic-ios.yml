@@ -70,6 +70,12 @@ jobs:
             -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
             -resultBundlePath PerformanceResults.xcresult \
             -only-testing:CardPilotUITests/PerformanceUITests/testSmallColdLaunch \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallWarmActivation \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallCardsFirstEntry \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallPromotionsFirstEntry \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallTransactionsFirstEntry \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallTransactionSearch \
+            -only-testing:CardPilotUITests/PerformanceUITests/testSmallTransactionScroll \
             -parallel-testing-enabled NO \
             -enableCodeCoverage NO \
             -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
@@ -105,10 +111,10 @@ jobs:
           for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
               shutil.copyfile(error, errors / f"{error.parent.name}.txt")
           PY
-      - name: Summarize isolated startup diagnostic
+      - name: Summarize seven small-profile diagnostic cases
         run: |
           set -euo pipefail
-          python3 scripts/summarize_performance.py performance-evidence --expected-tests 1
+          python3 scripts/summarize_performance.py performance-evidence --expected-tests 7
           cat performance-evidence/baseline.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw performance evidence
         if: always()

@@ -123,11 +123,13 @@ enum PerformanceFixture {
             }
             if (index + 1).isMultiple(of: 500) { try context.save() }
         }
+        // Settle SwiftData's inverse relationships for every size, including
+        // fixtures smaller than the transaction batch-save interval.
+        try context.save()
         try banks.forEach { try $0.validate() }
         try accounts.forEach { try $0.validate(); try $0.validateBillingConfiguration() }
         try cards.forEach { try $0.validate() }
         try promotions.forEach { try $0.validate() }
-        try context.save()
 
         var firstTransaction = FetchDescriptor<Transaction>(sortBy: [SortDescriptor(\.transactionOn)])
         firstTransaction.fetchLimit = 1
