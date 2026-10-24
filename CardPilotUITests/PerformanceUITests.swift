@@ -166,10 +166,13 @@ final class PerformanceUITests: XCTestCase {
         freshLaunch()
         measure(metrics: interactionMetrics, options: options) {
             XCUIDevice.shared.press(.home)
-            let backgrounded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                self.app.state == .runningBackground || self.app.state == .runningBackgroundSuspended
-            }, object: app)
-            XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed)
+            let stateAfterHome = app.state
+            if stateAfterHome != .runningBackground && stateAfterHome != .runningBackgroundSuspended {
+                let backgrounded = app.wait(for: .runningBackground, timeout: 10)
+                let stateAfterWait = app.state
+                XCTAssertTrue(backgrounded || stateAfterWait == .runningBackgroundSuspended,
+                              "Expected a running background app before activation; state: \(stateAfterWait.rawValue)")
+            }
             startMeasuring()
             app.activate()
             assertDashboardReady()
