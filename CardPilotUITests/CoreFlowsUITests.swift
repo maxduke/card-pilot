@@ -304,6 +304,15 @@ final class CoreFlowsUITests: XCTestCase {
         verifyCardEditorFieldFeedback(largestText: true)
     }
 
+    func testCustomAccountNamePersistsSearchesSharedCardsAndClears() {
+        verifyCustomAccountName(largestText: false)
+    }
+
+    func testCustomAccountNameAtLargestTextSizePersistsAndSearchesSharedCards() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyCustomAccountName(largestText: true)
+    }
+
     func testAccountEditorNumericKeyboardPreservesSavedLimit() {
         verifyAccountEditorNumericKeyboard(largestText: false)
     }
@@ -356,6 +365,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.tabBars.buttons["记一笔"])
         tap(app.buttons["bank.cn.icbc"])
         XCTAssertTrue(app.staticTexts["设置账务规则"].waitForExistence(timeout: 10))
+        enter("UI Created Account", into: app.textFields["onboarding.accountName"])
         tap(app.buttons["onboarding.advance"])
         enter("UI Created", into: app.textFields["卡产品名称"])
         enter("2468", into: app.textFields["末四位"])
@@ -372,6 +382,12 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         openCard("UI Created")
+        tap(app.buttons["card.account"])
+        let summary = app.descendants(matching: .any).matching(identifier: "account.detail.summary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains("UI Created Account"))
+        captureScreenshot("新卡账户名称重启读回")
+        tap(app.navigationBars["账户详情"].buttons.element(boundBy: 0))
         tap(app.buttons["card.transactions"])
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
     }
@@ -3310,6 +3326,83 @@ final class CoreFlowsUITests: XCTestCase {
         let date = app.staticTexts["\(field)、\(text)"]
         reveal(date, fullyVisible: true)
         XCTAssertTrue(date.exists)
+    }
+
+    private func verifyCustomAccountName(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        let name = largestText ? "Daily and Travel Shared CNY Main Account" : "Daily Shared CNY"
+        launch("core")
+        openBillingFeedbackAccount()
+        let details = app.navigationBars["账户详情"]
+        let editor = app.navigationBars["编辑信用卡账户"]
+        let nameField = app.textFields["account.editor.name"]
+        let summary = app.descendants(matching: .any).matching(identifier: "account.detail.summary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains("尾号 1234"))
+        if largestText { captureScreenshot("最大字号账户默认概要") }
+        tap(details.buttons["编辑"])
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        replaceText(" " + name + " ", in: nameField)
+        captureScreenshot("\(prefix)账户名称编辑")
+        editor.buttons["保存"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(name))
+        tap(details.buttons.element(boundBy: 0))
+
+        let cardsNavigation = app.navigationBars["卡片"]
+        XCTAssertTrue(cardsNavigation.waitForExistence(timeout: 10))
+        let search = app.searchFields.firstMatch
+        tap(search, scrollTowardTopWhenMissing: true)
+        search.typeText(name + "\n")
+        let primary = app.buttons["card.UI Primary"]
+        let shared = app.buttons["card.UI Shared"]
+        reveal(primary, fullyVisible: true, navigationBar: cardsNavigation)
+        XCTAssertTrue(primary.exists)
+        reveal(shared, fullyVisible: true, navigationBar: cardsNavigation)
+        XCTAssertTrue(shared.exists)
+        XCTAssertFalse(app.buttons["card.UI Foreign"].exists)
+        captureScreenshot("\(prefix)账户名称搜索共享卡片")
+
+        app.terminate()
+        app.launch()
+        selectCardsTab()
+        let namedAccount = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        reveal(namedAccount, fullyVisible: true, navigationBar: cardsNavigation)
+        namedAccount.tap()
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(name))
+        captureScreenshot("\(prefix)账户名称重启读回")
+        tap(details.buttons["编辑"])
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(nameField.value as? String, name, "Saved names trim surrounding whitespace")
+        if largestText {
+            editor.buttons["取消"].tap()
+            XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["放弃修改"].exists)
+            return
+        }
+
+        replaceText("Discarded account name", in: nameField)
+        editor.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(name))
+        tap(details.buttons["编辑"])
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(nameField.value as? String, name)
+        replaceText("", in: nameField)
+        editor.buttons["保存"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertFalse(summary.label.contains(name))
+        XCTAssertTrue(summary.label.contains("尾号 1234"))
+        XCTAssertTrue(summary.label.contains("尾号 5678"))
+        captureScreenshot("账户名称清空重启读回")
     }
 
     private func verifyAccountEditorFieldFeedback(largestText: Bool) {

@@ -421,9 +421,11 @@ final class BackupTests: XCTestCase {
     }
 
     private func temporaryDirectory() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let url = URL.temporaryDirectory.appendingPathComponent("CardPilotBackupTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        // SwiftData may close staged SQLite stores asynchronously after the test.
+        // Keep each isolated directory until the simulator test process exits.
         return url
     }
 
