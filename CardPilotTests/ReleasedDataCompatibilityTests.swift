@@ -168,9 +168,12 @@ final class ReleasedDataCompatibilityTests: XCTestCase {
         let archive = try BackupArchive.decode(archiveData)
         XCTAssertEqual(archive.records.count, 25)
         let draftData = try Data(contentsOf: resource("\(prefix).store.transaction-draft.json"))
-        let directory = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let directory = URL.temporaryDirectory
+            .appendingPathComponent("CardPilotReleasedDataTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        // SwiftData can retain SQLite connections after ModelContainer leaves scope.
+        // Keep these isolated copies until the simulator test process has exited.
         let storeURL = directory.appendingPathComponent("\(prefix).store")
         try FileManager.default.copyItem(at: resource("\(prefix).store"), to: storeURL)
         try FileManager.default.copyItem(at: resource("\(prefix).store.transaction-draft.json"),
