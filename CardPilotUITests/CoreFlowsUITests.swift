@@ -361,6 +361,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testCreateCardAndReopenDetails() {
+        // The full creation/readback/history flow ended at 180.427s in native run
+        // 40221235030 after completing its assertions. Use the existing maximum.
+        executionTimeAllowance = 240
         launch("empty")
         tap(app.tabBars.buttons["记一笔"])
         tap(app.buttons["bank.cn.icbc"])
