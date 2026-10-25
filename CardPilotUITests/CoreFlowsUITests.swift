@@ -847,6 +847,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testPromotionOverviewPrioritizesProgressAndDistinguishesLimits() throws {
+        // Run 40156564277 completed all five details and the largest-text
+        // flow, then reached 180.892s in teardown. Keep the existing 240s max.
+        executionTimeAllowance = 240
         launch("promotionOverview")
         tap(app.tabBars.buttons["促销"])
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
