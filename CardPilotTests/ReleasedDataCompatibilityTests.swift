@@ -53,6 +53,7 @@ final class ReleasedDataCompatibilityTests: XCTestCase {
         XCTAssertEqual(before.records, fixture.archive.records)
 
         let prepared = try await store.prepare(fixture.archiveData)
+        XCTAssertEqual(prepared.version, 1, "Restore preview must describe the original file format")
         XCTAssertEqual(prepared.records, fixture.archive.records)
         try await store.restore(prepared)
         let restoredURL = try XCTUnwrap(store.container?.configurations.first?.url)
@@ -66,6 +67,7 @@ final class ReleasedDataCompatibilityTests: XCTestCase {
         XCTAssertFalse(relaunched.startupFailed)
         XCTAssertEqual(relaunched.container?.configurations.first?.url, restoredURL)
         let after = try await relaunched.export()
+        XCTAssertEqual(after.version, 2, "A new export uses the current format")
         XCTAssertEqual(after.records, fixture.archive.records)
         let retained = try relaunched.retainedBackups()
         XCTAssertEqual(retained.count, 1)
