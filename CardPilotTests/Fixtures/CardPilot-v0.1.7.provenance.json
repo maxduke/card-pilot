@@ -1,0 +1,13 @@
+{
+  "releaseTag": "v0.1.7",
+  "releaseRevision": "437d303261ec40ed5a7fb7313d2d910da351779f",
+  "generatorRevision": "02ae83086ca77a62859bacdff5d41366f54acac9",
+  "productionBlobs": {
+    "CardPilot/Domain/Models.swift": "04f5a06f7cb2e904ddcf7c9e99b79c3db117478f",
+    "CardPilot/Services/BackupArchive.swift": "9769c7f57f89ee2eb8c660ccf277398c4d787f87",
+    "CardPilot/Services/TransactionDraftStore.swift": "8597d46178668d787dcc25eef29232b8cbab227c",
+    "CardPilot.xcodeproj/project.pbxproj": "4d1c7886892f8c5a0a9a2f8d94e95a22b54425b6"
+  },
+  "workflowRun": "40207397025",
+  "workflowAttempt": "1"
+}
