@@ -1223,10 +1223,14 @@ private struct AccountRow: View {
 }
 
 private struct CardRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let card: Card
 
     var body: some View {
-        HStack {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout())
+        layout {
             Image(systemName: card.status == .active ? "creditcard.fill" : "creditcard")
                 .foregroundStyle(card.status == .active ? .blue : .secondary)
             VStack(alignment: .leading, spacing: 3) {
@@ -1245,7 +1249,8 @@ private struct CardRow: View {
                         .monospacedDigit()
                 }
             }
-            Spacer()
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             if card.status == .inactive {
                 Text("停用")
                     .font(.caption)
