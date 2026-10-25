@@ -388,7 +388,8 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(summary.label.contains("UI Created Account"))
         captureScreenshot("新卡账户名称重启读回")
         tap(app.navigationBars["账户详情"].buttons.element(boundBy: 0))
-        tap(app.buttons["card.transactions"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        tap(app.buttons["card.transactions"], scrollTowardTopWhenMissing: true)
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
     }
 
