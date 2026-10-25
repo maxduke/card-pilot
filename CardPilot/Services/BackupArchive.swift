@@ -1,16 +1,20 @@
 import Foundation
 import SwiftData
 
-/// Version 1 is independent of the SwiftData schema. Never encode model objects directly.
+/// Backup versions are independent of SwiftData. Version 2 adds optional account names.
 struct BackupArchive: Codable, Equatable, Sendable {
     var format = "CardPilotBackup"
-    var version = 1
+    var version = 2
     var exportedAt = Date()
     var records: BackupRecords
 
     static let maximumFileSize = 50 * 1_024 * 1_024
 
     func encoded() throws -> Data {
+        // A v1 reader ignores unknown fields; never label named accounts as v1.
+        guard version != 1 || records.accounts.allSatisfy({ $0.customName == nil }) else {
+            throw BackupError.invalidData
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let data = try encoder.encode(self)
@@ -24,8 +28,11 @@ struct BackupArchive: Codable, Equatable, Sendable {
         do {
             let header = try JSONDecoder().decode(Header.self, from: data)
             guard header.format == "CardPilotBackup" else { throw BackupError.invalidFile }
-            guard header.version == 1 else { throw BackupError.unsupportedVersion }
+            guard (1...2).contains(header.version) else { throw BackupError.unsupportedVersion }
             let archive = try JSONDecoder().decode(Self.self, from: data)
+            guard header.version != 1 || archive.records.accounts.allSatisfy({ $0.customName == nil }) else {
+                throw BackupError.invalidData
+            }
             guard archive.exportedAt.timeIntervalSince1970.isFinite,
                   (-62_135_596_800...253_402_300_799).contains(archive.exportedAt.timeIntervalSince1970) else {
                 throw BackupError.invalidData
@@ -172,6 +179,7 @@ struct BackupRecords: Codable, Equatable, Sendable {
         var closedOn: Int?
         var notes: String
         var bank: UUID
+        var customName: String? = nil
     }
 
     struct CardRecord: Codable, Equatable, Sendable {
@@ -285,7 +293,8 @@ extension BackupRecords {
                 statusRaw: model.statusRaw,
                 closedOn: model.closedOn,
                 notes: model.notes,
-                bank: model.bank.id
+                bank: model.bank.id,
+                customName: model.customName
             )
         }
         result.cards = try context.fetch(FetchDescriptor<Card>()).sorted { $0.id.uuidString < $1.id.uuidString }.map { model in
@@ -410,6 +419,7 @@ extension BackupRecords {
             let model = CreditCardAccount(
                 id: record.id,
                 bank: try reference(record.bank, in: banksByID),
+                customName: record.customName,
                 trackingStartCycleKey: record.trackingStartCycleKey,
                 creditLimit: record.creditLimit?.value,
                 limitCurrencyCode: record.limitCurrencyCode,

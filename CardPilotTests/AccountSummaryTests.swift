@@ -2,6 +2,33 @@ import XCTest
 @testable import CardPilot
 
 final class AccountSummaryTests: XCTestCase {
+    func testCustomNamesDistinguishSameBankAccountsAndSurviveCardChanges() {
+        let bank = Bank(name: "同一家银行")
+        let account = CreditCardAccount(bank: bank, customName: "日常共享主账户")
+        let other = CreditCardAccount(bank: bank, customName: "旅行账户")
+        let card = Card(account: account, productName: "日常卡", networks: [], lastFour: "1234")
+        account.cards = [card, Card(account: account, productName: "共享卡", networks: [], lastFour: "5678")]
+        XCTAssertEqual(CardPilotUI.accountName(account), "日常共享主账户")
+        XCTAssertNotEqual(CardPilotUI.accountName(account), CardPilotUI.accountName(other))
+        card.nickname = "换发后的卡片"
+        card.lastFour = "9012"
+        XCTAssertEqual(CardPilotUI.accountName(account), "日常共享主账户")
+        account.cards = []
+        XCTAssertEqual(CardPilotUI.accountName(account), "日常共享主账户")
+        account.customName = nil
+        XCTAssertEqual(CardPilotUI.accountName(account), "同一家银行 · CNY 信用卡账户")
+    }
+
+    func testOptionalAccountNameRejectsStoredWhitespaceAndKeepsDefaultCardIdentity() throws {
+        let bank = Bank(name: "同一家银行")
+        let account = CreditCardAccount(bank: bank, customName: " \n ")
+        XCTAssertThrowsError(try account.validate())
+        account.customName = nil
+        account.cards = [Card(account: account, productName: "日常卡", networks: [], lastFour: "1234")]
+        XCTAssertNoThrow(try account.validate())
+        XCTAssertTrue(CardPilotUI.accountName(account).contains("尾号 1234"))
+    }
+
     func testAccountLabelsDistinguishCardsAndSpeakRepaymentDates() throws {
         let bank = Bank(name: "同一家银行")
         let first = CreditCardAccount(bank: bank)

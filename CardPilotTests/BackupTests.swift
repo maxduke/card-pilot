@@ -7,6 +7,18 @@ import XCTest
 final class BackupTests: XCTestCase {
     private enum InjectedFailure: Error { case diskFull }
 
+    func testLegacyHeaderCannotSilentlyDiscardAccountNames() throws {
+        let source = try fixture()
+        var archive = BackupArchive(records: try BackupRecords.capture(source.mainContext))
+        XCTAssertEqual(archive.version, 2)
+        XCTAssertTrue(archive.records.accounts.contains { $0.customName == "共享主账户" })
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: archive.encoded()) as? [String: Any])
+        payload["version"] = 1
+        XCTAssertThrowsError(try BackupArchive.decode(JSONSerialization.data(withJSONObject: payload)))
+        archive.version = 1
+        XCTAssertThrowsError(try archive.encoded())
+    }
+
     func testCompleteRoundTripRetainsEveryFieldAndRelationship() async throws {
         let source = try fixture()
         let archive = BackupArchive(records: try BackupRecords.capture(source.mainContext))
@@ -425,7 +437,7 @@ final class BackupTests: XCTestCase {
         let networks = CardNetwork.makeBuiltIns()
         networks.forEach(context.insert)
         context.insert(CardNetwork(code: "custom", displayName: "自定义组织"))
-        let account = CreditCardAccount(bank: bank, trackingStartCycleKey: 202401, creditLimit: Decimal(string: "12345678901234567890.123456789")!, limitCurrencyCode: "HKD", notes: "共享账户")
+        let account = CreditCardAccount(bank: bank, customName: "共享主账户", trackingStartCycleKey: 202401, creditLimit: Decimal(string: "12345678901234567890.123456789")!, limitCurrencyCode: "HKD", notes: "共享账户")
         context.insert(account)
         let closed = CreditCardAccount(bank: bank, trackingStartCycleKey: 202401, status: .closed, closedOn: 20250830, notes: "已关闭")
         context.insert(closed)

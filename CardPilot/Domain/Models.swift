@@ -233,6 +233,7 @@ final class CardNetwork {
 @Model
 final class CreditCardAccount {
     var id: UUID
+    var customName: String?
     /// The nominal billing month from which this account participates in dashboard tracking.
     var trackingStartCycleKey: Int
     var creditLimit: Decimal?
@@ -260,6 +261,7 @@ final class CreditCardAccount {
     init(
         id: UUID = UUID(),
         bank: Bank,
+        customName: String? = nil,
         trackingStartCycleKey: Int = LocalDate(date: Date(), timeZone: .current).monthKey,
         creditLimit: Decimal? = nil,
         limitCurrencyCode: String = "CNY",
@@ -268,6 +270,7 @@ final class CreditCardAccount {
         notes: String = ""
     ) {
         self.id = id
+        self.customName = customName
         self.trackingStartCycleKey = trackingStartCycleKey
         self.bank = bank
         self.creditLimit = creditLimit
@@ -286,6 +289,7 @@ final class CreditCardAccount {
         guard LocalDate.isValidMonthKey(trackingStartCycleKey) else {
             throw ModelValidationError.invalidCycleKey
         }
+        if let customName, !hasText(customName) { throw ModelValidationError.blankName }
         if let creditLimit, creditLimit <= .zero { throw ModelValidationError.invalidCreditLimit }
         guard isValidCurrencyCode(limitCurrencyCode) else {
             throw ModelValidationError.invalidCurrencyCode(limitCurrencyCode)
@@ -774,8 +778,8 @@ final class PromotionAllocation {
     }
 }
 
-enum CardPilotSchemaV3: VersionedSchema {
-    static var versionIdentifier = Schema.Version(3, 0, 0)
+enum CardPilotSchemaV4: VersionedSchema {
+    static var versionIdentifier = Schema.Version(4, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [
@@ -794,7 +798,8 @@ enum CardPilotSchemaV3: VersionedSchema {
 
 enum CardPilotPersistence {
     static func makeContainer(at url: URL) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: CardPilotSchemaV3.self)
+        let schema = Schema(versionedSchema: CardPilotSchemaV4.self)
+        // Keep the released store identity; compatible schema changes migrate in place.
         let configuration = ModelConfiguration(
             "CardPilotPrereleaseV3", schema: schema, url: url, cloudKitDatabase: .none
         )
@@ -802,7 +807,7 @@ enum CardPilotPersistence {
     }
 
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: CardPilotSchemaV3.self)
+        let schema = Schema(versionedSchema: CardPilotSchemaV4.self)
         let configuration = ModelConfiguration(
             "CardPilotPrereleaseV3",
             schema: schema,
