@@ -912,6 +912,57 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号促销进度")
     }
 
+    func testPromotionAccessibilitySummaryIncludesRewardAndArchiveAfterRelaunch() {
+        launch("promotionOverview")
+        tap(app.tabBars.buttons["促销"])
+        let listNavigation = app.navigationBars["促销"]
+        XCTAssertTrue(listNavigation.waitForExistence(timeout: 10))
+        let emptyReward = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Amount Cap")).firstMatch
+        XCTAssertTrue(emptyReward.waitForExistence(timeout: 10))
+        XCTAssertFalse(emptyReward.label.contains("奖励："))
+        let spend = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Spend")).firstMatch
+        reveal(spend, fullyVisible: true, navigationBar: listNavigation)
+        XCTAssertTrue(spend.label.contains("奖励：达标奖励以银行规则为准"))
+        XCTAssertFalse(spend.label.contains("已归档"))
+        XCTAssertTrue(spend.label.contains("目标 1,000 CNY"))
+        captureScreenshot("促销奖励辅助摘要")
+        spend.tap()
+        openPromotionEditor("报名与规则")
+        let editorNavigation = app.navigationBars["编辑促销"]
+        let form = app.collectionViews["promotion.editor.form"]
+        let archived = app.switches["归档"]
+        reveal(archived, fullyVisible: true, navigationBar: editorNavigation, contentContainer: form)
+        XCTAssertEqual(archived.value as? String, "0")
+        archived.switches.firstMatch.tap()
+        XCTAssertEqual(archived.value as? String, "1")
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(editorNavigation.waitForNonExistence(timeout: 10))
+        if app.navigationBars["UI Spend"].exists {
+            tap(app.navigationBars["UI Spend"].buttons["促销"])
+        }
+        XCTAssertTrue(listNavigation.waitForExistence(timeout: 10))
+
+        for afterRelaunch in [false, true] {
+            if afterRelaunch {
+                app.terminate()
+                app.launch()
+            }
+            tap(app.tabBars.buttons["促销"])
+            tap(app.buttons["显示归档"])
+            let history = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "个历史活动")).firstMatch
+            tap(history)
+            reveal(spend, fullyVisible: true, navigationBar: listNavigation)
+            XCTAssertTrue(spend.label.contains("奖励：达标奖励以银行规则为准"))
+            XCTAssertTrue(spend.label.contains("已归档"))
+            XCTAssertTrue(spend.label.contains("目标 1,000 CNY"))
+            captureScreenshot(afterRelaunch ? "归档促销辅助摘要重启读回" : "归档促销辅助摘要")
+            // A real native activation also records the combined label in
+            // XCTest's event log, then proves that the archived row still opens.
+            spend.tap()
+            XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+        }
+    }
+
     func testPromotionLargeTextOptionsRemainReadableAndPersist() {
         launch("core")
         relaunchAtLargestTextSize()
