@@ -363,38 +363,46 @@ struct PromotionsView: View {
 }
 
 private struct PromotionRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let group: PromotionSeriesGroup
     private var promotion: Promotion { group.representative }
     private var progress: PromotionProgress? { try? PromotionCalculator.progress(for: promotion) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack {
+            let headerLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 7))
+                : AnyLayout(HStackLayout())
+            headerLayout {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(promotion.title)
                         .font(.headline)
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     if group.isSeries {
                         Text("系列 · \(periodText)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 statusBadge
+                    .fixedSize(horizontal: true, vertical: false)
             }
             if !promotion.rewardDescription.isEmpty {
                 Text(promotion.rewardDescription)
                     .font(.subheadline)
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
             }
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "building.2")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(organizerText)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
             }
                 .font(.caption)
                 .foregroundStyle(.secondary)
