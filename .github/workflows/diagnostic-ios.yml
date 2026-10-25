@@ -21,8 +21,6 @@ jobs:
         include:
           - name: iphone16pro
             device: iPhone 16 Pro
-          - name: iphonese3
-            device: iPhone SE (3rd generation)
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       PROMOTION_DATES_DEVICE_NAME: ${{ matrix.device }}
