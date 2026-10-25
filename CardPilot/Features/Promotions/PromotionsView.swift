@@ -480,7 +480,10 @@ private struct PromotionRow: View {
     }
 
     private var accessibilityText: String {
-        var values = [promotion.title, statusText, organizerText, periodText, CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn), enrollmentText]
+        var values = [promotion.title, statusText]
+        if promotion.archivedAt != nil { values.append("已归档") }
+        if !promotion.rewardDescription.isEmpty { values.append("奖励：\(promotion.rewardDescription)") }
+        values += [organizerText, periodText, CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn), enrollmentText]
         if let progress {
             if let cap = progress.benefitTransactionCap {
                 let remaining = progress.remainingTransactionCount ?? cap
