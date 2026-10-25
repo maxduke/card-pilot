@@ -1169,12 +1169,16 @@ private struct CardOnboardingView: View {
 
 private struct AccountRow: View {
     @Environment(\.currentDay) private var currentDay
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let account: CreditCardAccount
     let onEdit: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        HStack {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout())
+        layout {
             Image(systemName: account.status == .active ? "rectangle.stack" : "rectangle.stack.badge.minus")
                 .foregroundStyle(account.status == .active ? .blue : .secondary)
             VStack(alignment: .leading, spacing: 3) {
@@ -1184,7 +1188,8 @@ private struct AccountRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             if account.status == .closed {
                 Text("已关闭")
                     .font(.caption)
@@ -1201,6 +1206,7 @@ private struct AccountRow: View {
     }
 
     private var accountTitle: String {
+        if account.customName != nil { return CardPilotUI.accountName(account) }
         let lastFours = account.cards.sorted { $0.lastFour < $1.lastFour }.prefix(2).map { "•••• \($0.lastFour)" }
         return lastFours.isEmpty ? "信用卡账户" : "账户 · \(lastFours.joined(separator: " / "))"
     }

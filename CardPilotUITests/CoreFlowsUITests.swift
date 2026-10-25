@@ -3369,6 +3369,7 @@ final class CoreFlowsUITests: XCTestCase {
         selectCardsTab()
         let namedAccount = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
         reveal(namedAccount, fullyVisible: true, navigationBar: cardsNavigation)
+        captureScreenshot("\(prefix)账户列表名称重启读回")
         namedAccount.tap()
         XCTAssertTrue(details.waitForExistence(timeout: 10))
         XCTAssertTrue(summary.waitForExistence(timeout: 10))
