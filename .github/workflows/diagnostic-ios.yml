@@ -1,0 +1,81 @@
+name: iOS Promotion List Dates Diagnostic
+
+on:
+  push:
+    branches: [diagnose/promotion-list-dates]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-promotion-list-dates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  promotion-overview:
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iphone16pro
+            device: iPhone 16 Pro
+          - name: iphonese3
+            device: iPhone SE (3rd generation)
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      PROMOTION_DATES_DEVICE_NAME: ${{ matrix.device }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record native source and runtime
+        run: |
+          set -euo pipefail
+          xcodebuild -version | tee xcode-version.txt
+          sw_vers > macos-version.txt
+          git rev-parse HEAD > source-revision.txt
+          xcrun simctl list devices available -j > simulators.json
+          python3 - <<'PYTHON'
+          import json, os, pathlib
+          devices = json.load(open("simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]
+          device = next(value for value in devices if value["name"] == os.environ["PROMOTION_DATES_DEVICE_NAME"])
+          pathlib.Path("device.json").write_text(json.dumps(device, indent=2) + "\n")
+          with open(os.environ["GITHUB_ENV"], "a") as stream:
+              stream.write(f"PROMOTION_DATES_DEVICE_ID={device['udid']}\n")
+          PYTHON
+      - name: Verify promotion list and existing detail flow
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CardPilot.xcodeproj -scheme CardPilot \
+            -destination "platform=iOS Simulator,id=$PROMOTION_DATES_DEVICE_ID" \
+            -resultBundlePath PromotionDateResults.xcresult \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOverviewPrioritizesProgressAndDistinguishesLimits \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+      - name: Export native evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path PromotionDateResults.xcresult > summary.json
+          xcrun xcresulttool export attachments --path PromotionDateResults.xcresult --output-path test-attachments
+      - name: Upload native evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-promotion-list-dates-${{ matrix.name }}
+          path: |
+            PromotionDateResults.xcresult
+            summary.json
+            test-attachments
+            xcodebuild.log
+            xcode-version.txt
+            macos-version.txt
+            source-revision.txt
+            simulators.json
+            device.json
+          retention-days: 14
+          if-no-files-found: error
