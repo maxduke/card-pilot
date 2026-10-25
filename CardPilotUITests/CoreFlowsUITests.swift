@@ -317,6 +317,15 @@ final class CoreFlowsUITests: XCTestCase {
         verifyAccountEditorNumericKeyboard(largestText: false)
     }
 
+    func testAccountBankPickerPreservesNormalMenuAndSavedSelection() {
+        verifyAccountBankSelection(largestText: false)
+    }
+
+    func testAccountBankPickerAtLargestTextSizeShowsFullNamesAndDiscardsChanges() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyAccountBankSelection(largestText: true)
+    }
+
     func testAccountEditorNumericKeyboardAtLargestTextSize() {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyAccountEditorNumericKeyboard(largestText: true)
@@ -3381,6 +3390,86 @@ final class CoreFlowsUITests: XCTestCase {
         let date = app.staticTexts["\(field)、\(text)"]
         reveal(date, fullyVisible: true)
         XCTAssertTrue(date.exists)
+    }
+
+    private func verifyAccountBankSelection(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : "普通字号"
+        let originalName = "星河商业银行信用卡中心"
+        let chosenName = "远山商业银行国际金融部"
+        launch("accountBankSelection")
+        openBillingFeedbackAccount()
+        let details = app.navigationBars["账户详情"]
+        let editor = app.navigationBars["编辑信用卡账户"]
+        let bankNavigation = app.navigationBars["银行"]
+        let picker = app.buttons["account.editor.bank"]
+        let form = app.collectionViews["account.editor.form"]
+        tap(details.buttons["编辑"])
+        reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
+        XCTAssertEqual(picker.value as? String, originalName)
+        assertTouchTarget(picker)
+        captureScreenshot("\(prefix)银行选择完整当前值")
+        picker.tap()
+
+        if largestText {
+            XCTAssertTrue(bankNavigation.waitForExistence(timeout: 10))
+            let selected = app.buttons[originalName]
+            XCTAssertTrue(selected.waitForExistence(timeout: 10))
+            XCTAssertTrue(selected.isSelected)
+            reveal(selected, fullyVisible: true, navigationBar: bankNavigation)
+            assertTouchTarget(selected)
+            captureScreenshot("最大字号银行列表完整已选项")
+            bankNavigation.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(bankNavigation.waitForNonExistence(timeout: 10))
+            XCTAssertEqual(picker.value as? String, originalName)
+            editor.buttons["取消"].tap()
+            XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["放弃修改"].exists, "Browsing bank choices must not change the account")
+            tap(details.buttons["编辑"])
+            reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            picker.tap()
+            XCTAssertTrue(bankNavigation.waitForExistence(timeout: 10))
+        }
+
+        let chosen = app.buttons[chosenName]
+        if largestText {
+            reveal(chosen, fullyVisible: true, navigationBar: bankNavigation)
+        } else {
+            XCTAssertTrue(chosen.waitForExistence(timeout: 10))
+            XCTAssertTrue(chosen.isHittable)
+        }
+        XCTAssertFalse(app.buttons["已归档的银行"].exists)
+        assertTouchTarget(chosen)
+        captureScreenshot("\(prefix)银行选择完整选项")
+        chosen.tap()
+        if largestText { XCTAssertTrue(bankNavigation.waitForNonExistence(timeout: 10)) }
+        XCTAssertEqual(picker.value as? String, chosenName)
+        captureScreenshot("\(prefix)银行选择修改读回")
+
+        if largestText {
+            editor.buttons["取消"].tap()
+            let discard = app.buttons["放弃修改"]
+            XCTAssertTrue(discard.waitForExistence(timeout: 10))
+            discard.tap()
+        } else {
+            editor.buttons["保存"].tap()
+        }
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        let expectedName = largestText ? originalName : chosenName
+        let summary = app.descendants(matching: .any).matching(identifier: "account.detail.summary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(expectedName))
+        XCTAssertTrue(summary.label.contains("尾号 1234"))
+        XCTAssertTrue(summary.label.contains("尾号 5678"))
+        tap(details.buttons["编辑"])
+        reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
+        XCTAssertEqual(picker.value as? String, expectedName)
+        captureScreenshot("\(prefix)银行选择\(largestText ? "放弃" : "保存")重启读回")
+        editor.buttons["取消"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
     }
 
     private func verifyCustomAccountName(largestText: Bool) {
