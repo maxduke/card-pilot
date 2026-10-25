@@ -1,19 +1,37 @@
 import XCTest
+import SwiftData
 @testable import CardPilot
 
 final class AccountSummaryTests: XCTestCase {
-    func testCustomNamesDistinguishSameBankAccountsAndSurviveCardChanges() {
+    @MainActor
+    func testCustomNamesDistinguishSameBankAccountsAndSurviveCardChanges() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        context.autosaveEnabled = false
         let bank = Bank(name: "同一家银行")
         let account = CreditCardAccount(bank: bank, customName: "日常共享主账户")
         let other = CreditCardAccount(bank: bank, customName: "旅行账户")
-        let card = Card(account: account, productName: "日常卡", networks: [], lastFour: "1234")
-        account.cards = [card, Card(account: account, productName: "共享卡", networks: [], lastFour: "5678")]
+        let network = CardNetwork.makeBuiltIns()[0]
+        let card = Card(account: account, productName: "日常卡", networks: [network], lastFour: "1234")
+        let shared = Card(account: account, productName: "共享卡", networks: [network], lastFour: "5678")
+        context.insert(bank)
+        context.insert(account)
+        context.insert(other)
+        context.insert(network)
+        context.insert(card)
+        context.insert(shared)
+        for owner in [account, other] {
+            context.insert(BillingRuleVersion(account: owner, statementDay: 1, repaymentKind: .fixedDay, repaymentValue: 20))
+        }
+        try context.save()
         XCTAssertEqual(CardPilotUI.accountName(account), "日常共享主账户")
         XCTAssertNotEqual(CardPilotUI.accountName(account), CardPilotUI.accountName(other))
         card.nickname = "换发后的卡片"
         card.lastFour = "9012"
         XCTAssertEqual(CardPilotUI.accountName(account), "日常共享主账户")
-        account.cards = []
+        for attachedCard in account.cards { context.delete(attachedCard) }
+        try context.save()
+        XCTAssertTrue(account.cards.isEmpty)
         XCTAssertEqual(CardPilotUI.accountName(account), "日常共享主账户")
         account.customName = nil
         XCTAssertEqual(CardPilotUI.accountName(account), "同一家银行 · CNY 信用卡账户")
