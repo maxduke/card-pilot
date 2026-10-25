@@ -58,7 +58,9 @@ O19 指出了全量交易查询、交易分组、重复账期计算、逐次草�
 
 既有 `.github/workflows/ios.yml` 和 `CardPilot` scheme 保持原样。普通回归不会发现被专用编译标记隔离的 21 项性能测试；本批增加一项夹具完整性回归。现已接入前两批完整验证后的主线 `aa9f1bc`，保留全部 85 项 UI 及促销日期／卡片键盘修复，正式原生回归为 223＋85＝308 项。最终性能采样须在同一源码完整执行 21 项；预检与最终基线分别记录源码，不能把旧二进制数据写成新 HEAD 结果。
 
-性能实现已完成本地 Swift 语法、scheme／YAML 结构及 shell 校验，四项 Python 汇总器检查通过；新增夹具完整备份回归已在原生预检通过。Linux 检查不替代 SwiftData、XCTest UI 和系统测量的原生结果。正式 308 项回归与合并主线验证仍须在 GitHub workflow 完成。
+性能实现已完成本地 Swift 语法、scheme／YAML 结构及 shell 校验，四项 Python 汇总器检查通过；新增夹具完整备份回归已在原生预检通过。Linux 检查不替代 SwiftData、XCTest UI 和系统测量的原生结果。
+
+[PR #58](https://github.com/maxduke/card-pilot/pull/58) 的最终 HEAD `b04fcfa` 在[正式 CI](https://github.com/maxduke/card-pilot/actions/runs/40065050408) 完整通过 223＋85＝308 项，八张相关正式原图已逐张验收；合并提交 `4de8323` 的[主线 CI](https://github.com/maxduke/card-pilot/actions/runs/40080130119) 同样通过 308 项。两次均零失败、跳过、重试、超时或测试进程重启，无待处理的适用审查或可操作发现；原干净 main 已快进同步。本批交付完成，性能数值的实际测量源码仍以下文为准。
 
 ## 完整基线：2026-10-24
 
