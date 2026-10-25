@@ -125,7 +125,7 @@ struct CardsView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .searchable(text: $query, prompt: "搜索银行、卡片或末四位")
+            .searchable(text: $query, prompt: "搜索银行、账户、卡片或末四位")
             .navigationTitle("卡片")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -241,7 +241,8 @@ struct CardsView: View {
         guard !normalizedQuery.isEmpty,
               !bank.name.localizedCaseInsensitiveContains(normalizedQuery) else { return bankAccounts }
         return bankAccounts.filter { account in
-            account.notes.localizedCaseInsensitiveContains(normalizedQuery)
+            account.customName?.localizedCaseInsensitiveContains(normalizedQuery) == true
+                || account.notes.localizedCaseInsensitiveContains(normalizedQuery)
                 || account.cards.contains { card in
                     (showingInactiveCards || card.status == .active) && cardMatchesQuery(card)
                 }
@@ -253,6 +254,7 @@ struct CardsView: View {
             (showingInactiveCards || card.status == .active)
                 && (normalizedQuery.isEmpty
                     || account.bank.name.localizedCaseInsensitiveContains(normalizedQuery)
+                    || account.customName?.localizedCaseInsensitiveContains(normalizedQuery) == true
                     || account.notes.localizedCaseInsensitiveContains(normalizedQuery)
                     || cardMatchesQuery(card))
         }.sorted { ($0.nickname.isEmpty ? $0.productName : $0.nickname) < ($1.nickname.isEmpty ? $1.productName : $1.nickname) }
@@ -429,6 +431,7 @@ private struct CardOnboardingView: View {
     private enum Field: String, Hashable {
         case bankSearch = "onboarding.bankSearch"
         case bankName = "onboarding.bankName"
+        case accountName = "onboarding.accountName"
         case creditLimit = "onboarding.creditLimit"
         case currency = "onboarding.currency"
         case productName = "onboarding.productName"
@@ -485,6 +488,7 @@ private struct CardOnboardingView: View {
     @State private var customBankName = ""
     @State private var accountMode: AccountMode = .new
     @State private var existingAccountID: UUID?
+    @State private var accountName = ""
     @State private var limitText = ""
     @State private var currencyCode = "CNY"
     @State private var statementDay = 1
@@ -533,7 +537,7 @@ private struct CardOnboardingView: View {
     }
 
     private var editSnapshot: String {
-        editorSnapshot(selectedPresetCode as Any, customBank, customBankName, accountMode, existingAccountID as Any, limitText, currencyCode, statementDay, repaymentKind, repaymentValue, networkSelection, customNetworkName, productName, nickname, lastFour, currentCycleAlreadyRepaid)
+        editorSnapshot(selectedPresetCode as Any, customBank, customBankName, accountMode, existingAccountID as Any, accountName, limitText, currencyCode, statementDay, repaymentKind, repaymentValue, networkSelection, customNetworkName, productName, nickname, lastFour, currentCycleAlreadyRepaid)
     }
 
     var body: some View {
@@ -827,6 +831,11 @@ private struct CardOnboardingView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("新账户信息")
                     .font(.headline)
+                TextField("账户名称（可选）", text: $accountName)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($focusedField, equals: .accountName)
+                    .accessibilityHint("留空时使用银行与卡片信息")
+                    .accessibilityIdentifier("onboarding.accountName")
                 TextField("信用额度（可选）", text: $limitText)
                     .textFieldStyle(.roundedBorder)
                     .keyboardType(.decimalPad)
@@ -944,7 +953,7 @@ private struct CardOnboardingView: View {
             guard networkSelection == .other else { return nil }
             return customNetworkName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "请填写卡组织名称。" : nil
-        case .bankSearch, .bankName, .nickname:
+        case .bankSearch, .bankName, .accountName, .nickname:
             return nil
         }
     }
@@ -1059,8 +1068,10 @@ private struct CardOnboardingView: View {
                 errorMessage = "请选择有效的额度币种。"
                 return
             }
+            let normalizedName = accountName.trimmingCharacters(in: .whitespacesAndNewlines)
             account = CreditCardAccount(
                 bank: bank,
+                customName: normalizedName.isEmpty ? nil : normalizedName,
                 trackingStartCycleKey: initialCycle.cycleKey,
                 creditLimit: limitText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : CardPilotUI.decimal(limitText),
                 limitCurrencyCode: normalizedCurrency
@@ -1367,6 +1378,7 @@ private struct BankEditorView: View {
 struct AccountEditorView: View {
     private enum Field: String, CaseIterable, Hashable {
         case bank = "account.bank"
+        case name = "account.name"
         case limit = "account.limit"
         case currency = "account.currency"
         case closedDate = "account.closedDate"
@@ -1396,6 +1408,7 @@ struct AccountEditorView: View {
 
     @FocusState private var focusedField: Field?
     @State private var bankID: UUID
+    @State private var accountName: String
     @State private var limitText: String
     @State private var currencyCode: String
     @State private var status: CreditCardAccountStatus
@@ -1431,6 +1444,7 @@ struct AccountEditorView: View {
         }
         let availableBanks = selectableAccountBanks(banks, currentBankID: account?.bank.id)
         _bankID = State(initialValue: account?.bank.id ?? availableBanks.first?.id ?? UUID())
+        _accountName = State(initialValue: account?.customName ?? "")
         _limitText = State(initialValue: account.flatMap { $0.creditLimit.map { CardPilotUI.editableAmountText($0) } } ?? "")
         let defaultCurrency = availableBanks.first?.presetCode
             .flatMap { code in BankPreset.catalog.first { $0.code == code }?.defaultCurrencyCode }
@@ -1468,7 +1482,7 @@ struct AccountEditorView: View {
     }
 
     private var editSnapshot: String {
-        editorSnapshot(bankID, limitText, currencyCode, status, closedDate, statementDay, repaymentKind, repaymentValue, effectiveCycleKeyText, overrideCycleKeyText, hasStatementOverride, statementOverrideDate, hasRepaymentOverride, repaymentOverrideDate, notes, pendingUnpaidCycleKeys.sorted())
+        editorSnapshot(bankID, accountName, limitText, currencyCode, status, closedDate, statementDay, repaymentKind, repaymentValue, effectiveCycleKeyText, overrideCycleKeyText, hasStatementOverride, statementOverrideDate, hasRepaymentOverride, repaymentOverrideDate, notes, pendingUnpaidCycleKeys.sorted())
     }
 
     var body: some View {
@@ -1484,6 +1498,11 @@ struct AccountEditorView: View {
                         }
                         .id(Field.bank)
                         fieldError(.bank)
+                        TextField("账户名称（可选）", text: $accountName)
+                            .focused($focusedField, equals: .name)
+                            .id(Field.name)
+                            .accessibilityHint("留空时使用银行与卡片信息")
+                            .accessibilityIdentifier("account.editor.name")
                         TextField("信用额度（可选）", text: $limitText)
                             .keyboardType(.decimalPad)
                             .focused($focusedField, equals: .limit)
@@ -1622,7 +1641,7 @@ struct AccountEditorView: View {
         case .currency:
             let normalized = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             return isValidCurrencyCode(normalized) ? nil : "额度币种应为有效的 ISO 4217 代码。"
-        case .closedDate, .notes, .effectiveCycle, .overrideCycle, .statementOverride, .repaymentOverride:
+        case .name, .closedDate, .notes, .effectiveCycle, .overrideCycle, .statementOverride, .repaymentOverride:
             return nil
         }
     }
@@ -1788,6 +1807,7 @@ struct AccountEditorView: View {
         let previousOwnerBank = account?.bank
         let target = account ?? CreditCardAccount(bank: bank, trackingStartCycleKey: trackingStart)
         let previousValues = (target.creditLimit, target.limitCurrencyCode, target.statusRaw, target.closedOn, target.notes)
+        let previousName = target.customName
         let previousRules = target.billingRuleVersions
         let ruleValues = previousRules.map { ($0, $0.billingRuleInput) }
         let previousCycles = target.billingCycles
@@ -1795,6 +1815,8 @@ struct AccountEditorView: View {
         var insertedRules: [BillingRuleVersion] = []
         var insertedCycles: [BillingCycleRecord] = []
         do {
+            let normalizedName = accountName.trimmingCharacters(in: .whitespacesAndNewlines)
+            target.customName = normalizedName.isEmpty ? nil : normalizedName
             target.bank = bank
             target.creditLimit = limit
             target.limitCurrencyCode = normalizedCurrency
@@ -1861,6 +1883,7 @@ struct AccountEditorView: View {
             target.statusRaw = previousValues.2
             target.closedOn = previousValues.3
             target.notes = previousValues.4
+            target.customName = previousName
             if let previousOwnerBank { target.bank = previousOwnerBank }
             modelContext.rollback()
             errorMessage = "账户未保存：\(error.localizedDescription)"

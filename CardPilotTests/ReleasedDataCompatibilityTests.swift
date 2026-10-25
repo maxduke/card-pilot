@@ -29,9 +29,12 @@ final class ReleasedDataCompatibilityTests: XCTestCase {
 
             let bank = try XCTUnwrap(context.fetch(FetchDescriptor<Bank>()).first)
             bank.name = "当前版本保存后的历史银行"
+            account.customName = "原位升级后的共享主账户"
             try context.save()
             let index = try XCTUnwrap(expected.banks.firstIndex { $0.id == bank.id })
             expected.banks[index].name = bank.name
+            let accountIndex = try XCTUnwrap(expected.accounts.firstIndex { $0.id == account.id })
+            expected.accounts[accountIndex].customName = account.customName
         }
         let reopened = try CardPilotPersistence.makeContainer(at: fixture.storeURL)
         XCTAssertEqual(reopened.configurations.first?.url, fixture.storeURL)
@@ -121,6 +124,29 @@ final class ReleasedDataCompatibilityTests: XCTestCase {
         XCTAssertEqual(after.records, fixture.archive.records)
         XCTAssertEqual(try TransactionDraftStore(databaseURL: fixture.storeURL).load(),
                        try JSONDecoder().decode(TransactionDraft.self, from: fixture.draftData))
+    }
+
+    func testUnreadableReleasedStoreIsRetainedDuringBackupRecovery() async throws {
+        let fixture = try copiedFixture()
+        var unreadable = try Data(contentsOf: fixture.storeURL)
+        unreadable.replaceSubrange(0..<16, with: Array(repeating: UInt8(0xff), count: 16))
+        try unreadable.write(to: fixture.storeURL, options: .atomic)
+        let recovery = fixture.storeURL.deletingLastPathComponent().appendingPathComponent("Recovery")
+        let store = BackupStore(directory: recovery, openLegacy: {
+            try CardPilotPersistence.makeContainer(at: fixture.storeURL)
+        })
+        XCTAssertTrue(store.startupFailed)
+        XCTAssertNil(store.container)
+        XCTAssertEqual(try Data(contentsOf: fixture.storeURL), unreadable)
+        XCTAssertEqual(try Data(contentsOf: fixture.draftURL), fixture.draftData)
+
+        try await store.restore(fixture.archive)
+        XCTAssertFalse(store.startupFailed)
+        XCTAssertNotEqual(store.container?.configurations.first?.url, fixture.storeURL)
+        XCTAssertEqual(try Data(contentsOf: fixture.storeURL), unreadable)
+        XCTAssertEqual(try Data(contentsOf: fixture.draftURL), fixture.draftData)
+        let restored = try await store.export()
+        XCTAssertEqual(restored.records, fixture.archive.records)
     }
 
     private struct Fixture {

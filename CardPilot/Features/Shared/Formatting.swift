@@ -426,6 +426,9 @@ enum CardPilotUI {
     static let maximumReminderOffset = 365
 
     static func accountName(_ account: CreditCardAccount) -> String {
+        if let name = account.customName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
         let cards = account.cards.sorted {
             $0.lastFour == $1.lastFour ? $0.id.uuidString < $1.id.uuidString : $0.lastFour < $1.lastFour
         }
