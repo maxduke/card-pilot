@@ -847,7 +847,13 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testPromotionOverviewPrioritizesProgressAndDistinguishesLimits() throws {
+        // Run 40156564277 completed all five details and the largest-text
+        // flow, then reached 180.892s in teardown. Keep the existing 240s max.
+        executionTimeAllowance = 240
         launch("promotionOverview")
+        tap(app.tabBars.buttons["促销"])
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        captureScreenshot("促销列表完整有效期")
         let examples = [
             ("UI Spend", "还需 1,000 CNY"),
             ("UI Reached", "已达标"),
@@ -885,6 +891,11 @@ final class CoreFlowsUITests: XCTestCase {
         }
 
         relaunchAtLargestTextSize()
+        tap(app.tabBars.buttons["促销"])
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        captureScreenshot("最大字号促销列表完整有效期")
+        app.collectionViews.firstMatch.swipeUp()
+        captureScreenshot("最大字号促销列表滚动后有效期")
         openPromotion("UI Spend")
         let remaining = app.staticTexts["promotion.remaining.UI Spend"]
         XCTAssertTrue(remaining.waitForExistence(timeout: 10))
@@ -4191,11 +4202,30 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openPromotion(_ name: String) {
         tap(app.tabBars.buttons["促销"])
+        let navigationBar = app.navigationBars["促销"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
         let promotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
-        // A partly visible large-text row can report a hit point at the tab
-        // bar boundary. Reveal the whole row before asking XCTest to tap it.
-        reveal(promotion, fullyVisible: true)
-        promotion.tap()
+        reveal(promotion, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+        let appFrame = app.frame
+        let viewport = CGRect(x: appFrame.minX, y: navigationBar.frame.maxY,
+                              width: appFrame.width, height: contentBottom - navigationBar.frame.maxY)
+        if promotion.frame.height > viewport.height {
+            // A wrapping accessibility row can exceed one screen. Tap a real
+            // 44pt visible area, keeping the touch clear of both fixed bars.
+            let visibleFrame = promotion.frame.intersection(viewport)
+            XCTAssertGreaterThanOrEqual(visibleFrame.width, 44)
+            XCTAssertGreaterThanOrEqual(visibleFrame.height, 44)
+            let point = CGVector(dx: visibleFrame.midX - appFrame.minX, dy: visibleFrame.midY - appFrame.minY)
+            let geometry = XCTAttachment(string: "row=\(promotion.frame); viewport=\(viewport); visible=\(visibleFrame); tap=\(point)")
+            geometry.name = "促销超高行可见入口-\(name)"
+            geometry.lifetime = .keepAlways
+            add(geometry)
+            captureScreenshot("促销超高行可见入口-\(name)")
+            app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+            XCTAssertTrue(app.navigationBars[name].waitForExistence(timeout: 10))
+        } else {
+            promotion.tap()
+        }
     }
 
     private func openPromotionEditor(_ section: String) {
@@ -4306,7 +4336,8 @@ final class CoreFlowsUITests: XCTestCase {
         fullyVisible: Bool = false,
         navigationBar: XCUIElement? = nil,
         contentHeader: XCUIElement? = nil,
-        contentContainer: XCUIElement? = nil
+        contentContainer: XCUIElement? = nil,
+        allowOversizedButton: Bool = false
     ) {
         // A footer button's AX frame can start below the actual Form viewport.
         var visibleBottom: CGFloat {
@@ -4340,6 +4371,11 @@ final class CoreFlowsUITests: XCTestCase {
                     let bottom = visibleBottom
                     viewportBottom = bottom
                     geometryDescription = "minY=\(targetFrame.minY), top=\(contentTop), maxY=\(targetFrame.maxY), bottom=\(bottom)"
+                    if allowOversizedButton, element.elementType == .button, targetFrame.height > bottom - contentTop {
+                        let viewport = CGRect(x: frame.minX, y: contentTop, width: frame.width, height: bottom - contentTop)
+                        let visibleFrame = targetFrame.intersection(viewport)
+                        if visibleFrame.width >= 44 && visibleFrame.height >= 44 { return }
+                    }
                     // A row can meet the bar at a subpixel AX rounding boundary.
                     frameIsVisible = frameIsVisible && targetFrame.minY + geometryTolerance >= contentTop && targetFrame.maxY < bottom
                 }

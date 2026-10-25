@@ -395,13 +395,13 @@ private struct PromotionRow: View {
                     .foregroundStyle(.secondary)
                 Text(organizerText)
                     .lineLimit(1)
-                Text("·")
-                    .foregroundStyle(.tertiary)
-                Text(CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn))
-                    .lineLimit(1)
             }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text(CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 enrollmentBadge
                 if promotion.archivedAt != nil {
