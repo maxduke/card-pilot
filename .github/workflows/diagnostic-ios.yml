@@ -1,0 +1,109 @@
+name: iOS Released v0.1.7 Fixture Diagnostic
+
+on:
+  push:
+    branches: [diagnose/release-v017-fixture]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-release-v017-fixture-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Verify immutable release source and record runtime
+        run: |
+          set -euo pipefail
+          xcodebuild -version | tee xcode-version.txt
+          sw_vers > macos-version.txt
+          git rev-parse HEAD > source-revision.txt
+          xcrun simctl list devices available -j > simulators.json
+          python3 - <<'PYTHON'
+          import json, os, pathlib, subprocess
+          release = "437d303261ec40ed5a7fb7313d2d910da351779f"
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+          assert git("rev-parse", "v0.1.7^{commit}") == release
+          expected = {"CardPilotTests/ReleaseV017FixtureGenerator.swift", ".github/workflows/diagnostic-ios.yml"}
+          assert set(git("diff", "--name-only", release, "HEAD").splitlines()) == expected
+          blobs = {name: git("rev-parse", f"HEAD:{name}") for name in (
+              "CardPilot/Domain/Models.swift", "CardPilot/Services/BackupArchive.swift",
+              "CardPilot/Services/TransactionDraftStore.swift", "CardPilot.xcodeproj/project.pbxproj")}
+          provenance = {"releaseTag": "v0.1.7", "releaseRevision": release,
+              "generatorRevision": git("rev-parse", "HEAD"), "productionBlobs": blobs,
+              "workflowRun": os.environ["GITHUB_RUN_ID"], "workflowAttempt": os.environ["GITHUB_RUN_ATTEMPT"]}
+          pathlib.Path("release-provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+          devices = json.load(open("simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]
+          device = next(d for d in devices if d["name"] == "iPhone 16 Pro")
+          pathlib.Path("device.json").write_text(json.dumps(device, indent=2) + "\n")
+          with open(os.environ["GITHUB_ENV"], "a") as stream:
+              stream.write(f"RELEASE_FIXTURE_DEVICE_ID={device['udid']}\n")
+          PYTHON
+      - name: Generate and verify the native release fixture
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CardPilot.xcodeproj -scheme CardPilot \
+            -destination "platform=iOS Simulator,id=$RELEASE_FIXTURE_DEVICE_ID" \
+            -resultBundlePath ReleasedFixtureResults.xcresult \
+            -only-testing:CardPilotTests/ReleaseV017FixtureGenerator/testGenerateReleaseFixture \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+      - name: Export immutable fixture and native evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path ReleasedFixtureResults.xcresult > summary.json
+          python3 - <<'PYTHON'
+          import hashlib, json, pathlib, shutil
+          summary = json.load(open("summary.json"))
+          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (1, 0, 0), summary
+          device = json.load(open("device.json"))
+          source = pathlib.Path(device["dataPath"])
+          found = list(source.glob("Containers/Data/Application/*/tmp/CardPilotReleaseFixture-v0.1.7/manifest.json"))
+          assert len(found) == 1, found
+          folder = found[0].parent
+          manifest = json.loads(found[0].read_text())
+          assert manifest["releaseRevision"] == "437d303261ec40ed5a7fb7313d2d910da351779f"
+          assert manifest["counts"] == dict(banks=1, networks=6, accounts=2, cards=3, billingRules=4,
+              billingCycles=2, promotions=2, transactions=3, allocations=2), manifest
+          expected = {"CardPilot-v0.1.7.store", "CardPilot-v0.1.7.backup.json",
+              "CardPilot-v0.1.7.store.transaction-draft.json"}
+          assert {f["name"] for f in manifest["files"]} == expected
+          assert {f.name for f in folder.iterdir()} == expected | {"manifest.json"}
+          for entry in manifest["files"]:
+              data = (folder / entry["name"]).read_bytes()
+              assert len(data) == entry["bytes"]
+              assert hashlib.sha256(data).hexdigest() == entry["sha256"]
+          shutil.copytree(folder, "released-fixture")
+          PYTHON
+      - name: Upload released fixture and native results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-release-v017-fixture
+          path: |
+            ReleasedFixtureResults.xcresult
+            released-fixture
+            summary.json
+            xcodebuild.log
+            xcode-version.txt
+            macos-version.txt
+            source-revision.txt
+            release-provenance.json
+            device.json
+          retention-days: 30
+          if-no-files-found: error
