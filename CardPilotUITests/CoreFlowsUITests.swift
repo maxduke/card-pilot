@@ -848,6 +848,9 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionOverviewPrioritizesProgressAndDistinguishesLimits() throws {
         launch("promotionOverview")
+        tap(app.tabBars.buttons["促销"])
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        captureScreenshot("促销列表完整有效期")
         let examples = [
             ("UI Spend", "还需 1,000 CNY"),
             ("UI Reached", "已达标"),
@@ -885,6 +888,9 @@ final class CoreFlowsUITests: XCTestCase {
         }
 
         relaunchAtLargestTextSize()
+        tap(app.tabBars.buttons["促销"])
+        XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
+        captureScreenshot("最大字号促销列表完整有效期")
         openPromotion("UI Spend")
         let remaining = app.staticTexts["promotion.remaining.UI Spend"]
         XCTAssertTrue(remaining.waitForExistence(timeout: 10))
