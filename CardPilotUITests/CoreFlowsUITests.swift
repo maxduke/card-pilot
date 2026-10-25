@@ -894,7 +894,15 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.tabBars.buttons["促销"])
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
         captureScreenshot("最大字号促销列表完整有效期")
-        app.collectionViews.firstMatch.swipeUp()
+        let listFrame = app.frame
+        let listOrigin = app.coordinate(withNormalizedOffset: .zero)
+        let dragStart = listOrigin.withOffset(CGVector(dx: listFrame.width * 0.03,
+                                                       dy: contentBottom - listFrame.minY - 25))
+        let dragEnd = dragStart.withOffset(CGVector(dx: 0, dy: -240))
+        // Read the wrapping metadata with the same precise gutter gesture
+        // used by reveal, keeping inertia from skipping the date range.
+        dragStart.press(forDuration: 0.05, thenDragTo: dragEnd,
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
         captureScreenshot("最大字号促销列表滚动后有效期")
         openPromotion("UI Spend")
         let remaining = app.staticTexts["promotion.remaining.UI Spend"]
