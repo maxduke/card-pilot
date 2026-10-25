@@ -1,4 +1,4 @@
-name: iOS Released Data Compatibility Diagnostic
+name: iOS Account Name Data Compatibility Diagnostic
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
             -project CardPilot.xcodeproj -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$COMPATIBILITY_DEVICE_ID" \
             -resultBundlePath ReleasedCompatibilityResults.xcresult \
-            -only-testing:CardPilotTests/ReleasedDataCompatibilityTests \
+            -only-testing:CardPilotTests \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -55,7 +55,7 @@ jobs:
           python3 - <<'PYTHON'
           import json
           summary = json.load(open("summary.json"))
-          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (4, 0, 0), summary
+          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (231, 0, 0), summary
           PYTHON
       - name: Upload compatibility evidence
         if: always()
