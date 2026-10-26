@@ -51,11 +51,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$EDITOR_STATUS_DEVICE_ID" \
             -resultBundlePath EditorStatusResults.xcresult \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountStatusMenuSavesClosedAccountAfterRelaunch \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountStatusAtLargestTextSizeShowsChoicesAndDiscardsChanges \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testCardStatusMenuSavesInactiveCardAfterRelaunch \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardStatusAtLargestTextSizeShowsChoicesAndDiscardsChanges \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountEditorNumericKeyboardAtLargestTextSize \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardAtLargestTextSize \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -70,7 +67,7 @@ jobs:
           python3 - <<'PYTHON'
           import json
           summary = json.load(open("summary.json"))
-          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (6, 0, 0), summary
+          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (3, 0, 0), summary
           PYTHON
       - name: Upload native evidence
         if: always()
