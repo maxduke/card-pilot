@@ -213,8 +213,10 @@ struct AccountDetailView: View {
                     HStack(alignment: .top, spacing: 12) {
                         BankBadge(bank: account.bank)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(account.bank.name)
+                            Text(account.customName == nil ? account.bank.name : CardPilotUI.accountName(account))
                                 .font(.title2.bold())
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityLabel(CardPilotUI.accountName(account))
                             Text(accountRelationshipText)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -234,6 +236,7 @@ struct AccountDetailView: View {
                 }
                 .padding(.vertical, 8)
                 .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("account.detail.summary")
             }
 
             Section("未还账期") {

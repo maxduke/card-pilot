@@ -293,6 +293,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testCardEditorFieldFeedbackAndCorrectedSave() {
+        // The complete three-field correction/save/relaunch flow exceeded
+        // 180s on SE in run 40254895315. Use the existing 240s maximum.
+        executionTimeAllowance = 240
         verifyCardEditorFieldFeedback(largestText: false)
     }
 
@@ -302,6 +305,15 @@ final class CoreFlowsUITests: XCTestCase {
         executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyCardEditorFieldFeedback(largestText: true)
+    }
+
+    func testCustomAccountNamePersistsSearchesSharedCardsAndClears() {
+        verifyCustomAccountName(largestText: false)
+    }
+
+    func testCustomAccountNameAtLargestTextSizePersistsAndSearchesSharedCards() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyCustomAccountName(largestText: true)
     }
 
     func testAccountEditorNumericKeyboardPreservesSavedLimit() {
@@ -352,10 +364,14 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testCreateCardAndReopenDetails() {
+        // The full creation/readback/history flow ended at 180.427s in native run
+        // 40221235030 after completing its assertions. Use the existing maximum.
+        executionTimeAllowance = 240
         launch("empty")
         tap(app.tabBars.buttons["记一笔"])
         tap(app.buttons["bank.cn.icbc"])
         XCTAssertTrue(app.staticTexts["设置账务规则"].waitForExistence(timeout: 10))
+        enter("UI Created Account", into: app.textFields["onboarding.accountName"])
         tap(app.buttons["onboarding.advance"])
         enter("UI Created", into: app.textFields["卡产品名称"])
         enter("2468", into: app.textFields["末四位"])
@@ -372,7 +388,14 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         openCard("UI Created")
-        tap(app.buttons["card.transactions"])
+        tap(app.buttons["card.account"])
+        let summary = app.descendants(matching: .any).matching(identifier: "account.detail.summary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains("UI Created Account"))
+        captureScreenshot("新卡账户名称重启读回")
+        tap(app.navigationBars["账户详情"].buttons.element(boundBy: 0))
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        tap(app.buttons["card.transactions"], scrollTowardTopWhenMissing: true)
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
     }
 
@@ -3363,6 +3386,84 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(date.exists)
     }
 
+    private func verifyCustomAccountName(largestText: Bool) {
+        let prefix = largestText ? "最大字号" : ""
+        let name = largestText ? "Daily and Travel Shared CNY Main Account" : "Daily Shared CNY"
+        launch("core")
+        openBillingFeedbackAccount()
+        let details = app.navigationBars["账户详情"]
+        let editor = app.navigationBars["编辑信用卡账户"]
+        let nameField = app.textFields["account.editor.name"]
+        let summary = app.descendants(matching: .any).matching(identifier: "account.detail.summary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains("尾号 1234"))
+        if largestText { captureScreenshot("最大字号账户默认概要") }
+        tap(details.buttons["编辑"])
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        replaceText(" " + name + " ", in: nameField)
+        captureScreenshot("\(prefix)账户名称编辑")
+        editor.buttons["保存"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(name))
+        tap(details.buttons.element(boundBy: 0))
+
+        let cardsNavigation = app.navigationBars["卡片"]
+        XCTAssertTrue(cardsNavigation.waitForExistence(timeout: 10))
+        let search = app.searchFields.firstMatch
+        tap(search, scrollTowardTopWhenMissing: true)
+        search.typeText(name + "\n")
+        let primary = app.buttons["card.UI Primary"]
+        let shared = app.buttons["card.UI Shared"]
+        reveal(primary, fullyVisible: true, navigationBar: cardsNavigation)
+        XCTAssertTrue(primary.exists)
+        reveal(shared, fullyVisible: true, navigationBar: cardsNavigation)
+        XCTAssertTrue(shared.exists)
+        XCTAssertFalse(app.buttons["card.UI Foreign"].exists)
+        captureScreenshot("\(prefix)账户名称搜索共享卡片")
+
+        app.terminate()
+        app.launch()
+        selectCardsTab()
+        let namedAccount = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        reveal(namedAccount, fullyVisible: true, navigationBar: cardsNavigation)
+        captureScreenshot("\(prefix)账户列表名称重启读回")
+        namedAccount.tap()
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(name))
+        captureScreenshot("\(prefix)账户名称重启读回")
+        tap(details.buttons["编辑"])
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(nameField.value as? String, name, "Saved names trim surrounding whitespace")
+        if largestText {
+            editor.buttons["取消"].tap()
+            XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["放弃修改"].exists)
+            return
+        }
+
+        replaceText("Discarded account name", in: nameField)
+        editor.buttons["取消"].tap()
+        tap(app.buttons["放弃修改"])
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(summary.label.contains(name))
+        tap(details.buttons["编辑"])
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(nameField.value as? String, name)
+        replaceText("", in: nameField)
+        editor.buttons["保存"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openBillingFeedbackAccount()
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertFalse(summary.label.contains(name))
+        XCTAssertTrue(summary.label.contains("尾号 1234"))
+        XCTAssertTrue(summary.label.contains("尾号 5678"))
+        captureScreenshot("账户名称清空重启读回")
+    }
+
     private func verifyAccountEditorFieldFeedback(largestText: Bool) {
         let prefix = largestText ? "最大字号" : ""
         launch("core")
@@ -3453,30 +3554,8 @@ final class CoreFlowsUITests: XCTestCase {
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
-        // Keyboard disappearance can precede the end of the Form's motion.
-        // Establish a stable field before focusing the next keyboard type.
-        reveal(lastFour, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-        var previousFrame = lastFour.frame
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            // Read only this field while polling. Repeated full-viewport AX
-            // queries can consume the five-second wait before it returns.
-            let frame = lastFour.frame
-            defer { previousFrame = frame }
-            return !frame.isEmpty
-                && abs(frame.minX - previousFrame.minX) <= 0.001
-                && abs(frame.minY - previousFrame.minY) <= 0.001
-                && abs(frame.width - previousFrame.width) <= 0.001
-                && abs(frame.height - previousFrame.height) <= 0.001
-        }, object: lastFour)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
-        let fieldFrame = lastFour.frame
-        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
-        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
-        XCTAssertFalse(keyboard.exists)
-        XCTAssertTrue(lastFour.isHittable)
-        lastFour.tap()
-        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
-        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        focusLastFour(lastFour, navigationBar: navigationBar, form: form, dismissal: dismissal,
+                          screenshot: "\(prefix)卡片末四位焦点准备")
         let previousLastFour = lastFour.value as? String ?? ""
         lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "123")
         XCTAssertEqual(lastFour.value as? String, "123")
@@ -3518,7 +3597,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         tap(app.tabBars.buttons["卡片"])
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         let expectedName = largestText ? "UI Primary" : "UI Fixed"
         search.typeText(expectedName + "\n")
@@ -3674,7 +3753,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         selectCardsTab()
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         enter(discard ? originalName : correctedName, into: search)
         search.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -3843,7 +3922,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         tap(app.tabBars.buttons["卡片"])
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText("0123\n")
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -3891,7 +3970,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         selectCardsTab()
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText(name + "\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -3902,7 +3981,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func verifyOnboardingDiscardedCard(_ name: String, screenshot: String) {
         let saved = restartAndSearchOnboardingCard(name)
         XCTAssertFalse(saved.exists)
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         replaceText("UI Primary", in: search)
         search.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -4018,7 +4097,11 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(lastFourError.label, "错误：末四位必须是 4 位数字。")
         captureScreenshot("\(prefix)添加卡片末四位首错定位")
 
-        replaceText("0123", in: lastFour)
+        focusLastFour(lastFour, navigationBar: navigation, form: form, dismissal: dismissal,
+                          screenshot: "\(prefix)添加卡片末四位焦点准备")
+        let previousLastFour = lastFour.value as? String ?? ""
+        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "0123")
+        XCTAssertEqual(lastFour.value as? String, "0123")
         XCTAssertTrue(lastFourError.waitForNonExistence(timeout: 5))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
         dismissal.tap()
@@ -4113,7 +4196,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.tabBars.buttons["卡片"])
         // Bank UUID ordering can put the saved card below several large rows.
         // Use the existing card search before checking the complete saved row.
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText(cardName + "\n")
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -4348,6 +4431,50 @@ final class CoreFlowsUITests: XCTestCase {
     private func selectPromotionEditorSection(_ section: String) {
         tap(app.buttons["promotion.editor.section"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[section])
+    }
+
+    private func focusLastFour(
+        _ field: XCUIElement,
+        navigationBar: XCUIElement,
+        form: XCUIElement,
+        dismissal: XCUIElement,
+        screenshot: String
+    ) {
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        reveal(field, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        var previousFrame = field.frame
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            // Keep polling local to this field, as in the original editor check.
+            let frame = field.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty
+                && abs(frame.minX - previousFrame.minX) <= 0.001
+                && abs(frame.minY - previousFrame.minY) <= 0.001
+                && abs(frame.width - previousFrame.width) <= 0.001
+                && abs(frame.height - previousFrame.height) <= 0.001
+        }, object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        captureScreenshot(screenshot)
+        let fieldFrame = field.frame
+        let appFrame = app.frame
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
+        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertTrue(appFrame.contains(fieldFrame))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(field.isHittable)
+        // Use one real point near the end of these short numeric values, so
+        // the caret is after the old value before deleting it.
+        let point = CGPoint(x: fieldFrame.minX + fieldFrame.width * 0.9, y: fieldFrame.midY)
+        let geometry = XCTAttachment(string: "field=\(fieldFrame); app=\(appFrame); tap=\(point); foreground=true")
+        geometry.name = screenshot + "-位置"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: point.x - appFrame.minX, dy: point.y - appFrame.minY)
+        ).tap()
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     }
 
     private func replaceText(_ text: String, in element: XCUIElement) {
