@@ -1412,6 +1412,7 @@ struct AccountEditorView: View {
     }
 
     @Environment(\.currentDay) private var currentDay
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let account: CreditCardAccount?
@@ -1519,9 +1520,10 @@ struct AccountEditorView: View {
                         CurrencyPickerView(selection: $currencyCode)
                             .id(Field.currency)
                         fieldError(.currency)
-                        Picker("状态", selection: $status) {
-                            Text("使用中").tag(CreditCardAccountStatus.active)
-                            Text("已关闭").tag(CreditCardAccountStatus.closed)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            statusPicker.pickerStyle(.inline)
+                        } else {
+                            statusPicker
                         }
                         if status == .closed {
                             BillingDatePicker(title: "关闭日期", selection: $closedDate, identifier: "account.editor.closedDate")
@@ -1951,6 +1953,14 @@ struct AccountEditorView: View {
         selectedCycleIsRepaid = false
     }
 
+    private var statusPicker: some View {
+        Picker("状态", selection: $status) {
+            Text("使用中").tag(CreditCardAccountStatus.active)
+            Text("已关闭").tag(CreditCardAccountStatus.closed)
+        }
+        .accessibilityIdentifier("account.editor.status")
+    }
+
     private var latestScheduledRuleText: String? {
         let currentMonthKey = currentDay.today.monthKey
         guard let effectiveCycleKey = account?.billingRuleVersions.compactMap(\.effectiveCycleKey).max(),
@@ -2163,6 +2173,7 @@ struct CardEditorView: View {
         case notes = "card.notes"
     }
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let card: Card?
@@ -2245,9 +2256,10 @@ struct CardEditorView: View {
                             .focused($focusedField, equals: .lastFour)
                             .id(Field.lastFour)
                         fieldError(.lastFour)
-                        Picker("状态", selection: $status) {
-                            Text("使用中").tag(CardStatus.active)
-                            Text("停用").tag(CardStatus.inactive)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            statusPicker.pickerStyle(.inline)
+                        } else {
+                            statusPicker
                         }
                         TextField("备注（可选）", text: $notes, axis: .vertical)
                             .focused($focusedField, equals: .notes)
@@ -2293,6 +2305,14 @@ struct CardEditorView: View {
             }
         }
         .protectEdits(snapshot: editSnapshot)
+    }
+
+    private var statusPicker: some View {
+        Picker("状态", selection: $status) {
+            Text("使用中").tag(CardStatus.active)
+            Text("停用").tag(CardStatus.inactive)
+        }
+        .accessibilityIdentifier("card.editor.status")
     }
 
     private func revealLastFour(using scrollProxy: ScrollViewProxy) {
