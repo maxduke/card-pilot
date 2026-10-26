@@ -3616,7 +3616,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         tap(app.tabBars.buttons["卡片"])
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         let expectedName = largestText ? "UI Primary" : "UI Fixed"
         search.typeText(expectedName + "\n")
@@ -3772,7 +3772,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         selectCardsTab()
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         enter(discard ? originalName : correctedName, into: search)
         search.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -3941,7 +3941,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         tap(app.tabBars.buttons["卡片"])
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText("0123\n")
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
@@ -3989,7 +3989,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         selectCardsTab()
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText(name + "\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -4000,7 +4000,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func verifyOnboardingDiscardedCard(_ name: String, screenshot: String) {
         let saved = restartAndSearchOnboardingCard(name)
         XCTAssertFalse(saved.exists)
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         replaceText("UI Primary", in: search)
         search.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -4211,7 +4211,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.tabBars.buttons["卡片"])
         // Bank UUID ordering can put the saved card below several large rows.
         // Use the existing card search before checking the complete saved row.
-        let search = app.searchFields["搜索银行、卡片或末四位"]
+        let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText(cardName + "\n")
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))

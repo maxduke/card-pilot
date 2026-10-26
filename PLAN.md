@@ -4,6 +4,8 @@
 
 基于第三十批已验证主线 `244b106`，账户创建／编辑支持可选名称，并接入可见列表、搜索、详情、账期和既有通知身份入口；辅助字号下的账户与卡片行纵排，普通字号保持紧凑布局。V4 保留原库身份，v2 备份读取实际 v1，导入预览保留原格式版本。实际发布源码生成的九类模型样本通过原位升级、保存重开、完整恢复、草稿身份及失败保留检查；[231 项数据门禁](https://github.com/maxduke/card-pilot/actions/runs/40214434648)、[31 项后续数据检查](https://github.com/maxduke/card-pilot/actions/runs/40221235030)与[两机型三项交互](https://github.com/maxduke/card-pilot/actions/runs/40223288977)已通过。22 张原图及修复后的六张变化原图已实际检查，真实失败和单项时限依据均保留；正式 231＋89＝320 项回归、当前绿色 HEAD 原图及合并主线验证待执行，见[第三十一批记录](docs/ux-account-names-and-released-data-2026-10-26.md)。
 
+首次正式 320 项回归为 305 项通过、15 项 UI 失败；14 项旧搜索定位与一项最大字号额度键盘遮挡已补修，保留原有数据和严格边界断言，修正后的原生验证及完整交付继续推进。
+
 ## 已完成 UX 第三十批：促销列表完整辅助标签（2026-10-26）
 
 促销自定义合并标签补入非空奖励和归档状态，保留日期、报名及进度；新增真实归档与重启读回回归。[PR #62](https://github.com/maxduke/card-pilot/pull/62) 的 HEAD `72070e7` 与合并提交 `244b106` 分别在 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/40206225788) 和 [main CI](https://github.com/maxduke/card-pilot/actions/runs/40216476020) 完整通过 223＋87＝310 项，零失败、跳过、用例／workflow 重跑、进程重启或超时。三张当前绿色 HEAD 原图与实际归档前后及重启标签已验收，无待处理的适用审查或可操作发现，原干净 main 已快进同步。范围与边界见[第三十批记录](docs/ux-promotion-accessibility-summary-2026-10-25.md)。

@@ -1622,6 +1622,13 @@ struct AccountEditorView: View {
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .accessibilityIdentifier("account.editor.form")
+                .onChange(of: focusedField) { _, field in
+                    guard field == .limit else { return }
+                    revealCreditLimit(using: scrollProxy)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                    revealCreditLimit(using: scrollProxy)
+                }
                 .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
@@ -1632,12 +1639,27 @@ struct AccountEditorView: View {
                             Button("收起键盘") { focusedField = nil }
                                 .frame(minWidth: 44, minHeight: 44)
                                 .accessibilityIdentifier("account.keyboard.dismiss")
+                                .onGeometryChange(for: CGRect.self) { geometry in
+                                    geometry.frame(in: .global)
+                                } action: { frame in
+                                    guard !frame.isEmpty else { return }
+                                    revealCreditLimit(using: scrollProxy)
+                                }
                         }
                     }
                 }
             }
         }
         .protectEdits(snapshot: editSnapshot)
+    }
+
+    private func revealCreditLimit(using scrollProxy: ScrollViewProxy) {
+        guard focusedField == .limit else { return }
+        Task { @MainActor in
+            await Task.yield()
+            guard focusedField == .limit else { return }
+            scrollProxy.scrollTo(Field.limit, anchor: .top)
+        }
     }
 
     private func validationMessage(for field: Field) -> String? {
