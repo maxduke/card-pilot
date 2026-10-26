@@ -348,6 +348,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountEditorNumericKeyboardAtLargestTextSize() {
+        // In run 40313863921, the unchanged shared-card readback checkpoint
+        // reached 204.59s on Pro and 197.17s on SE after the 180s timeout.
+        // Preserve the complete flow within the existing maximum.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyAccountEditorNumericKeyboard(largestText: true)
     }
@@ -3527,7 +3531,7 @@ final class CoreFlowsUITests: XCTestCase {
         } else {
             reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
             assertTouchTarget(picker)
-            XCTAssertEqual(picker.value as? String, "使用中")
+            XCTAssertEqual(picker.label, "状态、使用中")
             picker.tap()
             XCTAssertTrue(alternate.waitForExistence(timeout: 10))
             XCTAssertTrue(alternate.isHittable)
@@ -3539,7 +3543,7 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertTrue(alternate.isSelected)
             XCTAssertFalse(active.isSelected)
         } else {
-            XCTAssertEqual(picker.value as? String, alternateTitle)
+            XCTAssertEqual(picker.label, "状态、\(alternateTitle)")
         }
         if accountEditor {
             let closedDate = app.descendants(matching: .any).matching(identifier: "account.editor.closedDate").firstMatch
@@ -3582,7 +3586,7 @@ final class CoreFlowsUITests: XCTestCase {
             }
         } else {
             reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
-            XCTAssertEqual(picker.value as? String, alternateTitle)
+            XCTAssertEqual(picker.label, "状态、\(alternateTitle)")
         }
         captureScreenshot("\(prefix)状态\(largestText ? "放弃" : "保存")重启读回")
         editor.buttons["取消"].tap()
