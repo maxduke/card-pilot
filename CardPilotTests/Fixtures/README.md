@@ -35,5 +35,6 @@ Keep these inputs immutable. Tests open disposable copies at the same
 selected URL, compare every backup field and UUID relationship, save and
 reopen, restore/relaunch, check draft identity and preserve data after a
 failed staged save. A future schema change must run against these released
-inputs. This baseline does not prove iOS 17, physical-device upgrade,
-notification delivery or a future schema migration.
+inputs. The native compatibility tests now exercise the specific V3-to-V4
+upgrade on iOS 18.5. This does not prove other historical model families,
+iOS 17, physical-device upgrade, notification delivery or future migrations.

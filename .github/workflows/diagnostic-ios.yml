@@ -1,4 +1,4 @@
-name: iOS Account Name Interaction Diagnostic
+name: iOS Account Name Regression Diagnostic
 
 on:
   push:
@@ -12,20 +12,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  account-name-ui:
+  account-regressions:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: iphone16pro
             device: iPhone 16 Pro
+            expected: 16
           - name: iphonese3
             device: iPhone SE (3rd generation)
+            expected: 2
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       ACCOUNT_NAME_DEVICE: ${{ matrix.device }}
+      EXPECTED_TEST_COUNT: ${{ matrix.expected }}
     steps:
       - uses: actions/checkout@v5
       - name: Record native source and runtime
@@ -43,16 +46,36 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as stream:
               stream.write(f"ACCOUNT_NAME_DEVICE_ID={device['udid']}\n")
           PYTHON
-      - name: Verify account name creation editing search and readback
+      - name: Verify known regressions and numeric keyboard geometry
         run: |
           set -euo pipefail
+          tests=(
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountEditorNumericKeyboardAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountEditorNumericKeyboardPreservesSavedLimit
+          )
+          if [[ "$ACCOUNT_NAME_DEVICE" == "iPhone 16 Pro" ]]; then
+            tests+=(
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAndDiscardPreservesOriginalValues
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAtLargestTextSizeAndCorrectedSave
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackAtLargestTextSizeAndDiscard
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testBankNameFeedbackCorrectsAndPreservesSavedValues
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorFieldFeedbackAndCorrectedSave
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorFieldFeedbackAtLargestTextSizeAndDiscard
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardAtLargestTextSize
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorNumericKeyboardPreservesSavedLastFour
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardAtLargestTextSize
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testCardOnboardingNumericKeyboardPreservesSavedValues
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackAtLargestTextSizeAndDiscard
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackCorrectsAndPreservesSavedValues
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCreditLimitFeedbackAtLargestTextSizeAndDiscard
+              -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCreditLimitFeedbackCorrectsAndPreservesSavedValues
+            )
+          fi
           xcodebuild test \
             -project CardPilot.xcodeproj -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$ACCOUNT_NAME_DEVICE_ID" \
-            -resultBundlePath AccountNameResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCustomAccountNamePersistsSearchesSharedCardsAndClears \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCustomAccountNameAtLargestTextSizePersistsAndSearchesSharedCards \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCreateCardAndReopenDetails \
+            -resultBundlePath AccountRegressionResults.xcresult \
+            "${tests[@]}" \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -62,20 +85,20 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          xcrun xcresulttool get test-results summary --path AccountNameResults.xcresult > summary.json
-          xcrun xcresulttool export attachments --path AccountNameResults.xcresult --output-path test-attachments
+          xcrun xcresulttool get test-results summary --path AccountRegressionResults.xcresult > summary.json
+          xcrun xcresulttool export attachments --path AccountRegressionResults.xcresult --output-path test-attachments
           python3 - <<'PYTHON'
-          import json
+          import json, os
           summary = json.load(open("summary.json"))
-          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (3, 0, 0), summary
+          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (int(os.environ["EXPECTED_TEST_COUNT"]), 0, 0), summary
           PYTHON
       - name: Upload native evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ios-account-name-ui-${{ matrix.name }}
+          name: ios-account-regression-${{ matrix.name }}
           path: |
-            AccountNameResults.xcresult
+            AccountRegressionResults.xcresult
             summary.json
             test-attachments
             xcodebuild.log
