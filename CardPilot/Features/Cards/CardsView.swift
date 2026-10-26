@@ -1629,6 +1629,7 @@ struct AccountEditorView: View {
                     revealCreditLimit(using: scrollProxy)
                 }
                 .navigationTitle(account == nil ? "添加信用卡账户" : "编辑信用卡账户")
+                .navigationBarTitleDisplayMode(dynamicTypeSize.isAccessibilitySize ? .inline : .automatic)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") { save(using: scrollProxy) } }
