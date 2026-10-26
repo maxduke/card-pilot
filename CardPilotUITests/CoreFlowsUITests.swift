@@ -293,6 +293,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testCardEditorFieldFeedbackAndCorrectedSave() {
+        // The complete three-field correction/save/relaunch flow exceeded
+        // 180s on SE in run 40254895315. Use the existing 240s maximum.
+        executionTimeAllowance = 240
         verifyCardEditorFieldFeedback(largestText: false)
     }
 
