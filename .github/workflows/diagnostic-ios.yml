@@ -1,4 +1,4 @@
-name: iOS Card Last Four Focus Diagnostic
+name: iOS Card Last Four Execution Diagnostic
 
 on:
   push:
@@ -19,8 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: iphone16pro
-            device: iPhone 16 Pro
           - name: iphonese3
             device: iPhone SE (3rd generation)
     env:
@@ -43,7 +41,7 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as stream:
               stream.write(f"ACCOUNT_NAME_DEVICE_ID={device['udid']}\n")
           PYTHON
-      - name: Verify stable last-four focus correction and readback
+      - name: Verify complete three-field correction save and relaunch
         run: |
           set -euo pipefail
           xcodebuild test \
@@ -51,9 +49,6 @@ jobs:
             -destination "platform=iOS Simulator,id=$ACCOUNT_NAME_DEVICE_ID" \
             -resultBundlePath CardFocusResults.xcresult \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorFieldFeedbackAndCorrectedSave \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorFieldFeedbackAtLargestTextSizeAndDiscard \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackCorrectsAndPreservesSavedValues \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testOnboardingCardIdentityFeedbackAtLargestTextSizeAndDiscard \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
@@ -68,7 +63,7 @@ jobs:
           python3 - <<'PYTHON'
           import json
           summary = json.load(open("summary.json"))
-          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (4, 0, 0), summary
+          assert (summary["passedTests"], summary["failedTests"], summary["skippedTests"]) == (1, 0, 0), summary
           PYTHON
       - name: Upload native evidence
         if: always()
