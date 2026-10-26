@@ -316,6 +316,24 @@ final class CoreFlowsUITests: XCTestCase {
         verifyCustomAccountName(largestText: true)
     }
 
+    func testAccountStatusMenuSavesClosedAccountAfterRelaunch() {
+        verifyEditorStatus(accountEditor: true, largestText: false)
+    }
+
+    func testAccountStatusAtLargestTextSizeShowsChoicesAndDiscardsChanges() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyEditorStatus(accountEditor: true, largestText: true)
+    }
+
+    func testCardStatusMenuSavesInactiveCardAfterRelaunch() {
+        verifyEditorStatus(accountEditor: false, largestText: false)
+    }
+
+    func testCardStatusAtLargestTextSizeShowsChoicesAndDiscardsChanges() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyEditorStatus(accountEditor: false, largestText: true)
+    }
+
     func testAccountEditorNumericKeyboardPreservesSavedLimit() {
         verifyAccountEditorNumericKeyboard(largestText: false)
     }
@@ -3474,6 +3492,99 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
         XCTAssertEqual(picker.value as? String, expectedName)
         captureScreenshot("\(prefix)银行选择\(largestText ? "放弃" : "保存")重启读回")
+        editor.buttons["取消"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["放弃修改"].exists)
+    }
+
+    private func verifyEditorStatus(accountEditor: Bool, largestText: Bool) {
+        let prefix = (largestText ? "最大字号" : "普通字号") + (accountEditor ? "账户" : "卡片")
+        let alternateTitle = accountEditor ? "已关闭" : "停用"
+        let editorTitle = accountEditor ? "编辑信用卡账户" : "编辑卡片"
+        let detailsTitle = accountEditor ? "账户详情" : "卡片详情"
+        let identifier = accountEditor ? "account.editor" : "card.editor"
+        launch("core")
+        if accountEditor {
+            openBillingFeedbackAccount()
+        } else {
+            openCard("UI Primary")
+        }
+        let details = app.navigationBars[detailsTitle]
+        let editor = app.navigationBars[editorTitle]
+        let form = app.collectionViews["\(identifier).form"]
+        let picker = app.buttons["\(identifier).status"]
+        let active = app.buttons["使用中"]
+        let alternate = app.buttons[alternateTitle]
+        tap(details.buttons["编辑"])
+
+        if largestText {
+            reveal(active, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            assertTouchTarget(active)
+            XCTAssertTrue(active.isSelected)
+            reveal(alternate, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            assertTouchTarget(alternate)
+            XCTAssertFalse(alternate.isSelected)
+        } else {
+            reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            assertTouchTarget(picker)
+            XCTAssertEqual(picker.value as? String, "使用中")
+            picker.tap()
+            XCTAssertTrue(alternate.waitForExistence(timeout: 10))
+            XCTAssertTrue(alternate.isHittable)
+            XCTAssertTrue(active.isSelected)
+        }
+        captureScreenshot("\(prefix)状态完整选项")
+        alternate.tap()
+        if largestText {
+            XCTAssertTrue(alternate.isSelected)
+            XCTAssertFalse(active.isSelected)
+        } else {
+            XCTAssertEqual(picker.value as? String, alternateTitle)
+        }
+        if accountEditor {
+            let closedDate = app.descendants(matching: .any).matching(identifier: "account.editor.closedDate").firstMatch
+            XCTAssertTrue(closedDate.waitForExistence(timeout: 10))
+        }
+        captureScreenshot("\(prefix)状态修改读回")
+        if largestText {
+            editor.buttons["取消"].tap()
+            tap(app.buttons["放弃修改"])
+        } else {
+            editor.buttons["保存"].tap()
+        }
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        if accountEditor {
+            openBillingFeedbackAccount()
+            let summary = app.descendants(matching: .any).matching(identifier: "account.detail.summary").firstMatch
+            XCTAssertTrue(summary.label.contains("尾号 1234"))
+            XCTAssertTrue(summary.label.contains("尾号 5678"))
+            XCTAssertEqual(summary.label.contains("已关闭"), !largestText)
+        } else {
+            selectCardsTab()
+            if !largestText {
+                XCTAssertFalse(app.buttons["card.UI Primary"].exists)
+                tap(app.navigationBars["卡片"].buttons["卡片与银行管理"])
+                tap(app.buttons["显示停用卡"])
+            }
+            tap(app.buttons["card.UI Primary"])
+        }
+        tap(details.buttons["编辑"])
+        if largestText {
+            reveal(active, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            XCTAssertTrue(active.isSelected)
+            reveal(alternate, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            XCTAssertFalse(alternate.isSelected)
+            if accountEditor {
+                XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "account.editor.closedDate").firstMatch.exists)
+            }
+        } else {
+            reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
+            XCTAssertEqual(picker.value as? String, alternateTitle)
+        }
+        captureScreenshot("\(prefix)状态\(largestText ? "放弃" : "保存")重启读回")
         editor.buttons["取消"].tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 10))
         XCTAssertFalse(app.buttons["放弃修改"].exists)
