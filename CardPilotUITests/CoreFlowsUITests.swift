@@ -3408,6 +3408,7 @@ final class CoreFlowsUITests: XCTestCase {
         let form = app.collectionViews["account.editor.form"]
         tap(details.buttons["编辑"])
         reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
+        XCTAssertEqual(picker.label, "银行")
         XCTAssertEqual(picker.value as? String, originalName)
         assertTouchTarget(picker)
         captureScreenshot("\(prefix)银行选择完整当前值")
@@ -3436,12 +3437,15 @@ final class CoreFlowsUITests: XCTestCase {
         let chosen = app.buttons[chosenName]
         if largestText {
             reveal(chosen, fullyVisible: true, navigationBar: bankNavigation)
+            assertTouchTarget(chosen)
         } else {
             XCTAssertTrue(chosen.waitForExistence(timeout: 10))
             XCTAssertTrue(chosen.isHittable)
+            XCTAssertTrue(app.buttons[originalName].isSelected)
+            // The unchanged native menu owns its option sizing. Keep the
+            // 44-point checks on our picker entry and accessible list rows.
         }
         XCTAssertFalse(app.buttons["已归档的银行"].exists)
-        assertTouchTarget(chosen)
         captureScreenshot("\(prefix)银行选择完整选项")
         chosen.tap()
         if largestText { XCTAssertTrue(bankNavigation.waitForNonExistence(timeout: 10)) }

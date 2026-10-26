@@ -1983,6 +1983,7 @@ private struct AccountBankPicker: View {
                     }
                     .fixedSize(horizontal: false, vertical: true)
                 }
+                .accessibilityLabel("银行")
             } else {
                 Picker("银行", selection: $selection) {
                     ForEach(banks, id: \.id) { bank in
@@ -1991,7 +1992,6 @@ private struct AccountBankPicker: View {
                 }
             }
         }
-        .accessibilityLabel("银行")
         .accessibilityValue(selectedName)
         .accessibilityIdentifier("account.editor.bank")
     }
