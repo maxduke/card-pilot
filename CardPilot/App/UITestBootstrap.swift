@@ -19,6 +19,7 @@ enum UITestBootstrap {
         case refundIdentity
         case transactionFilters
         case accountHistory
+        case accountBankSelection
         case futureRules
         case billingDateFeedback
         case performanceSmall
@@ -107,6 +108,11 @@ enum UITestBootstrap {
         context.insert(foreignRule)
         context.insert(foreignCard)
         context.insert(promotion)
+        if scenario == .accountBankSelection {
+            bank.name = "星河商业银行信用卡中心"
+            context.insert(Bank(name: "远山商业银行国际金融部"))
+            context.insert(Bank(name: "已归档的银行", archivedAt: Date()))
+        }
         if scenario == .promotionAmounts {
             promotion.qualifyingCap = 5000
             promotion.perTransactionThreshold = 100

@@ -1502,11 +1502,8 @@ struct AccountEditorView: View {
                 let billingIssue = currentBillingIssue
                 Form {
                     Section("账户") {
-                        Picker("银行", selection: $bankID) {
-                            ForEach(selectableAccountBanks(banks, currentBankID: account?.bank.id), id: \.id) { bank in
-                                Text(bank.name).tag(bank.id)
-                            }
-                        }
+                        AccountBankPicker(selection: $bankID,
+                                          banks: selectableAccountBanks(banks, currentBankID: account?.bank.id))
                         .id(Field.bank)
                         fieldError(.bank)
                         TextField("账户名称（可选）", text: $accountName)
@@ -1961,6 +1958,79 @@ struct AccountEditorView: View {
         return "已有规则排定于 \(CardPilotUI.monthKeyText(effectiveCycleKey)) 起生效；可选择该未来账期修正规则。"
     }
 
+}
+
+private struct AccountBankPicker: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Binding var selection: UUID
+    let banks: [Bank]
+
+    private var selectedName: String {
+        banks.first { $0.id == selection }?.name ?? "请选择银行"
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                NavigationLink {
+                    AccountBankSelection(selection: $selection, banks: banks)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("银行")
+                            .foregroundStyle(.primary)
+                        Text(selectedName)
+                            .foregroundStyle(.secondary)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityLabel("银行")
+            } else {
+                Picker("银行", selection: $selection) {
+                    ForEach(banks, id: \.id) { bank in
+                        Text(bank.name).tag(bank.id)
+                    }
+                }
+            }
+        }
+        .accessibilityValue(selectedName)
+        .accessibilityIdentifier("account.editor.bank")
+    }
+}
+
+private struct AccountBankSelection: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selection: UUID
+    let banks: [Bank]
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            List(banks, id: \.id) { bank in
+                Button {
+                    selection = bank.id
+                    dismiss()
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(bank.name)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        if selection == bank.id {
+                            Image(systemName: "checkmark")
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityAddTraits(selection == bank.id ? .isSelected : [])
+                .id(bank.id)
+            }
+            .task {
+                await Task.yield()
+                scrollProxy.scrollTo(selection, anchor: .center)
+            }
+        }
+        .navigationTitle("银行")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 private struct MonthKeyPicker: View {
