@@ -50,8 +50,8 @@ jobs:
             -project CardPilot.xcodeproj -scheme CardPilot \
             -destination "platform=iOS Simulator,id=$EDITOR_STATUS_DEVICE_ID" \
             -resultBundlePath EditorStatusResults.xcresult \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountStatusMenuSavesClosedAccountAfterRelaunch \
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardStatusMenuSavesInactiveCardAfterRelaunch \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountStatusAtLargestTextSizeShowsChoicesAndDiscardsChanges \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountBankPickerAtLargestTextSizeShowsFullNamesAndDiscardsChanges \
             -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountEditorNumericKeyboardAtLargestTextSize \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
