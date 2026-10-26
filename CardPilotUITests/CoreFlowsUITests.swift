@@ -3408,7 +3408,7 @@ final class CoreFlowsUITests: XCTestCase {
         let form = app.collectionViews["account.editor.form"]
         tap(details.buttons["编辑"])
         reveal(picker, fullyVisible: true, navigationBar: editor, contentContainer: form)
-        XCTAssertEqual(picker.label, "银行")
+        XCTAssertEqual(picker.label, largestText ? "银行" : "银行、\(originalName)")
         XCTAssertEqual(picker.value as? String, originalName)
         assertTouchTarget(picker)
         captureScreenshot("\(prefix)银行选择完整当前值")
