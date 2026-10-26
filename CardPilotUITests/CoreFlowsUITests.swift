@@ -3551,30 +3551,8 @@ final class CoreFlowsUITests: XCTestCase {
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
-        // Keyboard disappearance can precede the end of the Form's motion.
-        // Establish a stable field before focusing the next keyboard type.
-        reveal(lastFour, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
-        var previousFrame = lastFour.frame
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            // Read only this field while polling. Repeated full-viewport AX
-            // queries can consume the five-second wait before it returns.
-            let frame = lastFour.frame
-            defer { previousFrame = frame }
-            return !frame.isEmpty
-                && abs(frame.minX - previousFrame.minX) <= 0.001
-                && abs(frame.minY - previousFrame.minY) <= 0.001
-                && abs(frame.width - previousFrame.width) <= 0.001
-                && abs(frame.height - previousFrame.height) <= 0.001
-        }, object: lastFour)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
-        let fieldFrame = lastFour.frame
-        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
-        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
-        XCTAssertFalse(keyboard.exists)
-        XCTAssertTrue(lastFour.isHittable)
-        lastFour.tap()
-        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
-        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        focusLastFour(lastFour, navigationBar: navigationBar, form: form, dismissal: dismissal,
+                          screenshot: "\(prefix)卡片末四位焦点准备")
         let previousLastFour = lastFour.value as? String ?? ""
         lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "123")
         XCTAssertEqual(lastFour.value as? String, "123")
@@ -4116,7 +4094,11 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(lastFourError.label, "错误：末四位必须是 4 位数字。")
         captureScreenshot("\(prefix)添加卡片末四位首错定位")
 
-        replaceText("0123", in: lastFour)
+        focusLastFour(lastFour, navigationBar: navigation, form: form, dismissal: dismissal,
+                          screenshot: "\(prefix)添加卡片末四位焦点准备")
+        let previousLastFour = lastFour.value as? String ?? ""
+        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "0123")
+        XCTAssertEqual(lastFour.value as? String, "0123")
         XCTAssertTrue(lastFourError.waitForNonExistence(timeout: 5))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
         dismissal.tap()
@@ -4446,6 +4428,50 @@ final class CoreFlowsUITests: XCTestCase {
     private func selectPromotionEditorSection(_ section: String) {
         tap(app.buttons["promotion.editor.section"], scrollTowardTopWhenMissing: true)
         tap(app.buttons[section])
+    }
+
+    private func focusLastFour(
+        _ field: XCUIElement,
+        navigationBar: XCUIElement,
+        form: XCUIElement,
+        dismissal: XCUIElement,
+        screenshot: String
+    ) {
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        reveal(field, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        var previousFrame = field.frame
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            // Keep polling local to this field, as in the original editor check.
+            let frame = field.frame
+            defer { previousFrame = frame }
+            return !frame.isEmpty
+                && abs(frame.minX - previousFrame.minX) <= 0.001
+                && abs(frame.minY - previousFrame.minY) <= 0.001
+                && abs(frame.width - previousFrame.width) <= 0.001
+                && abs(frame.height - previousFrame.height) <= 0.001
+        }, object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        captureScreenshot(screenshot)
+        let fieldFrame = field.frame
+        let appFrame = app.frame
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertGreaterThanOrEqual(fieldFrame.minY + 0.001, max(navigationBar.frame.maxY, form.frame.minY))
+        XCTAssertLessThan(fieldFrame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertTrue(appFrame.contains(fieldFrame))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(field.isHittable)
+        // Use one real point near the end of these short numeric values, so
+        // the caret is after the old value before deleting it.
+        let point = CGPoint(x: fieldFrame.minX + fieldFrame.width * 0.9, y: fieldFrame.midY)
+        let geometry = XCTAttachment(string: "field=\(fieldFrame); app=\(appFrame); tap=\(point); foreground=true")
+        geometry.name = screenshot + "-位置"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: point.x - appFrame.minX, dy: point.y - appFrame.minY)
+        ).tap()
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     }
 
     private func replaceText(_ text: String, in element: XCUIElement) {
