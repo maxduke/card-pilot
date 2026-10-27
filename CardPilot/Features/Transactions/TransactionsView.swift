@@ -1337,6 +1337,15 @@ struct TransactionEditorForm: View {
                 .padding(.vertical, 10)
                 .disabled(!isAmountPositive || selectedCard == nil)
                 .accessibilityIdentifier("saveTransaction")
+                if isNumericInputFocused {
+                    HStack {
+                        Spacer()
+                        Button("收起键盘") { focusedInput = nil }
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("transaction.keyboard.dismiss")
+                    }
+                    .padding(.horizontal, 16)
+                }
             }
             .background(.bar, ignoresSafeAreaEdges: .bottom)
         }
@@ -1682,14 +1691,6 @@ struct TransactionEditorForm: View {
                 Button("关闭", action: closeNewTransaction)
             } else {
                 EditorCancelButton()
-            }
-        }
-        ToolbarItemGroup(placement: .keyboard) {
-            if isNumericInputFocused {
-                Spacer()
-                Button("收起键盘") { focusedInput = nil }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityIdentifier("transaction.keyboard.dismiss")
             }
         }
     }
