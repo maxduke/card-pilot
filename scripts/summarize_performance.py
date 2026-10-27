@@ -18,6 +18,12 @@ CLOCK = "com.apple.dt.XCTMetric_Clock.time.monotonic"
 LAUNCH = "com.apple.dt.XCTMetric_ApplicationLaunch-ApplicationFirstFramePresentationResponsive.duration"
 MEMORY = "com.apple.dt.XCTMetric_Memory-com.maxduke.CardPilot."
 SCROLL = "com.apple.dt.XCTMetric_OSSignpost-Scroll_DraggingAndDeceleration.duration"
+WRITING_PHASES = {
+    "AmountInput": "DraftSave",
+    "MerchantInput": "DraftSave",
+    "DraftClose": "DraftSave",
+    "TransactionSave": "TransactionCommit",
+}
 
 
 def require(condition, message):
@@ -31,7 +37,13 @@ def percentiles(values):
     return {f"p{p}": ordered[math.ceil(p / 100 * len(ordered)) - 1] for p in (50, 95)}
 
 
-def summarize(summary, metrics, fixtures, source_revision, expected_tests=21):
+def summarize(summary, metrics, fixtures, source_revision, expected_tests=21, suite="baseline"):
+    require(suite in ("baseline", "writing"), "Unknown performance suite")
+    writing = suite == "writing"
+    if writing:
+        require(expected_tests in (4, 12), "Expected the small writing probe or complete writing suite")
+    test_class = "TransactionWritingPerformanceUITests" if writing else "PerformanceUITests"
+    phases = WRITING_PHASES if writing else PHASES
     require(summary.get("result") == "Passed", "Native run did not pass")
     require(summary.get("passedTests") == expected_tests == summary.get("totalTestCount"), "Incomplete native test count")
     require(summary.get("failedTests") == summary.get("skippedTests") == summary.get("expectedFailures") == 0, "Native failures or skips")
@@ -40,7 +52,7 @@ def summarize(summary, metrics, fixtures, source_revision, expected_tests=21):
     rows, tests, devices, profiles = [], set(), set(), Counter()
     for test in metrics:
         test_id = test["testIdentifier"]
-        match = re.fullmatch(r"PerformanceUITests/test(Small|Medium|Large)(" + "|".join(PHASES) + r")\(\)", test_id)
+        match = re.fullmatch(test_class + r"/test(Small|Medium|Large)(" + "|".join(phases) + r")\(\)", test_id)
         require(match is not None and test_id not in tests, "Unknown or repeated performance case")
         tests.add(test_id)
         count = PROFILES[match[1]]
@@ -63,13 +75,19 @@ def summarize(summary, metrics, fixtures, source_revision, expected_tests=21):
                 "min": min(values), "max": max(values),
             })
         require(CLOCK in identifiers, f"Missing clock metric: {test_id}")
-        if match[2] == "ColdLaunch":
+        if not writing and match[2] == "ColdLaunch":
             require(LAUNCH in identifiers, "Missing responsive launch metric")
         else:
             require({MEMORY + suffix for suffix in ("physical", "physical_peak", "physical_absolute")} <= identifiers, "Missing app memory metrics")
-        if match[2] == "TransactionScroll":
+        if not writing and match[2] == "TransactionScroll":
             require(SCROLL in identifiers, "Missing native scrolling metric")
+        if writing:
+            signpost = "com.apple.dt.XCTMetric_OSSignpost-" + WRITING_PHASES[match[2]] + ".duration"
+            require(signpost in identifiers, f"Missing native application interval: {test_id}/{signpost}")
     require(len(devices) == 1, "Mixed measurement devices")
+    if writing:
+        expected_profiles = Counter({100: 4}) if expected_tests == 4 else Counter({count: 4 for count in PROFILES.values()})
+        require(profiles == expected_profiles, "Incomplete writing phase or profile coverage")
     require(Counter(fixture["transactions"] for fixture in fixtures) == profiles, "Fixture sizes differ from measured cases")
     for fixture in fixtures:
         require(all(fixture[key] == value for key, value in {
@@ -79,14 +97,21 @@ def summarize(summary, metrics, fixtures, source_revision, expected_tests=21):
         require(fixture["searchMatches"] == fixture["transactions"] // 100 and fixture["allocations"] >= 2, "Invalid fixture search or allocations")
         require(fixture["lastTransactionOn"] == fixture["today"] > fixture["firstTransactionOn"], "Invalid fixture dates")
     require(len({fixture["today"] for fixture in fixtures}) == 1, "Business date changed during sampling")
-    return {
+    scope = "full baseline" if expected_tests == 21 else "diagnostic subset"
+    if writing:
+        scope = "transaction writing baseline" if expected_tests == 12 else "transaction writing diagnostic subset"
+    report = {
         "sourceRevision": source_revision, "tests": expected_tests,
-        "scope": "full baseline" if expected_tests == 21 else "diagnostic subset",
+        "scope": scope,
         "device": dict(zip(("id", "name"), next(iter(devices)))),
         "businessDate": fixtures[0]["today"],
         "percentileMethod": "nearest rank: sorted[ceil(p * n) - 1]; p95 of ten samples is the maximum",
         "metrics": rows,
     }
+    if writing:
+        report["population"] = "Initial fixture size; TransactionSave adds one transaction per invocation, including warm-up."
+        report["applicationIntervals"] = "DraftSave measures draft validation, JSON encoding and atomic protected write. TransactionCommit measures TransactionEditActions.save. Native interval aggregation and units are preserved; neither interval covers all view updates."
+    return report
 
 
 def markdown(report):
@@ -98,6 +123,8 @@ def markdown(report):
         "| Transactions | Phase | Metric | Unit | n | Mean | p50 | p95 | Min | Max |",
         "| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
+    if "population" in report:
+        lines[8:8] = [report["population"], "", report["applicationIntervals"], ""]
     for row in sorted(report["metrics"], key=lambda row: (row["transactions"], row["phase"], row["identifier"])):
         text = [str(row[key]).replace("|", "\\|").replace("\n", " ") for key in ("transactions", "phase", "metric", "unit", "samples")]
         values = [f"{row[key]:.6f}" for key in ("mean", "p50", "p95", "min", "max")]
@@ -109,6 +136,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
     parser.add_argument("--expected-tests", type=int, default=21)
+    parser.add_argument("--suite", choices=("baseline", "writing"), default="baseline")
     args = parser.parse_args()
     for name in ("baseline-summary.json", "baseline.md"):
         (args.evidence / name).unlink(missing_ok=True)
@@ -118,7 +146,7 @@ def main():
         json.loads((args.evidence / "summary.json").read_text()),
         json.loads((args.evidence / "metrics.json").read_text()),
         [json.loads(path.read_text()) for path in sorted((args.evidence / "fixtures").glob("*.json"))],
-        (args.evidence / "source-revision.txt").read_text().strip(), args.expected_tests,
+        (args.evidence / "source-revision.txt").read_text().strip(), args.expected_tests, args.suite,
     )
     (args.evidence / "baseline-summary.json").write_text(json.dumps(report, indent=2) + "\n")
     (args.evidence / "baseline.md").write_text(markdown(report))

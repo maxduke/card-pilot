@@ -1,4 +1,7 @@
 import Foundation
+#if PERFORMANCE_TESTING && targetEnvironment(simulator)
+import os
+#endif
 
 /// Unsaved input, separate from business facts. Amount strings retain incomplete user input.
 struct TransactionDraft: Codable, Equatable {
@@ -79,6 +82,11 @@ struct TransactionDraftStore {
     }
 
     func save(_ draft: TransactionDraft) throws {
+        #if PERFORMANCE_TESTING && targetEnvironment(simulator)
+        let signposter = PerformanceSignposts.transactions
+        let interval = signposter.beginInterval("DraftSave", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("DraftSave", interval) }
+        #endif
         try draft.validate()
         let data = try JSONEncoder().encode(draft)
         guard data.count <= 1_048_576 else { throw DraftError.unreadable }

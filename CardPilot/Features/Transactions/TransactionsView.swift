@@ -1,4 +1,7 @@
 import SwiftData
+#if PERFORMANCE_TESTING && targetEnvironment(simulator)
+import os
+#endif
 import SwiftUI
 import UIKit
 
@@ -2522,6 +2525,11 @@ enum TransactionEditActions {
     static func save(values: TransactionEditValues, transaction: Transaction?, newID: UUID, card: Card,
                      original: Transaction?, allocations: [(promotion: Promotion, amount: Decimal)],
                      context: ModelContext, persist: (ModelContext) throws -> Void = { try $0.save() }) throws -> Transaction {
+        #if PERFORMANCE_TESTING && targetEnvironment(simulator)
+        let signposter = PerformanceSignposts.transactions
+        let interval = signposter.beginInterval("TransactionCommit", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("TransactionCommit", interval) }
+        #endif
         // Validate values before managed relationships can insert any new objects.
         try values.validate()
         if let original {
