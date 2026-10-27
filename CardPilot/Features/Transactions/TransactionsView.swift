@@ -1340,9 +1340,12 @@ struct TransactionEditorForm: View {
                 if isNumericInputFocused {
                     HStack {
                         Spacer()
-                        Button("收起键盘") { focusedInput = nil }
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityIdentifier("transaction.keyboard.dismiss")
+                        Button { focusedInput = nil } label: {
+                            Text("收起键盘")
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("transaction.keyboard.dismiss")
                     }
                     .padding(.horizontal, 16)
                 }
