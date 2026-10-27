@@ -1,0 +1,128 @@
+name: iOS Transaction Writing Performance
+
+on:
+  push:
+    branches: [diagnose/transaction-writing]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Full writing baseline or bounded small-store native probe
+        type: choice
+        options: [full, small]
+        default: full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-transaction-writing-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  writing:
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      WRITING_PROFILE: small
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate performance report calculations
+        run: python3 -m unittest discover -s scripts/tests -p 'test_performance_summary.py'
+      - name: Record configuration and device
+        run: |
+          set -euo pipefail
+          mkdir -p performance-evidence
+          xcodebuild -version | tee performance-evidence/xcode-version.txt
+          sw_vers > performance-evidence/macos-version.txt
+          system_profiler SPHardwareDataType > performance-evidence/host-hardware.txt
+          xcrun simctl list devices available -j > performance-evidence/simulators.json
+          device_id=$(python3 -c 'import json; devices=json.load(open("performance-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          echo "BENCH_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+          git rev-parse HEAD > performance-evidence/source-revision.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > performance-evidence/started-at.txt
+          xcrun xcresulttool help get test-results metrics > performance-evidence/metrics-help.txt
+          xcodebuild -project CardPilot.xcodeproj -scheme CardPilotPerformance \
+            -configuration Release -destination "platform=iOS Simulator,id=$device_id" \
+            -showBuildSettings -json SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
+            CODE_SIGNING_ALLOWED=NO > performance-evidence/build-settings.json
+          python3 - <<'PY'
+          import json
+          settings = json.load(open("performance-evidence/build-settings.json"))
+          app = next(item["buildSettings"] for item in settings if item["target"] == "CardPilot")
+          assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
+          assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+          assert app.get("ENABLE_TESTABILITY", "NO") == "NO", app.get("ENABLE_TESTABILITY")
+          flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+          assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
+          PY
+      - name: Measure isolated Release transaction writing
+        run: |
+          set -euo pipefail
+          case "$WRITING_PROFILE" in
+            small)
+              tests=(
+                -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testSmallAmountInput
+                -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testSmallMerchantInput
+                -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testSmallDraftClose
+                -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testSmallTransactionSave
+              )
+              echo "EXPECTED_WRITING_TESTS=4" >> "$GITHUB_ENV"
+              ;;
+            full)
+              tests=(-only-testing:CardPilotUITests/TransactionWritingPerformanceUITests)
+              echo "EXPECTED_WRITING_TESTS=12" >> "$GITHUB_ENV"
+              ;;
+            *) echo "Unknown writing profile"; exit 1 ;;
+          esac
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilotPerformance -configuration Release \
+            -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
+            -resultBundlePath WritingPerformanceResults.xcresult \
+            "${tests[@]}" \
+            -parallel-testing-enabled NO \
+            -enableCodeCoverage NO \
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 1200 \
+            -maximum-test-execution-time-allowance 1200 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee performance-evidence/xcodebuild.log
+      - name: Export native measurements and fixture reports
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path WritingPerformanceResults.xcresult > performance-evidence/summary.json
+          xcrun xcresulttool get test-results metrics --path WritingPerformanceResults.xcresult > performance-evidence/metrics.json
+          xcrun xcresulttool export attachments --path WritingPerformanceResults.xcresult --output-path performance-evidence/attachments
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          simulators = json.load(open("performance-evidence/simulators.json"))["devices"]
+          device = next(device for devices in simulators.values() for device in devices if device["udid"] == os.environ["BENCH_DEVICE_ID"])
+          source = pathlib.Path(device["dataPath"])
+          destination = pathlib.Path("performance-evidence/fixtures")
+          destination.mkdir(parents=True, exist_ok=True)
+          # Read the recorded device's files even after a failed run shuts it down.
+          for report in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
+              shutil.copyfile(report, destination / f"{report.parent.name}.json")
+          errors = pathlib.Path("performance-evidence/fixture-errors")
+          errors.mkdir(parents=True, exist_ok=True)
+          for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
+              shutil.copyfile(error, errors / f"{error.parent.name}.txt")
+          PY
+      - name: Summarize complete selected writing suite
+        run: |
+          set -euo pipefail
+          python3 scripts/summarize_performance.py performance-evidence --suite writing --expected-tests "$EXPECTED_WRITING_TESTS"
+          cat performance-evidence/baseline.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload raw performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-transaction-writing-performance-results
+          path: |
+            WritingPerformanceResults.xcresult
+            performance-evidence
+          retention-days: 14
+          if-no-files-found: error
