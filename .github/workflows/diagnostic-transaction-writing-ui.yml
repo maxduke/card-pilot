@@ -4,9 +4,7 @@ on:
   push:
     branches: [diagnose/transaction-writing]
     paths:
-      - .github/workflows/diagnostic-transaction-writing-ui.yml
-      - CardPilot/Features/Transactions/TransactionsView.swift
-      - CardPilotUITests/TransactionWritingPerformanceUITests.swift
+      - .github/diagnostics/transaction-writing-debug-held
 
 permissions:
   contents: read
