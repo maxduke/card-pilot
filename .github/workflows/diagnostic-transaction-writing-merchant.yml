@@ -1,0 +1,138 @@
+name: Transaction Writing Merchant Background Diagnostic
+
+on:
+  push:
+    branches: [diagnose/transaction-writing]
+    paths:
+      - .github/workflows/diagnostic-transaction-writing-merchant.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-writing-merchant-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  merchant-probe:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate performance report calculations
+        run: python3 -m unittest discover -s scripts/tests -p 'test_performance_summary.py'
+      - name: Record device and Release configuration
+        run: |
+          set -euo pipefail
+          mkdir -p performance-merchant-evidence
+          xcodebuild -version | tee performance-merchant-evidence/xcode-version.txt
+          sw_vers > performance-merchant-evidence/macos-version.txt
+          xcrun simctl list devices available -j > performance-merchant-evidence/simulators.json
+          device_id=$(python3 -c 'import json; d=json.load(open("performance-merchant-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(x["udid"] for x in d if x["name"] == "iPhone 16 Pro"))')
+          echo "BENCH_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+          git rev-parse HEAD > performance-merchant-evidence/source-revision.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > performance-merchant-evidence/started-at.txt
+          xcodebuild -project CardPilot.xcodeproj -scheme CardPilotPerformance \
+            -configuration Release -destination "platform=iOS Simulator,id=$device_id" \
+            -showBuildSettings -json SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
+            CODE_SIGNING_ALLOWED=NO > performance-merchant-evidence/build-settings.json
+          python3 - <<'PY'
+          import json
+          settings=json.load(open("performance-merchant-evidence/build-settings.json"))
+          app=next(x["buildSettings"] for x in settings if x["target"] == "CardPilot")
+          assert app["CONFIGURATION"] == "Release"
+          assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O"
+          assert app.get("ENABLE_TESTABILITY", "NO") == "NO"
+          flags=app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+          assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags
+          PY
+      - name: Run only the merchant background and recovery case
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilotPerformance -configuration Release \
+            -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
+            -resultBundlePath MerchantDiagnosticResults.xcresult \
+            -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testSmallMerchantInput \
+            -parallel-testing-enabled NO \
+            -enableCodeCoverage NO \
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 1200 \
+            -maximum-test-execution-time-allowance 1200 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee performance-merchant-evidence/xcodebuild.log
+      - name: Export raw single-case result and fixture
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path MerchantDiagnosticResults.xcresult > performance-merchant-evidence/summary.json
+          xcrun xcresulttool get test-results metrics --path MerchantDiagnosticResults.xcresult > performance-merchant-evidence/metrics.json
+          xcrun xcresulttool export attachments --path MerchantDiagnosticResults.xcresult --output-path performance-merchant-evidence/attachments
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          devices=json.load(open("performance-merchant-evidence/simulators.json"))["devices"]
+          device=next(x for group in devices.values() for x in group if x["udid"] == os.environ["BENCH_DEVICE_ID"])
+          source=pathlib.Path(device["dataPath"])
+          destination=pathlib.Path("performance-merchant-evidence/fixtures")
+          destination.mkdir(parents=True,exist_ok=True)
+          for report in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
+              shutil.copyfile(report,destination/f"{report.parent.name}.json")
+          errors=pathlib.Path("performance-merchant-evidence/fixture-errors")
+          errors.mkdir(parents=True,exist_ok=True)
+          for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
+              shutil.copyfile(error,errors/f"{error.parent.name}.txt")
+          PY
+      - name: Validate the bounded diagnostic evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, math, pathlib, re
+          root=pathlib.Path("performance-merchant-evidence")
+          summary=json.loads((root/"summary.json").read_text())
+          assert summary["totalTestCount"] == 1, summary
+          assert summary["passedTests"] == 1 and summary["failedTests"] == 0 and summary["skippedTests"] == 0, summary
+          assert summary["expectedFailures"] == 0 and summary["result"] == "Passed", summary
+          device=summary["devicesAndConfigurations"][0]["device"]
+          assert device["deviceName"] == "iPhone 16 Pro" and device["osVersion"] == "18.5", device
+          metrics=json.loads((root/"metrics.json").read_text())
+          assert len(metrics) == 1, len(metrics)
+          test=metrics[0]
+          assert test["testIdentifier"] == "TransactionWritingPerformanceUITests/testSmallMerchantInput()", test["testIdentifier"]
+          assert len(test["testRuns"]) == 1, len(test["testRuns"])
+          run=test["testRuns"][0]
+          assert run["device"]["deviceName"] == "iPhone 16 Pro"
+          groups=run["metrics"]
+          assert len(groups) == 5, [x["identifier"] for x in groups]
+          for metric in groups:
+              values=metric["measurements"]
+              assert len(values) == 10, (metric["identifier"], len(values))
+              assert all(type(v) in (int,float) and math.isfinite(v) for v in values), metric["identifier"]
+          ids={x["identifier"] for x in groups}
+          assert "com.apple.dt.XCTMetric_Clock.time.monotonic" in ids, ids
+          assert "com.apple.dt.XCTMetric_OSSignpost-DraftSave.duration" in ids, ids
+          fixtures=sorted((root/"fixtures").glob("*.json"))
+          assert len(fixtures) == 1, [p.name for p in fixtures]
+          fixture=json.loads(fixtures[0].read_text())
+          expected={"version":1,"transactions":100,"banks":10,"accounts":10,"cards":20,"billingCycles":610,"promotions":24,"timeZone":"Asia/Shanghai"}
+          assert all(fixture[k] == v for k,v in expected.items()), fixture
+          assert fixture["searchMatches"] == 1 and fixture["allocations"] >= 2, fixture
+          assert fixture["lastTransactionOn"] == fixture["today"] > fixture["firstTransactionOn"], fixture
+          assert not list((root/"fixture-errors").glob("*.txt")), list((root/"fixture-errors").glob("*.txt"))
+          log=(root/"xcodebuild.log").read_text()
+          assert not re.search(r"Restarting after unexpected exit|Re-executing after failure|exceeded execution time allowance",log), "retry/restart/timeout marker"
+          PY
+      - name: Upload the single-case diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-writing-merchant-diagnostic
+          path: |
+            MerchantDiagnosticResults.xcresult
+            performance-merchant-evidence
+          retention-days: 14
+          if-no-files-found: warn
