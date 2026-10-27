@@ -223,13 +223,16 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         foregroundApp.activate()
         XCTAssertEqual(foregroundApp.state, .runningForeground)
         let stateAfterSwitch = app.state
+        // Native lifecycle tracing reached background after the former 10s
+        // observation window on the large fixture. Keep checking actual state.
+        let backgroundTimeout: TimeInterval = 30
         let backgrounded = XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in
                 let state = self.app.state
                 return state == .runningBackground || state == .runningBackgroundSuspended
             }, object: app
         )
-        let backgroundResult = XCTWaiter.wait(for: [backgrounded], timeout: 10)
+        let backgroundResult = XCTWaiter.wait(for: [backgrounded], timeout: backgroundTimeout)
         let stateAfterWait = app.state
         attach("""
             foregroundApplication=com.apple.Preferences
@@ -237,6 +240,7 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
             stateAfterSwitch=\(stateAfterSwitch.rawValue)
             stateAfterWait=\(stateAfterWait.rawValue)
             freshApplicationState=\(XCUIApplication(bundleIdentifier: "com.maxduke.CardPilot").state.rawValue)
+            backgroundTimeout=\(backgroundTimeout)
             backgroundWait=\(backgroundResult.rawValue)
             """, named: "writing-background-state")
         let backgroundScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
