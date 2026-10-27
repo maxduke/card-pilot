@@ -216,8 +216,10 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         }
         capture("交易写入\(profile.rawValue)-快速商户输入")
         // Exercise the existing scene-phase flush while the editor is still open.
-        XCUIDevice.shared.press(.home)
-        let stateAfterHome = app.state
+        let foregroundApp = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        foregroundApp.activate()
+        XCTAssertEqual(foregroundApp.state, .runningForeground)
+        let stateAfterSwitch = app.state
         let backgrounded = XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in
                 let state = self.app.state
@@ -227,14 +229,19 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         let backgroundResult = XCTWaiter.wait(for: [backgrounded], timeout: 10)
         let stateAfterWait = app.state
         attach("""
-            stateAfterHome=\(stateAfterHome.rawValue)
+            foregroundApplication=com.apple.Preferences
+            foregroundApplicationState=\(foregroundApp.state.rawValue)
+            stateAfterSwitch=\(stateAfterSwitch.rawValue)
             stateAfterWait=\(stateAfterWait.rawValue)
-            springboardState=\(XCUIApplication(bundleIdentifier: "com.apple.springboard").state.rawValue)
+            freshApplicationState=\(XCUIApplication(bundleIdentifier: "com.maxduke.CardPilot").state.rawValue)
             backgroundWait=\(backgroundResult.rawValue)
             """, named: "writing-background-state")
-        capture("交易写入\(profile.rawValue)-后台状态确认")
+        let backgroundScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        backgroundScreenshot.name = "交易写入\(profile.rawValue)-后台状态确认"
+        backgroundScreenshot.lifetime = .keepAlways
+        add(backgroundScreenshot)
         XCTAssertTrue(stateAfterWait == .runningBackground || stateAfterWait == .runningBackgroundSuspended,
-                      "Expected a background app after Home; state=\(stateAfterWait.rawValue), wait=\(backgroundResult.rawValue)")
+                      "Expected a background app after switching applications; state=\(stateAfterWait.rawValue), wait=\(backgroundResult.rawValue)")
         app.terminate()
         app.launch()
         assertHome()
