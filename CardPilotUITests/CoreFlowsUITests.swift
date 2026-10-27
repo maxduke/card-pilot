@@ -1981,6 +1981,14 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         let amount = app.textFields["transactionAmount"]
         enter("75", into: amount)
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
+        assertTouchTarget(dismissal)
+        captureScreenshot("草稿丢弃后新交易数字键盘")
+        tap(dismissal)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "75")
+        tap(amount)
         amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         app.terminate()
