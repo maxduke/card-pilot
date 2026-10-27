@@ -217,11 +217,22 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         capture("交易写入\(profile.rawValue)-快速商户输入")
         // Exercise the existing scene-phase flush while the editor is still open.
         XCUIDevice.shared.press(.home)
-        let state = app.state
-        if state != .runningBackground && state != .runningBackgroundSuspended {
-            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10)
-                          || app.state == .runningBackgroundSuspended)
-        }
+        let stateAfterHome = app.state
+        let backgrounded = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                let state = self.app.state
+                return state == .runningBackground || state == .runningBackgroundSuspended
+            }, object: app
+        )
+        let backgroundResult = XCTWaiter.wait(for: [backgrounded], timeout: 10)
+        attach("""
+            stateAfterHome=\(stateAfterHome.rawValue)
+            stateAfterWait=\(app.state.rawValue)
+            springboardState=\(XCUIApplication(bundleIdentifier: "com.apple.springboard").state.rawValue)
+            backgroundWait=\(backgroundResult.rawValue)
+            """, named: "writing-background-state")
+        capture("交易写入\(profile.rawValue)-后台状态确认")
+        XCTAssertEqual(backgroundResult, .completed)
         app.terminate()
         app.launch()
         assertHome()
