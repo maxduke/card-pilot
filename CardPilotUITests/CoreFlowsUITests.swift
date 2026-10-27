@@ -3632,22 +3632,33 @@ final class CoreFlowsUITests: XCTestCase {
         let lastFour = app.textFields["末四位"]
         let lastFourError = app.staticTexts.matching(identifier: "card.lastFour.error").firstMatch
         replaceText("", in: product)
-        // Start inside the focused row: the Form's AX frame includes an outer
-        // gutter where a drag may never reach the scroll view's pan recognizer.
+        // Keep the scroll gesture off the focused text field and the Form's
+        // outer gutter. Use a visible, non-editable row in this same Form.
         let contentTop = max(navigationBar.frame.maxY, form.frame.minY)
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let productFrame = product.frame
-        XCTAssertGreaterThan(productFrame.midY, contentTop)
-        XCTAssertLessThan(productFrame.midY, keyboard.frame.minY)
-        let dragX = productFrame.midX - app.frame.minX
-        let startY = productFrame.midY - app.frame.minY
+        let selectedNetwork = app.buttons["其他，已选择"]
+        XCTAssertTrue(selectedNetwork.waitForExistence(timeout: 5))
+        let viewport = CGRect(x: form.frame.minX, y: contentTop,
+                              width: form.frame.width, height: keyboard.frame.minY - contentTop)
+        let visibleRow = selectedNetwork.frame.intersection(viewport)
+        XCTAssertGreaterThanOrEqual(visibleRow.width, 44)
+        XCTAssertGreaterThanOrEqual(visibleRow.height, 44)
+        let dragX = visibleRow.midX - app.frame.minX
+        let startY = visibleRow.midY - app.frame.minY
         let endY = contentTop + 24 - app.frame.minY
+        XCTAssertGreaterThan(startY - endY, 44)
+        let geometry = XCTAttachment(string: "row=\(selectedNetwork.frame); viewport=\(viewport); visible=\(visibleRow); drag=(\(dragX), \(startY)) -> (\(dragX), \(endY))")
+        geometry.name = "\(prefix)卡片文本键盘滚动几何"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        captureScreenshot("\(prefix)卡片文本键盘滚动前")
         origin.withOffset(CGVector(dx: dragX, dy: startY)).press(
             forDuration: 0.05,
             thenDragTo: origin.withOffset(CGVector(dx: dragX, dy: endY)),
             withVelocity: .slow, thenHoldForDuration: 0.2
         )
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5))
+        captureScreenshot("\(prefix)卡片文本键盘滚动后")
         focusLastFour(lastFour, navigationBar: navigationBar, form: form, dismissal: dismissal,
                           screenshot: "\(prefix)卡片末四位焦点准备")
         let previousLastFour = lastFour.value as? String ?? ""
