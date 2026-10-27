@@ -225,14 +225,16 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
             }, object: app
         )
         let backgroundResult = XCTWaiter.wait(for: [backgrounded], timeout: 10)
+        let stateAfterWait = app.state
         attach("""
             stateAfterHome=\(stateAfterHome.rawValue)
-            stateAfterWait=\(app.state.rawValue)
+            stateAfterWait=\(stateAfterWait.rawValue)
             springboardState=\(XCUIApplication(bundleIdentifier: "com.apple.springboard").state.rawValue)
             backgroundWait=\(backgroundResult.rawValue)
             """, named: "writing-background-state")
         capture("交易写入\(profile.rawValue)-后台状态确认")
-        XCTAssertEqual(backgroundResult, .completed)
+        XCTAssertTrue(stateAfterWait == .runningBackground || stateAfterWait == .runningBackgroundSuspended,
+                      "Expected a background app after Home; state=\(stateAfterWait.rawValue), wait=\(backgroundResult.rawValue)")
         app.terminate()
         app.launch()
         assertHome()
