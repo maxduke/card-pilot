@@ -4,12 +4,7 @@ on:
   push:
     branches: [diagnose/transaction-writing]
     paths:
-      - .github/workflows/diagnostic-transaction-writing.yml
-      - CardPilot/Features/Transactions/TransactionsView.swift
-      - CardPilotUITests/CoreFlowsUITests.swift
-      - CardPilotUITests/TransactionWritingPerformanceUITests.swift
-      - PLAN.md
-      - docs/ux-transaction-writing-performance-2026-10-27.md
+      - .github/diagnostics/transaction-writing-small-trigger
   workflow_dispatch:
     inputs:
       profile:
