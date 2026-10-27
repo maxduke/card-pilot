@@ -1,0 +1,65 @@
+name: Transaction Writing Debug UI Regressions
+
+on:
+  push:
+    branches: [diagnose/transaction-writing]
+    paths:
+      - .github/workflows/diagnostic-transaction-writing-ui.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-writing-debug-ui-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  focused-ui:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record device and source
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          xcodebuild -version | tee evidence/xcode-version.txt
+          sw_vers > evidence/macos-version.txt
+          git rev-parse HEAD > evidence/source-revision.txt
+          xcrun simctl list devices available -j > evidence/simulators.json
+          device_id=$(python3 -c 'import json; devices=json.load(open("evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          echo "DIAGNOSTIC_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+      - name: Run focused Debug UI regressions
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilot \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DIAGNOSTIC_DEVICE_ID" \
+            -resultBundlePath FocusedUIResults.xcresult \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testDiscardDraftDoesNotCreateTransaction \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee evidence/xcodebuild.log
+      - name: Export original UI results
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path FocusedUIResults.xcresult > evidence/summary.json
+          xcrun xcresulttool export attachments --path FocusedUIResults.xcresult --output-path evidence/test-attachments
+      - name: Upload focused UI evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-writing-debug-ui-evidence
+          path: |
+            FocusedUIResults.xcresult
+            evidence
+          retention-days: 7
+          if-no-files-found: warn
