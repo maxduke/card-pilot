@@ -41,6 +41,13 @@ Pro 日志有一次 60.05 秒的原生空闲等待，随后提示未收到动画
 既有促销概览一项 240 秒超时，零跳过、未重派该 workflow；超时后发生一次测试进程重启。
 失败发生在 `UI Reached` 详情的导航栏返回动作，不能将此前的列表层级当作失败时状态。
 补修及原生进程证据边界见[导航验证记录](ux-native-promotion-navigation-2026-10-27.md)。
-银行选择实现未修改正式 workflow 或用例额度；交付补修追加失败采样，完整 main 门禁仍待恢复。
+银行选择实现未修改正式 workflow 或用例额度；交付补修追加失败采样。
+
+[补修 #65](https://github.com/maxduke/card-pilot/pull/65) 的最终 HEAD `38bb0c5` 在
+[PR CI 40444557384](https://github.com/maxduke/card-pilot/actions/runs/40444557384) 与合并提交 `9e9bdc5` 的
+[main CI 40457020639](https://github.com/maxduke/card-pilot/actions/runs/40457020639) 均完整通过 322 项，
+零失败、跳过、用例／workflow 重跑、进程重启或超时。
+该次 PR 的银行九张、促销十张及卡片纠错十六张原图、五份实际几何附件已全部实际验收，
+适用审查及全 PR 未解决发现检查为空；原干净 main 已快进到验证后的合并提交，本批交付完成。
 
 原有大字号编辑页导航标题的省略继续作为 O18 后续；模拟器原图和辅助标签不代替真实设备与 VoiceOver 朗读验收。
