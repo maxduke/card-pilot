@@ -1,0 +1,89 @@
+name: Card feedback keyboard diagnostics
+
+on:
+  push:
+    branches: [diagnose/promotion-card-keyboard]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promotion-card-keyboard-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run the two complete card feedback keyboard flows with native process evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-diagnostics
+          xcodebuild -version
+          read -r device_id device_state < <(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; device=next(d for d in devices if d["name"] == "iPhone 16 Pro"); print(device["udid"], device["state"])')
+          if test "$device_state" != Booted; then
+            xcrun simctl boot "$device_id"
+          fi
+          xcrun simctl bootstatus "$device_id" -b
+          xcrun simctl spawn "$device_id" log stream --style compact --level info \
+            --predicate 'process == "CardPilot" OR (process == "testmanagerd" AND messageType == error)' \
+            > native-diagnostics/simulator.log 2>&1 &
+          log_stream_pid=$!
+          (
+            sample_index=0
+            while true; do
+              date -u '+%Y-%m-%dT%H:%M:%SZ'
+              app_pids=$(pgrep -f '/CardPilot[.]app/CardPilot' || true)
+              for app_pid in $app_pids; do
+                ps -p "$app_pid" -o pid,ppid,etime,time,%cpu,%mem,state,comm || true
+                sample "$app_pid" 1 -file "native-diagnostics/app-${sample_index}-${app_pid}.sample.txt" || true
+              done
+              if test -n "$app_pids"; then
+                xcrun simctl io "$device_id" screenshot "native-diagnostics/screen-${sample_index}.png" || true
+              fi
+              sample_index=$((sample_index + 1))
+              sleep 20
+            done
+          ) > native-diagnostics/process-timeline.log 2>&1 &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" "$log_stream_pid" 2>/dev/null || true' EXIT
+          set +e
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilot \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -resultBundlePath TestResults.xcresult \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorFieldFeedbackAndCorrectedSave \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testCardEditorFieldFeedbackAtLargestTextSizeAndDiscard \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee native-diagnostics/xcodebuild.log
+          test_result=${PIPESTATUS[0]}
+          set -e
+          exit "$test_result"
+      - name: Export native test evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
+      - name: Upload native evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: promotion-card-keyboard-diagnostics
+          path: |
+            native-diagnostics
+            TestResults.xcresult
+            summary.json
+            test-attachments
+          retention-days: 7
+          if-no-files-found: error
