@@ -28,7 +28,11 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         continueAfterFailure = false
         // Ten measured samples and XCTest's warm-up, including unmeasured form
         // setup and recovery assertions. Existing read benchmarks stay at 600s.
+        #if TRANSACTION_WRITING_DIAGNOSTIC
+        executionTimeAllowance = 600
+        #else
         executionTimeAllowance = 1_200
+        #endif
         app = XCUIApplication()
         app.launchArguments = [
             "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
@@ -65,7 +69,11 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
 
     private var options: XCTMeasureOptions {
         let options = XCTMeasureOptions()
+        #if TRANSACTION_WRITING_DIAGNOSTIC
+        options.iterationCount = 1
+        #else
         options.iterationCount = 10
+        #endif
         options.invocationOptions = [.manuallyStart, .manuallyStop]
         return options
     }
@@ -91,11 +99,16 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transaction.Baseline Latest"].waitForExistence(timeout: 30))
         app.tabBars.buttons["首页"].tap()
         assertHome()
+        #if TRANSACTION_WRITING_DIAGNOSTIC
+        let sampleDescription = "diagnostic only: one effective sample when measured; standalone background case has no metrics; not a baseline"
+        #else
+        let sampleDescription = "10 (XCTest warm-up excluded)"
+        #endif
         attach("""
             session=\(session)
             scenario=\(profile.scenario)
             initialTransactions=\(profile.rawValue)
-            samples=10 (XCTest warm-up excluded)
+            samples=\(sampleDescription)
             locale=zh_CN; homeTimeZone=Asia/Shanghai; textSize=large
             clockIncludes=UI automation and readiness/value assertions
             DraftSave=validation, JSON encoding, size check, atomic protected write
@@ -219,6 +232,9 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         let foregroundApp = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
         foregroundApp.activate()
         XCTAssertEqual(foregroundApp.state, .runningForeground)
+        #if TRANSACTION_WRITING_DIAGNOSTIC
+        diagnosticMark("background-after-metrics")
+        #endif
         let stateAfterSwitch = app.state
         let backgrounded = XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in
@@ -294,6 +310,9 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
             XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 30))
             XCTAssertEqual(save.label, "确认并保存")
             startMeasuring()
+            #if TRANSACTION_WRITING_DIAGNOSTIC
+            diagnosticMark("save-commit")
+            #endif
             save.tap()
             XCTAssertTrue(app.navigationBars["添加交易"].waitForNonExistence(timeout: 30))
             stopMeasuring()
@@ -335,6 +354,9 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 30))
         search.tap()
+        #if TRANSACTION_WRITING_DIAGNOSTIC
+        diagnosticMark("search-readback")
+        #endif
         search.typeText(merchant + "\n")
         assertResultCount(1)
         let row = app.buttons["transaction.\(merchant)"]
@@ -388,5 +410,54 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
     }
+
+    #if TRANSACTION_WRITING_DIAGNOSTIC
+    func testLargeBackgroundWithoutMetrics() {
+        prepare(.large)
+        openEditor()
+        fill(merchant: merchantText)
+        let foreground = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        foreground.activate()
+        XCTAssertEqual(foreground.state, .runningForeground)
+        diagnosticMark("background-without-metrics")
+        let stateAfterSwitch = app.state
+        let backgrounded = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                let state = self.app.state
+                return state == .runningBackground || state == .runningBackgroundSuspended
+            }, object: app
+        )
+        let result = XCTWaiter.wait(for: [backgrounded], timeout: 10)
+        let stateAfterWait = app.state
+        attach("""
+            diagnostic=no-metrics
+            stateAfterSwitch=\(stateAfterSwitch.rawValue)
+            stateAfterWait=\(stateAfterWait.rawValue)
+            freshApplicationState=\(XCUIApplication(bundleIdentifier: "com.maxduke.CardPilot").state.rawValue)
+            foregroundApplicationState=\(foreground.state.rawValue)
+            backgroundWait=\(result.rawValue)
+            """, named: "diagnostic-background-without-metrics")
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "诊断无测量后台状态"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        XCTAssertTrue(stateAfterWait == .runningBackground || stateAfterWait == .runningBackgroundSuspended)
+        app.terminate()
+        app.launch()
+        assertHome()
+        app.tabBars.buttons["记一笔"].tap()
+        assertDraftSummary(merchant: merchantText)
+        assertRestoredFields(merchant: merchantText)
+        capture("诊断无测量重启草稿读回")
+        discardEditor()
+    }
+
+    private func diagnosticMark(_ phase: String) {
+        let session = app.launchEnvironment["CARDPILOT_UI_SESSION"] ?? "missing"
+        let timestamp = ISO8601DateFormatter().string(from: .now)
+        let line = "CARDPILOT_WRITING_DIAGNOSTIC phase=\(phase) session=\(session) timestamp=\(timestamp)\n"
+        FileHandle.standardOutput.write(Data(line.utf8))
+    }
+    #endif
 }
 #endif

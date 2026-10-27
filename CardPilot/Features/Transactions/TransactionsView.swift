@@ -1233,6 +1233,10 @@ struct TransactionEditorForm: View {
         }
         .onChange(of: draftSnapshot) { _, _ in persistDraft() }
         .onChange(of: scenePhase) { _, phase in
+            #if TRANSACTION_WRITING_DIAGNOSTIC
+            let session = ProcessInfo.processInfo.environment["CARDPILOT_UI_SESSION"] ?? "missing"
+            PerformanceSignposts.lifecycle.notice("session=\(session, privacy: .public) phase=\(String(describing: phase), privacy: .public) applicationState=\(UIApplication.shared.applicationState.rawValue)")
+            #endif
             if phase != .active { persistDraft() }
         }
         .task { if transaction == nil { focusedInput = .amount } }

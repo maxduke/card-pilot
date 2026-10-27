@@ -1,0 +1,119 @@
+name: iOS Writing Lifecycle Diagnostic
+
+on:
+  push:
+    branches: [diagnose/writing-lifecycle-trace]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-writing-lifecycle-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate performance report calculations
+        run: python3 -m unittest discover -s scripts/tests -p 'test_performance_summary.py'
+      - name: Record configuration and device
+        run: |
+          set -euo pipefail
+          mkdir -p writing-diagnostic-evidence
+          xcodebuild -version | tee writing-diagnostic-evidence/xcode-version.txt
+          sw_vers > writing-diagnostic-evidence/macos-version.txt
+          system_profiler SPHardwareDataType > writing-diagnostic-evidence/host-hardware.txt
+          xcrun simctl list devices available -j > writing-diagnostic-evidence/simulators.json
+          device_id=$(python3 -c 'import json; devices=json.load(open("writing-diagnostic-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          echo "BENCH_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+          git rev-parse HEAD > writing-diagnostic-evidence/source-revision.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > writing-diagnostic-evidence/started-at.txt
+          xcrun xcresulttool help get test-results metrics > writing-diagnostic-evidence/metrics-help.txt
+          xcodebuild -project CardPilot.xcodeproj -scheme CardPilotPerformance \
+            -configuration Release -destination "platform=iOS Simulator,id=$device_id" \
+            -showBuildSettings -json SWIFT_ACTIVE_COMPILATION_CONDITIONS='PERFORMANCE_TESTING TRANSACTION_WRITING_DIAGNOSTIC' \
+            CODE_SIGNING_ALLOWED=NO > writing-diagnostic-evidence/build-settings.json
+          python3 - <<'PY'
+          import json
+          settings = json.load(open("writing-diagnostic-evidence/build-settings.json"))
+          app = next(item["buildSettings"] for item in settings if item["target"] == "CardPilot")
+          assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
+          assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+          assert app.get("ENABLE_TESTABILITY", "NO") == "NO", app.get("ENABLE_TESTABILITY")
+          flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+          assert {"PERFORMANCE_TESTING", "TRANSACTION_WRITING_DIAGNOSTIC"} <= set(flags) and "DEBUG" not in flags, flags
+          PY
+      - name: Run bounded diagnostic with native lifecycle and app stacks
+        run: |
+          set -euo pipefail
+          : > writing-diagnostic-evidence/xcodebuild.log
+          xcrun simctl boot "$BENCH_DEVICE_ID" || true
+          xcrun simctl bootstatus "$BENCH_DEVICE_ID" -b
+          xcrun simctl spawn "$BENCH_DEVICE_ID" log stream --level debug --style json \
+            --predicate 'subsystem == "com.maxduke.CardPilot.performance" AND category == "Lifecycle"' \
+            > writing-diagnostic-evidence/lifecycle.json 2> writing-diagnostic-evidence/lifecycle-stream.log &
+          lifecycle_pid=$!
+          python3 -u scripts/capture_writing_diagnostic.py \
+            writing-diagnostic-evidence/xcodebuild.log writing-diagnostic-evidence/app-samples \
+            > writing-diagnostic-evidence/sample-monitor.log 2>&1 &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" "$lifecycle_pid" 2>/dev/null || true; wait "$sampler_pid" 2>/dev/null || true; wait "$lifecycle_pid" 2>/dev/null || true' EXIT
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilotPerformance -configuration Release \
+            -destination "platform=iOS Simulator,id=$BENCH_DEVICE_ID" \
+            -resultBundlePath WritingDiagnosticResults.xcresult \
+            -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testLargeBackgroundWithoutMetrics \
+            -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testLargeMerchantInput \
+            -only-testing:CardPilotUITests/TransactionWritingPerformanceUITests/testLargeTransactionSave \
+            -parallel-testing-enabled NO -enableCodeCoverage NO \
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 600 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='PERFORMANCE_TESTING TRANSACTION_WRITING_DIAGNOSTIC' \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee writing-diagnostic-evidence/xcodebuild.log
+      - name: Export native measurements and fixture reports
+        if: always()
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path WritingDiagnosticResults.xcresult > writing-diagnostic-evidence/summary.json
+          xcrun xcresulttool get test-results metrics --path WritingDiagnosticResults.xcresult > writing-diagnostic-evidence/metrics.json
+          xcrun xcresulttool export attachments --path WritingDiagnosticResults.xcresult --output-path writing-diagnostic-evidence/attachments
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          simulators = json.load(open("writing-diagnostic-evidence/simulators.json"))["devices"]
+          device = next(device for devices in simulators.values() for device in devices if device["udid"] == os.environ["BENCH_DEVICE_ID"])
+          source = pathlib.Path(device["dataPath"])
+          destination = pathlib.Path("writing-diagnostic-evidence/fixtures")
+          destination.mkdir(parents=True, exist_ok=True)
+          # Read the recorded device's files even after a failed run shuts it down.
+          for report in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
+              shutil.copyfile(report, destination / f"{report.parent.name}.json")
+          errors = pathlib.Path("writing-diagnostic-evidence/fixture-errors")
+          errors.mkdir(parents=True, exist_ok=True)
+          for error in source.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture-error.txt"):
+              shutil.copyfile(error, errors / f"{error.parent.name}.txt")
+          PY
+      - name: Record diagnostic scope
+        if: always()
+        run: |
+          echo "Diagnostic only: one effective sample in measured cases; standalone background case has no metrics. App sampling perturbs timings. This run cannot become a baseline." >> "$GITHUB_STEP_SUMMARY"
+          if test -f writing-diagnostic-evidence/summary.json; then
+            cat writing-diagnostic-evidence/summary.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload raw performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-writing-lifecycle-diagnostic-results
+          path: |
+            WritingDiagnosticResults.xcresult
+            writing-diagnostic-evidence
+          retention-days: 14
+          if-no-files-found: error
