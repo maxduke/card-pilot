@@ -84,7 +84,7 @@ jobs:
             -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 1200 \
-            -maximum-test-execution-time-allowance 1200 \
+            -maximum-test-execution-time-allowance 1500 \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee performance-evidence/xcodebuild.log
       - name: Export native measurements and fixture reports

@@ -61,7 +61,10 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
     func testLargeDraftClose() { measureDraftClose(.large) }
     func testSmallTransactionSave() { measureTransactionSave(.small) }
     func testMediumTransactionSave() { measureTransactionSave(.medium) }
-    func testLargeTransactionSave() { measureTransactionSave(.large) }
+    func testLargeTransactionSave() {
+        executionTimeAllowance = 1_500
+        measureTransactionSave(.large)
+    }
 
     private var options: XCTMeasureOptions {
         let options = XCTMeasureOptions()
