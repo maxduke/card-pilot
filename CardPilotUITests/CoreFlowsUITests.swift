@@ -895,7 +895,7 @@ final class CoreFlowsUITests: XCTestCase {
         ]
         var normalHeight: CGFloat = 0
         for (name, expected) in examples {
-            openPromotion(name)
+            openPromotionFromList(name)
             let remaining = app.staticTexts["promotion.remaining.\(name)"]
             XCTAssertTrue(remaining.waitForExistence(timeout: 10))
             XCTAssertEqual(remaining.label, expected)
@@ -920,6 +920,7 @@ final class CoreFlowsUITests: XCTestCase {
             }
             captureScreenshot("促销详情-\(name)")
             tap(app.navigationBars[name].buttons["促销"])
+            XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
         }
 
         relaunchAtLargestTextSize()
@@ -936,7 +937,7 @@ final class CoreFlowsUITests: XCTestCase {
         dragStart.press(forDuration: 0.05, thenDragTo: dragEnd,
                         withVelocity: .slow, thenHoldForDuration: 0.2)
         captureScreenshot("最大字号促销列表滚动后有效期")
-        openPromotion("UI Spend")
+        openPromotionFromList("UI Spend")
         let remaining = app.staticTexts["promotion.remaining.UI Spend"]
         XCTAssertTrue(remaining.waitForExistence(timeout: 10))
         XCTAssertTrue(remaining.isHittable)
@@ -4437,6 +4438,10 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openPromotion(_ name: String) {
         tap(app.tabBars.buttons["促销"])
+        openPromotionFromList(name)
+    }
+
+    private func openPromotionFromList(_ name: String) {
         let navigationBar = app.navigationBars["促销"]
         XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
         let promotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
