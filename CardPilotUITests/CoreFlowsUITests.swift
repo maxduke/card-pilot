@@ -4,9 +4,11 @@ import UIKit
 @MainActor
 final class CoreFlowsUITests: XCTestCase {
     private var app: XCUIApplication!
+    private var didTimeOutEvaluatingUIQuery = false
     private let allocationFeedbackFirstTitle = "星河信用卡境内外旅行住宿与日常消费累计达标返现活动"
 
     override func setUpWithError() throws {
+        didTimeOutEvaluatingUIQuery = false
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["CARDPILOT_UI_SESSION"] = UUID().uuidString
@@ -20,12 +22,24 @@ final class CoreFlowsUITests: XCTestCase {
         ]
     }
 
+    override func record(_ issue: XCTIssue) {
+        if issue.compactDescription.contains("Timed out while evaluating UI query") {
+            didTimeOutEvaluatingUIQuery = true
+        }
+        super.record(issue)
+    }
+
     override func tearDownWithError() throws {
         if let testRun, testRun.failureCount > 0 {
-            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.lifetime = .keepAlways
             add(screenshot)
-            let hierarchy = XCTAttachment(string: app.debugDescription)
+            // A query that already timed out cannot supply a reliable AX dump.
+            // Keep the original failure and a screen capture without another AX
+            // request consuming teardown's remaining execution allowance.
+            let hierarchy = XCTAttachment(string: didTimeOutEvaluatingUIQuery
+                ? "The test reported an accessibility query timeout. Captured the screen without requesting another app accessibility snapshot; see the original issue and app-idle diagnostics."
+                : app.debugDescription)
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
         }

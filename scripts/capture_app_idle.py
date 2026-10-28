@@ -1,4 +1,4 @@
-"""Capture native app evidence once XCTest reports an app-idle timeout."""
+"""Capture bounded native app evidence per test after app-idle timeouts."""
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,22 +20,10 @@ def run(command, timeout=10):
     return result.stdout
 
 
-def main():
-    log_path, device_id = sys.argv[1:]
-    with open(log_path) as log:
-        line = ""
-        while True:
-            line += log.readline()
-            if not line.endswith("\n"):
-                time.sleep(0.25)
-                continue
-            if "App event loop idle notification not received" in line:
-                break
-            line = ""
-
-    evidence = Path("app-idle-diagnostics")
-    evidence.mkdir(exist_ok=True)
-    trigger = f"{datetime.now(timezone.utc).isoformat()}\n{line}"
+def capture(line, test_case, device_id, index):
+    evidence = Path("app-idle-diagnostics") / f"capture-{index:02d}"
+    evidence.mkdir(parents=True, exist_ok=True)
+    trigger = f"{datetime.now(timezone.utc).isoformat()}\n{test_case}\n{line}"
     (evidence / "trigger.txt").write_text(trigger)
     print(trigger, flush=True)
     app_pids = run(["pgrep", "-f", "/CardPilot[.]app/CardPilot"])
@@ -44,6 +32,30 @@ def main():
             run(["ps", "-p", pid, "-o", "pid,ppid,etime,time,%cpu,%mem,state,comm"])
             run(["sample", pid, "1", "-file", str(evidence / f"app-{pid}.sample.txt")])
     run(["xcrun", "simctl", "io", device_id, "screenshot", str(evidence / "screen.png")], timeout=15)
+
+
+def main():
+    log_path, device_id = sys.argv[1:]
+    captured_tests = set()
+    test_case = "Unknown test case"
+    with open(log_path) as log:
+        line = ""
+        while True:
+            line += log.readline()
+            if not line.endswith("\n"):
+                time.sleep(0.25)
+                continue
+            if line.startswith("Test Case '") and line.rstrip().endswith(" started."):
+                test_case = line.strip()
+            if "App event loop idle notification not received" in line and test_case not in captured_tests:
+                captured_tests.add(test_case)
+                capture(line, test_case, device_id, len(captured_tests))
+                # Bound diagnostic work without letting an earlier test consume
+                # the only capture opportunity for the rest of the suite.
+                if len(captured_tests) == 8:
+                    print("Reached the eight-test diagnostic capture limit.", flush=True)
+                    return
+            line = ""
 
 
 if __name__ == "__main__":
