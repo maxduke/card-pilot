@@ -961,8 +961,11 @@ final class CoreFlowsUITests: XCTestCase {
 
         #if PROMOTION_RETURN_AUDIT_AFTER_LOOP
         openPromotionFromList("UI Spend")
-        XCTAssertEqual(app.staticTexts["promotion.remaining.UI Spend"].label, "还需 1,000 CNY")
-        XCTAssertTrue(app.staticTexts["达标奖励以银行规则为准"].isHittable)
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+        let detail = app.collectionViews.containing(.button, identifier: "recordPromotionTransaction").element
+        XCTAssertTrue(detail.waitForExistence(timeout: 10))
+        XCTAssertEqual(detail.staticTexts["promotion.remaining.UI Spend"].label, "还需 1,000 CNY")
+        XCTAssertTrue(detail.staticTexts["达标奖励以银行规则为准"].isHittable)
         try auditAccessibility(for: [.textClipped])
         captureScreenshot("正常字号循环结束后文字裁切审计")
         #endif
