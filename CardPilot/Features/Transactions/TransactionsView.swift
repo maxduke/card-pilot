@@ -1,4 +1,7 @@
 import SwiftData
+#if PERFORMANCE_TESTING && targetEnvironment(simulator)
+import os
+#endif
 import SwiftUI
 import UIKit
 
@@ -1334,6 +1337,18 @@ struct TransactionEditorForm: View {
                 .padding(.vertical, 10)
                 .disabled(!isAmountPositive || selectedCard == nil)
                 .accessibilityIdentifier("saveTransaction")
+                if isNumericInputFocused {
+                    HStack {
+                        Spacer()
+                        Button { focusedInput = nil } label: {
+                            Text("收起键盘")
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("transaction.keyboard.dismiss")
+                    }
+                    .padding(.horizontal, 16)
+                }
             }
             .background(.bar, ignoresSafeAreaEdges: .bottom)
         }
@@ -1679,14 +1694,6 @@ struct TransactionEditorForm: View {
                 Button("关闭", action: closeNewTransaction)
             } else {
                 EditorCancelButton()
-            }
-        }
-        if isNumericInputFocused {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("收起键盘") { focusedInput = nil }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityIdentifier("transaction.keyboard.dismiss")
             }
         }
     }
@@ -2522,6 +2529,11 @@ enum TransactionEditActions {
     static func save(values: TransactionEditValues, transaction: Transaction?, newID: UUID, card: Card,
                      original: Transaction?, allocations: [(promotion: Promotion, amount: Decimal)],
                      context: ModelContext, persist: (ModelContext) throws -> Void = { try $0.save() }) throws -> Transaction {
+        #if PERFORMANCE_TESTING && targetEnvironment(simulator)
+        let signposter = PerformanceSignposts.transactions
+        let interval = signposter.beginInterval("TransactionCommit", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("TransactionCommit", interval) }
+        #endif
         // Validate values before managed relationships can insert any new objects.
         try values.validate()
         if let original {
