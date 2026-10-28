@@ -1773,8 +1773,18 @@ final class CoreFlowsUITests: XCTestCase {
         tap(recordRefund)
         tap(app.buttons["丢弃草稿并新建"])
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        let dismissal = app.buttons["transaction.keyboard.dismiss"]
+        XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
+        assertTouchTarget(dismissal)
+        tap(dismissal)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        reveal(app.segmentedControls.firstMatch, fullyVisible: true,
+               navigationBar: app.navigationBars["添加交易"],
+               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch,
+               contentContainer: app.collectionViews["transaction.form"])
         XCTAssertTrue(app.segmentedControls.buttons["退款"].isSelected)
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
+        captureScreenshot("丢弃无关草稿后退款类型及币种")
         selectTransactionCard("UI Primary")
         selectTransactionCard("UI Foreign")
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "CNY")
@@ -3390,6 +3400,10 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(toggle, fullyVisible: true, navigationBar: navigationBar, contentContainer: contentContainer)
         XCTAssertEqual(toggle.value as? String, enabled ? "0" : "1")
         toggle.switches.firstMatch.tap()
+        let changed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", enabled ? "1" : "0"), object: toggle
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
         XCTAssertEqual(toggle.value as? String, enabled ? "1" : "0")
     }
 
