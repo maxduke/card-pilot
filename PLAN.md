@@ -6,6 +6,8 @@
 
 数字键盘入口改用既有固定底栏，普通／最大字号专项及 44 点目标已通过。后台观察和未测量输入准备按真实失败补齐有界等待，所有精确状态／值断言、重启读回和测量窗口保留。[完整写入运行](https://github.com/maxduke/card-pilot/actions/runs/40609227526) 已通过十二项，60 组指标各十个有效样本，零失败、跳过、重跑、进程重启或超时；24 张该次原图已逐张验收。实际测量诊断源码 `636241a` 对应正式源码 `d80196c`，只相差临时 workflow，不作为后续 PR／main 的性能测量。正式 [PR #67](https://github.com/maxduke/card-pilot/pull/67) 首次必跑为 231 项单元／集成全过、UI 93／95，两张失败原图已检查；补齐日期开关的精确状态等待及退款类型控件的可见区域定位后，[两项完整专项](https://github.com/maxduke/card-pilot/actions/runs/40637841700) 已通过，四张原图已逐张验收，原业务断言及重启后的已还款事实保留。真实失败继续保留，最终 HEAD `2947e6a` 的正式 PR CI 已完整通过 326 项，八张相关原图已逐张验收；合并提交 `755b57e` 的 main 为 325／326，通过的 PR 不替代失败的主线。促销详情原生返回的原因尚未确定，当前补齐逐用例采样及查询超时后的失败截图，全部 95 项 UI 方法和原执行额度保留。详见[原生失败取证补修](docs/ux-native-failure-evidence-2026-10-28.md)，等待当前补修的完整 PR／main 门禁。
 
+取证补修 [PR #68](https://github.com/maxduke/card-pilot/pull/68) 的 `8398d9d` 已完整通过 326 项、20 张原图已逐张验收，合并为 `737ffb9`；其 main 两次均在分配 runner 阶段取消，未执行测试。当前按 GitHub 明确的 ARM 容量提示，把常规 CI 改用提供相同 Xcode／模拟器的 macOS 15 Intel runner，继续完整门禁，范围见[容量恢复记录](docs/ci-macos-runner-capacity-2026-10-29.md)。
+
 ## 已完成 UX 第三十三批：完整编辑状态与账户标题（2026-10-27）
 
 基于完整通过 322 项的主线 `9e9bdc5`，账户和卡片编辑器在辅助字号展开原生状态选项，普通字号保留菜单；账户辅助字号沿用原生内联标题，完整显示“编辑信用卡账户”。复用既有状态、关闭日期、保存与放弃，不改变业务规则。两机型三轮原生预检的 58 张原图已逐张实际检查，其中 52 张来自完整通过流程；真实失败保留。[PR #66](https://github.com/maxduke/card-pilot/pull/66) 的 HEAD `6c9678c` 在 [PR CI](https://github.com/maxduke/card-pilot/actions/runs/40471263109) 与合并提交 `2830567` 的 [main CI](https://github.com/maxduke/card-pilot/actions/runs/40489498279) 均完整通过 231＋95＝326 项，零失败、跳过、重跑、进程重启或超时。17 张当前绿色 HEAD 原图已逐张验收，无未解决的适用审查或可操作发现，原干净 main 已快进同步。见[第三十三批记录](docs/ux-accessible-editor-status-2026-10-26.md)。

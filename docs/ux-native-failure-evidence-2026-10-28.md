@@ -27,3 +27,5 @@ SwiftUI 无障碍视图更新路径，采样期间主线程使用 3.849 秒 CPU�
 本地检查覆盖 Swift 条件语法、分段日志、跨测试继续采样、重复事件去重、采样失败后继续截图、八项上限，
 并核对监听不会改变构建成功或失败的退出状态。这些检查不替代 Apple SDK 编译、实际无响应进程或完整原生回归。
 接下来以当前 HEAD 的完整 326 项、相关原图、适用审查和合并后的完整主线作为交付门禁；本补修不宣称修复了原生返回卡住。
+
+[PR #68](https://github.com/maxduke/card-pilot/pull/68) 的 `8398d9d` 已在 [正式 CI](https://github.com/maxduke/card-pilot/actions/runs/40701211159) 完整通过 326 项，20 张当前原图已逐张实际验收，合并为 `737ffb9`。两个通过用例的内部点击恢复单独记录。合并后的两次运行均因 GitHub macOS arm64 runner 分配失败而在测试前取消，尚未验证主线；实际取消证据与常规 CI 恢复范围见[runner 容量恢复](ci-macos-runner-capacity-2026-10-29.md)。
