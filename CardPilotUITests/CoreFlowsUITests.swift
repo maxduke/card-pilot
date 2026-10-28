@@ -903,7 +903,13 @@ final class CoreFlowsUITests: XCTestCase {
     func testPromotionOverviewPrioritizesProgressAndDistinguishesLimits() throws {
         // Run 40156564277 completed all five details and the largest-text
         // flow, then reached 180.892s in teardown. Keep the existing 240s max.
+        #if PROMOTION_RETURN_DIAGNOSTIC
+        executionTimeAllowance = 600
+        let returnRounds = 3
+        #else
         executionTimeAllowance = 240
+        let returnRounds = 1
+        #endif
         launch("promotionOverview")
         tap(app.tabBars.buttons["促销"])
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
@@ -916,34 +922,50 @@ final class CoreFlowsUITests: XCTestCase {
             ("UI Exhausted", "优惠次数已用完")
         ]
         var normalHeight: CGFloat = 0
-        for (name, expected) in examples {
-            openPromotionFromList(name)
-            let remaining = app.staticTexts["promotion.remaining.\(name)"]
-            XCTAssertTrue(remaining.waitForExistence(timeout: 10))
-            XCTAssertEqual(remaining.label, expected)
-            // These assertions deliberately precede any scrolling: ordinary
-            // detail pages must show the result and deadline on their first screen.
-            XCTAssertTrue(remaining.isHittable)
-            let endDate = app.staticTexts["promotion.endDate"]
-            XCTAssertTrue(endDate.isHittable)
-            XCTAssertTrue(endDate.label.contains("结束日期"))
-            XCTAssertGreaterThanOrEqual(endDate.frame.minY, app.navigationBars[name].frame.maxY)
-            XCTAssertLessThan(endDate.frame.maxY, app.tabBars.firstMatch.frame.minY)
-            let record = app.buttons["recordPromotionTransaction"]
-            XCTAssertTrue(record.exists)
-            XCTAssertLessThan(remaining.frame.maxY, record.frame.minY)
-            if name == "UI Spend" {
-                normalHeight = remaining.frame.height
-                XCTAssertTrue(app.staticTexts["达标奖励以银行规则为准"].isHittable)
-                try auditAccessibility(for: [.textClipped])
+        for round in 0..<returnRounds {
+            let checkpoint = XCTAttachment(string: "round=\(round + 1); normal-size five-detail return loop")
+            checkpoint.name = "原生促销返回对照轮次"
+            checkpoint.lifetime = .keepAlways
+            add(checkpoint)
+            for (name, expected) in examples {
+                openPromotionFromList(name)
+                let remaining = app.staticTexts["promotion.remaining.\(name)"]
+                XCTAssertTrue(remaining.waitForExistence(timeout: 10))
+                XCTAssertEqual(remaining.label, expected)
+                // These assertions deliberately precede any scrolling: ordinary
+                // detail pages must show the result and deadline on their first screen.
+                XCTAssertTrue(remaining.isHittable)
+                let endDate = app.staticTexts["promotion.endDate"]
+                XCTAssertTrue(endDate.isHittable)
+                XCTAssertTrue(endDate.label.contains("结束日期"))
+                XCTAssertGreaterThanOrEqual(endDate.frame.minY, app.navigationBars[name].frame.maxY)
+                XCTAssertLessThan(endDate.frame.maxY, app.tabBars.firstMatch.frame.minY)
+                let record = app.buttons["recordPromotionTransaction"]
+                XCTAssertTrue(record.exists)
+                XCTAssertLessThan(remaining.frame.maxY, record.frame.minY)
+                if name == "UI Spend" {
+                    normalHeight = remaining.frame.height
+                    XCTAssertTrue(app.staticTexts["达标奖励以银行规则为准"].isHittable)
+                    #if !PROMOTION_RETURN_AUDIT_AFTER_LOOP
+                    if round == 0 { try auditAccessibility(for: [.textClipped]) }
+                    #endif
+                }
+                if name == "UI Available" || name == "UI Exhausted" {
+                    XCTAssertFalse(app.staticTexts["已达标"].exists)
+                }
+                captureScreenshot("促销详情-\(name)")
+                tap(app.navigationBars[name].buttons["促销"])
+                XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
             }
-            if name == "UI Available" || name == "UI Exhausted" {
-                XCTAssertFalse(app.staticTexts["已达标"].exists)
-            }
-            captureScreenshot("促销详情-\(name)")
-            tap(app.navigationBars[name].buttons["促销"])
-            XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
         }
+
+        #if PROMOTION_RETURN_AUDIT_AFTER_LOOP
+        openPromotionFromList("UI Spend")
+        XCTAssertEqual(app.staticTexts["promotion.remaining.UI Spend"].label, "还需 1,000 CNY")
+        XCTAssertTrue(app.staticTexts["达标奖励以银行规则为准"].isHittable)
+        try auditAccessibility(for: [.textClipped])
+        captureScreenshot("正常字号循环结束后文字裁切审计")
+        #endif
 
         relaunchAtLargestTextSize()
         tap(app.tabBars.buttons["促销"])
