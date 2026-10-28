@@ -19,7 +19,7 @@ concurrency:
 jobs:
   writing:
     runs-on: macos-15
-    timeout-minutes: 150
+    timeout-minutes: 180
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       WRITING_PROFILE: ${{ inputs.profile || 'full' }}

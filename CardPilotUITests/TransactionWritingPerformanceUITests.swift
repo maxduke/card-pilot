@@ -137,6 +137,10 @@ final class TransactionWritingPerformanceUITests: XCTestCase {
         reveal(field)
         field.tap()
         field.typeText(merchant)
+        let merchantReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", merchant), object: field
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [merchantReady], timeout: 10), .completed)
         XCTAssertEqual(field.value as? String, merchant)
     }
 
