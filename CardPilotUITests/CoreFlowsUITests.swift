@@ -4789,31 +4789,56 @@ final class CoreFlowsUITests: XCTestCase {
         let tabBar = app.tabBars.element
         let button = tabBar.buttons[title]
         reveal(button)
+        let started = ProcessInfo.processInfo.systemUptime
+        let tolerance: CGFloat = 0.001
+        func stable(_ frame: CGRect, _ previous: CGRect) -> Bool {
+            abs(frame.minX - previous.minX) <= tolerance
+                && abs(frame.minY - previous.minY) <= tolerance
+                && abs(frame.width - previous.width) <= tolerance
+                && abs(frame.height - previous.height) <= tolerance
+        }
         var previousBarFrame = tabBar.frame
         var previousButtonFrame = button.frame
+        var observation = "tab=\(title); readiness predicate has not run"
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            guard self.app.state == .runningForeground, tabBar.exists, button.exists else { return false }
+            let state = self.app.state
+            let barExists = tabBar.exists
+            let buttonExists = button.exists
+            observation = "tab=\(title); elapsed=\(ProcessInfo.processInfo.systemUptime - started); state=\(state.rawValue); barExists=\(barExists); buttonExists=\(buttonExists)"
+            guard state == .runningForeground, barExists, buttonExists else { return false }
+            let appFrame = self.app.frame
             let barFrame = tabBar.frame
             let buttonFrame = button.frame
             defer {
                 previousBarFrame = barFrame
                 previousButtonFrame = buttonFrame
             }
-            return !barFrame.isEmpty && !buttonFrame.isEmpty
-                && barFrame == previousBarFrame && buttonFrame == previousButtonFrame
-                && self.app.frame.contains(barFrame) && barFrame.contains(buttonFrame)
+            let framesStable = stable(barFrame, previousBarFrame) && stable(buttonFrame, previousButtonFrame)
+            let framesContained = appFrame.insetBy(dx: -tolerance, dy: -tolerance).contains(barFrame)
+                && barFrame.insetBy(dx: -tolerance, dy: -tolerance).contains(buttonFrame)
+            let geometryReady = !barFrame.isEmpty && !buttonFrame.isEmpty
+                && framesStable && framesContained
                 && buttonFrame.width >= 44 && buttonFrame.height >= 44
-                && button.isEnabled && button.isHittable
+            let enabled = button.isEnabled
+            observation += "; app=\(appFrame); bar=\(barFrame); button=\(buttonFrame); stable=\(framesStable); contained=\(framesContained); geometryReady=\(geometryReady); enabled=\(enabled)"
+            let hitTested = geometryReady && enabled
+            let hittable = hitTested && button.isHittable
+            observation += "; hitTested=\(hitTested); hittable=\(hittable)"
+            return geometryReady && enabled && hittable
         }, object: button)
-        guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed else {
-            XCTFail("Expected a foreground, enabled tab with stable visible geometry: \(title)")
-            return
-        }
-        assertTouchTarget(button)
-        let geometry = XCTAttachment(string: "tab=\(title); app=\(app.frame); bar=\(tabBar.frame); button=\(button.frame); selected=\(button.isSelected); enabled=\(button.isEnabled); state=\(app.state.rawValue)")
+        let result = XCTWaiter.wait(for: [ready], timeout: 10)
+        observation += "; waitResult=\(result.rawValue)"
+        if result == .completed { observation += "; selected=\(button.isSelected)" }
+        let geometry = XCTAttachment(string: observation)
         geometry.name = "原生底栏入口-\(title)"
         geometry.lifetime = .keepAlways
         add(geometry)
+        guard result == .completed else {
+            persistNativeArtifact(Data(observation.utf8), filename: "root-tab-readiness.txt")
+            XCTFail("Expected a foreground, enabled tab with stable visible geometry: \(title). \(observation)")
+            return
+        }
+        assertTouchTarget(button)
         button.tap()
     }
 
