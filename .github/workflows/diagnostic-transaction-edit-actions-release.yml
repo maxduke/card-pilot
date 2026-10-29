@@ -1,0 +1,63 @@
+name: Native transaction actions performance compilation
+
+on:
+  push:
+    branches: [diagnose/transaction-edit-actions-release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-edit-actions-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile Release performance paths without running measurements
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-evidence
+          git rev-parse HEAD > native-evidence/source-revision.txt
+          uname -m > native-evidence/architecture.txt
+          sw_vers > native-evidence/macos-version.txt
+          xcodebuild -version > native-evidence/xcode-version.txt
+          xcrun simctl list devices available -j > native-evidence/simulators.json
+          device_id=$(python3 -c 'import json; devices=json.load(open("native-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          build_args=(
+            -project CardPilot.xcodeproj
+            -scheme CardPilotPerformance -configuration Release
+            -destination "platform=iOS Simulator,id=$device_id"
+            -enableCodeCoverage NO
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING
+            CODE_SIGNING_ALLOWED=NO
+          )
+          xcodebuild "${build_args[@]}" -showBuildSettings -json > native-evidence/build-settings.json
+          python3 - "${build_args[@]}" <<'PY'
+          import json, sys
+          from pathlib import Path
+          rows = json.loads(Path("native-evidence/build-settings.json").read_text())
+          app = next(row["buildSettings"] for row in rows if row["target"] == "CardPilot")
+          assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
+          assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+          assert app.get("ENABLE_TESTABILITY", "NO") == "NO", app.get("ENABLE_TESTABILITY")
+          flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+          assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
+          Path("native-evidence/build-command.json").write_text(json.dumps(["xcodebuild", "build-for-testing", *sys.argv[1:]], indent=2) + "\n")
+          PY
+          xcodebuild build-for-testing "${build_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
+      - name: Upload native compilation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-edit-actions-release-compilation
+          path: native-evidence
+          retention-days: 7
+          if-no-files-found: error
