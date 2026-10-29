@@ -1,0 +1,55 @@
+name: ARM runner readiness diagnostic
+
+on:
+  push:
+    branches: [diagnose/arm-runner-readiness]
+
+concurrency:
+  group: arm-runner-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    runs-on: macos-15
+    timeout-minutes: 5
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the actual ARM host and pinned simulator
+        run: |
+          set -euo pipefail
+          uname -m
+          sw_vers
+          xcodebuild -version | tee xcode-version.txt
+          git rev-parse HEAD > source-sha.txt
+          xcrun simctl list devices available -j > devices.json
+          python3 - <<'PY'
+          import json, platform
+          from pathlib import Path
+          assert platform.machine() == 'arm64', platform.machine()
+          version = Path('xcode-version.txt').read_text()
+          assert version.splitlines()[0] == 'Xcode 16.4', version
+          devices = json.loads(Path('devices.json').read_text())['devices']
+          matching = [d for d in devices.get('com.apple.CoreSimulator.SimRuntime.iOS-18-5', [])
+                      if d['name'] == 'iPhone 16 Pro' and d.get('isAvailable')]
+          assert matching, devices
+          metadata = {'kind': 'runner-readiness-only-no-tests-or-performance-measurement',
+                      'architecture': platform.machine(), 'macOS': platform.mac_ver()[0],
+                      'xcode': version.strip(), 'simulator': matching[0],
+                      'sourceSha': Path('source-sha.txt').read_text().strip()}
+          Path('runner-metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          print(json.dumps(metadata, indent=2))
+          PY
+      - name: Retain readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm-runner-readiness
+          path: |
+            runner-metadata.json
+            xcode-version.txt
+            devices.json
+            source-sha.txt
+          retention-days: 7
+          if-no-files-found: warn
