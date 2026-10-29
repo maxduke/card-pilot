@@ -32,8 +32,8 @@ final class CoreFlowsUITests: XCTestCase {
     override func tearDownWithError() throws {
         if let testRun, testRun.failureCount > 0 {
             let screen = XCUIScreen.main.screenshot()
-            persistFailureArtifact(screen.pngRepresentation, filename: "screen.png")
-            persistFailureArtifact(Data("\(name)\n\(Date())\n".utf8), filename: "context.txt")
+            persistNativeArtifact(screen.pngRepresentation, filename: "screen.png")
+            persistNativeArtifact(Data("\(name)\n\(Date())\n".utf8), filename: "context.txt")
             let screenshot = XCTAttachment(screenshot: screen)
             screenshot.lifetime = .keepAlways
             add(screenshot)
@@ -43,7 +43,7 @@ final class CoreFlowsUITests: XCTestCase {
             let description = didTimeOutEvaluatingUIQuery
                 ? "The test reported an accessibility query timeout. Captured the screen without requesting another app accessibility snapshot; see the original issue and app-idle diagnostics."
                 : app.debugDescription
-            persistFailureArtifact(Data(description.utf8), filename: "accessibility.txt")
+            persistNativeArtifact(Data(description.utf8), filename: "accessibility.txt")
             let hierarchy = XCTAttachment(string: description)
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
@@ -52,7 +52,7 @@ final class CoreFlowsUITests: XCTestCase {
         app = nil
     }
 
-    private func persistFailureArtifact(_ data: Data, filename: String) {
+    private func persistNativeArtifact(_ data: Data, filename: String) {
         // Keep failure evidence readable even if a cancelled xcresult cannot
         // export attachments. Each real test invocation has its own session.
         let directory = FileManager.default.temporaryDirectory
@@ -61,9 +61,11 @@ final class CoreFlowsUITests: XCTestCase {
             .appendingPathComponent(app.launchEnvironment["CARDPILOT_UI_SESSION"] ?? "unknown-session", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: directory.appendingPathComponent(filename), options: .atomic)
+            let destination = directory.appendingPathComponent(filename)
+            try data.write(to: destination, options: .atomic)
+            print("Saved native artifact: \(destination.path)")
         } catch {
-            print("Unable to persist native failure artifact \(filename): \(error)")
+            print("Unable to persist native artifact \(filename): \(error)")
         }
     }
 
@@ -75,8 +77,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
-        // The complete navigation flow reached 175s in run 39537321815.
-        executionTimeAllowance = 240
+        // Both audited wheels and restart readback completed at 279s in
+        // run 40865512040. Keep this whole flow together with a 300s budget.
+        executionTimeAllowance = 300
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         try verifyAccessibleBillingDateSave(accountEditor: false)
     }
@@ -4378,7 +4381,10 @@ final class CoreFlowsUITests: XCTestCase {
                           screenshot: "\(prefix)添加卡片末四位焦点准备")
         let previousLastFour = lastFour.value as? String ?? ""
         lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count))
-        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", ""), object: lastFour)
+        // Empty native fields can expose their placeholder as the AX value.
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value == %@ OR value == %@", "", lastFour.placeholderValue ?? ""
+        ), object: lastFour)
         XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 5), .completed)
         XCTAssertTrue(dismissal.exists)
         XCTAssertTrue(keyboard.exists)
@@ -4386,7 +4392,7 @@ final class CoreFlowsUITests: XCTestCase {
         let entered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "0123"), object: lastFour)
         XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: 5), .completed)
         XCTAssertEqual(lastFour.value as? String, "0123")
-        captureScreenshot("\(prefix)添加卡片末四位纠正后保留前导零")
+        captureScreenshot("\(prefix)添加卡片末四位纠正后保留前导零", rawFilename: "last-four-corrected.png")
         XCTAssertTrue(lastFourError.waitForNonExistence(timeout: 5))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
         dismissal.tap()
@@ -4604,8 +4610,10 @@ final class CoreFlowsUITests: XCTestCase {
         }
     }
 
-    private func captureScreenshot(_ name: String) {
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
+    private func captureScreenshot(_ name: String, rawFilename: String? = nil) {
+        let screen = app.screenshot()
+        if let rawFilename { persistNativeArtifact(screen.pngRepresentation, filename: rawFilename) }
+        let screenshot = XCTAttachment(screenshot: screen)
         screenshot.name = name
         screenshot.lifetime = .keepAlways
         add(screenshot)

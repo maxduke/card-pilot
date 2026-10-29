@@ -35,17 +35,24 @@ jobs:
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 180 \
-            -maximum-test-execution-time-allowance 240 \
+            -maximum-test-execution-time-allowance 300 \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log
       - name: Export native test evidence
         if: always()
         run: |
           set -euo pipefail
-          if [ -n "${CARDPILOT_TEST_DEVICE_ID:-}" ] && runner_data=$(xcrun simctl get_app_container "$CARDPILOT_TEST_DEVICE_ID" com.maxduke.CardPilotUITests.xctrunner data); then
-            if [ -d "$runner_data/tmp/CardPilotUITestDiagnostics" ]; then
-              cp -R "$runner_data/tmp/CardPilotUITestDiagnostics" test-failure-artifacts
-            fi
-          fi
+          python3 - "${CARDPILOT_TEST_DEVICE_ID:-}" <<'PY'
+          import shutil, sys
+          from pathlib import Path
+          copied = 0
+          if sys.argv[1]:
+              device = Path.home() / "Library/Developer/CoreSimulator/Devices" / sys.argv[1]
+              for source in (device / "data/Containers/Data/Application").glob("*/tmp/CardPilotUITestDiagnostics"):
+                  destination = Path("test-failure-artifacts") / source.parents[1].name
+                  shutil.copytree(source, destination, dirs_exist_ok=True)
+                  copied += 1
+          print(f"Copied direct native artifacts from {copied} simulator containers (including shutdown devices).")
+          PY
           xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
           xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
       - name: Upload native test results
