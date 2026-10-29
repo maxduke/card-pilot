@@ -1,0 +1,74 @@
+name: Native root tab geometry
+
+on:
+  push:
+    branches: [diagnose/root-tab-geometry]
+
+concurrency:
+  group: root-tab-geometry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and test
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          echo "CARDPILOT_TEST_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+          : > xcodebuild.log
+          python3 -u scripts/capture_app_idle.py xcodebuild.log "$device_id" > app-idle-monitor.log 2>&1 &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
+          xcodebuild test \
+            -project CardPilot.xcodeproj \
+            -scheme CardPilot \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -resultBundlePath TestResults.xcresult \
+            -parallel-testing-enabled NO \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingCycleDateWheelsAtLargestTextSizeSaveAndPreserveRepayment \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testBlankTransactionFollowsCardDefaultUntilCurrencyIsExplicitlyChosen \
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionCollapsedAmountFeedbackRevealsFirstErrorAndPersists \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 300 \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log
+      - name: Export native test evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - "${CARDPILOT_TEST_DEVICE_ID:-}" <<'PY'
+          import shutil, sys
+          from pathlib import Path
+          copied = 0
+          if sys.argv[1]:
+              device = Path.home() / "Library/Developer/CoreSimulator/Devices" / sys.argv[1]
+              for source in (device / "data/Containers/Data/Application").glob("*/tmp/CardPilotUITestDiagnostics"):
+                  destination = Path("test-failure-artifacts") / source.parents[1].name
+                  shutil.copytree(source, destination, dirs_exist_ok=True)
+                  copied += 1
+          print(f"Copied direct native artifacts from {copied} simulator containers (including shutdown devices).")
+          PY
+          xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-test-results
+          path: |
+            TestResults.xcresult
+            summary.json
+            test-attachments
+            test-failure-artifacts
+            xcodebuild.log
+            app-idle-monitor.log
+            app-idle-diagnostics
+          retention-days: 7
+          if-no-files-found: warn
