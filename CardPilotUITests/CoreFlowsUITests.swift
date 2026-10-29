@@ -413,7 +413,7 @@ final class CoreFlowsUITests: XCTestCase {
         // 40221235030 after completing its assertions. Use the existing maximum.
         executionTimeAllowance = 240
         launch("empty")
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         tap(app.buttons["bank.cn.icbc"])
         XCTAssertTrue(app.staticTexts["设置账务规则"].waitForExistence(timeout: 10))
         enter("UI Created Account", into: app.textFields["onboarding.accountName"])
@@ -449,7 +449,7 @@ final class CoreFlowsUITests: XCTestCase {
         // the first save at 176s. Keep the existing workflow's 240s maximum.
         executionTimeAllowance = 240
         launch("performanceLarge")
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         enter("Baseline Card 19", into: app.searchFields.firstMatch)
         tap(app.buttons["card.Baseline Card 19"])
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
@@ -494,7 +494,7 @@ final class CoreFlowsUITests: XCTestCase {
             app.launchArguments.removeSubrange(index...index + 1)
         }
         launch("empty")
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         tap(app.buttons["bank.cn.icbc"])
         tap(app.buttons["onboarding.advance"])
         enter("UI Reminders", into: app.textFields["卡产品名称"])
@@ -525,7 +525,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["首页"])
+        tapRootTab("首页")
         tap(app.buttons["打开设置"])
         tap(app.buttons["settings.reminders"])
         XCTAssertTrue(app.navigationBars["通知与提醒"].waitForExistence(timeout: 10))
@@ -536,7 +536,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testAdditionalCardDoesNotRepeatReminderOnboarding() {
         launch("core")
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         tap(app.buttons["添加信用卡"])
         tap(app.buttons["bank.cn.icbc"])
         tap(app.buttons["onboarding.advance"])
@@ -875,7 +875,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["放弃修改"])
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["促销"])
+        tapRootTab("促销")
         let createdPromotion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Created Promotion")).firstMatch
         reveal(createdPromotion)
         assertTouchTarget(createdPromotion)
@@ -919,7 +919,7 @@ final class CoreFlowsUITests: XCTestCase {
         // flow, then reached 180.892s in teardown. Keep the existing 240s max.
         executionTimeAllowance = 240
         launch("promotionOverview")
-        tap(app.tabBars.buttons["促销"])
+        tapRootTab("促销")
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
         captureScreenshot("促销列表完整有效期")
         let examples = [
@@ -960,7 +960,7 @@ final class CoreFlowsUITests: XCTestCase {
         }
 
         relaunchAtLargestTextSize()
-        tap(app.tabBars.buttons["促销"])
+        tapRootTab("促销")
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
         captureScreenshot("最大字号促销列表完整有效期")
         let listFrame = app.frame
@@ -983,7 +983,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionAccessibilitySummaryIncludesRewardAndArchiveAfterRelaunch() {
         launch("promotionOverview")
-        tap(app.tabBars.buttons["促销"])
+        tapRootTab("促销")
         let listNavigation = app.navigationBars["促销"]
         XCTAssertTrue(listNavigation.waitForExistence(timeout: 10))
         let emptyReward = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Amount Cap")).firstMatch
@@ -1016,7 +1016,7 @@ final class CoreFlowsUITests: XCTestCase {
                 app.terminate()
                 app.launch()
             }
-            tap(app.tabBars.buttons["促销"])
+            tapRootTab("促销")
             tap(app.buttons["显示归档"])
             let history = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "个历史活动")).firstMatch
             tap(history)
@@ -1125,7 +1125,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         XCTAssertTrue(app.buttons["继续草稿"].waitForExistence(timeout: 10))
         tap(app.buttons["继续草稿"])
         let restored = app.textFields["allocation.amount.UI Spend"]
@@ -1401,7 +1401,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         tap(app.buttons["继续草稿"])
         let restored = app.textFields["allocation.amount.UI Spend"]
         reveal(restored)
@@ -1815,7 +1815,7 @@ final class CoreFlowsUITests: XCTestCase {
     func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         let transactionsNavigation = app.navigationBars["交易"]
         let resultCount = app.staticTexts["transactions.results.count"]
         func openTransaction(_ merchant: String) {
@@ -1917,7 +1917,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.launchArguments[localeIndex] = "zh_CN"
         app.launch()
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         let summary = app.staticTexts["transactionDraftSummary"]
         XCTAssertTrue(summary.waitForExistence(timeout: 10))
         XCTAssertTrue(summary.label.contains("1.5 CNY"))
@@ -1967,7 +1967,7 @@ final class CoreFlowsUITests: XCTestCase {
         allocation.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "100")
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         tap(app.buttons["继续草稿"])
         let restored = app.textFields["allocation.amount.UI Spend"]
         reveal(restored)
@@ -1985,7 +1985,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["card.transactions"])
         XCTAssertTrue(app.buttons["transaction.UI Draft"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Draft").count, 1)
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         XCTAssertFalse(app.buttons["继续草稿"].exists)
@@ -2020,7 +2020,7 @@ final class CoreFlowsUITests: XCTestCase {
         openCard("UI Shared")
         tap(app.buttons["card.transactions"])
         XCTAssertTrue(app.staticTexts["这张卡还没有交易"].waitForExistence(timeout: 10))
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
@@ -2035,7 +2035,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["保留草稿并关闭"])
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         let card = app.buttons["card.UI Shared"]
         reveal(card)
         // The card row must expose card actions, without inheriting the bank header's menu.
@@ -2045,7 +2045,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["删除银行"].exists)
         deleteCard.tap()
         tap(app.buttons["永久删除"])
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         tap(app.buttons["继续草稿"])
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
         tap(app.buttons["选择其他卡片"])
@@ -2231,12 +2231,13 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["保留草稿并关闭"])
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         tap(app.buttons["继续草稿"])
         // A recovered draft owns its currency even before any amount has been entered.
         selectTransactionCard("UI Primary")
         XCTAssertEqual(app.buttons["transactionCurrency"].value as? String, "HKD")
         XCTAssertFalse(app.buttons["saveTransaction"].isEnabled)
+        captureScreenshot("空金额草稿恢复后保留明确选择的币种")
     }
 
     func testUntouchedTransactionClosesWithoutCreatingADraft() {
@@ -2250,14 +2251,14 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["记一笔"])
+        tapRootTab("记一笔")
         XCTAssertTrue(app.textFields["transactionAmount"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["继续草稿"].exists)
     }
 
     func testTransactionDateAndCurrencyPresetsKeepCounts() {
         launch("transactionFilters")
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         let count = app.staticTexts["transactions.results.count"]
         XCTAssertEqual(count.label, "共 8 笔交易")
         tap(app.buttons["transactions.filters"])
@@ -2281,7 +2282,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testTransactionStatusKindAndCurrencyFiltersKeepCountsAndClear() {
         launch("transactionFilters")
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         let count = app.staticTexts["transactions.results.count"]
         XCTAssertEqual(count.label, "共 8 笔交易")
         tap(app.buttons["transactions.filters"])
@@ -2315,7 +2316,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testCustomTransactionDateRangeShowsFieldsAndKeepsCounts() {
         launch("transactionFilters")
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         let count = app.staticTexts["transactions.results.count"]
         XCTAssertEqual(count.label, "共 8 笔交易")
         tap(app.buttons["transactions.filters"])
@@ -2333,7 +2334,7 @@ final class CoreFlowsUITests: XCTestCase {
     func testDateAndCurrencyFilterRemovalAtLargestTextSize() throws {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("transactionFilters")
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         tap(app.buttons["transactions.filters"])
         tap(app.buttons["transactions.filter.date"])
         tap(app.buttons["上月"])
@@ -2363,7 +2364,7 @@ final class CoreFlowsUITests: XCTestCase {
         enter("UI Accessibility Coffee", into: app.textFields["商户（可选）"])
         tap(app.buttons["saveTransaction"])
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         let transaction = app.buttons["transaction.UI Accessibility Coffee"]
         XCTAssertTrue(transaction.waitForExistence(timeout: 10))
         XCTAssertTrue(transaction.label.contains("12,345.6789 CNY"))
@@ -2375,7 +2376,7 @@ final class CoreFlowsUITests: XCTestCase {
         try auditAccessibility(for: [.textClipped])
 
         relaunchAtLargestTextSize()
-        tap(app.tabBars.buttons["交易"])
+        tapRootTab("交易")
         reveal(transaction)
         XCTAssertGreaterThan(app.staticTexts["12,345.6789 CNY"].frame.height, normalAmountHeight * 1.3)
         XCTAssertGreaterThan(app.searchFields["搜索交易"].frame.height, normalSearchHeight * 1.3)
@@ -2488,7 +2489,7 @@ final class CoreFlowsUITests: XCTestCase {
         executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("accountHistory")
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         // Both fixture cards share this account. Use its existing direct row
         // so this history flow spends its time on history rather than card navigation.
         let sharedAccount = app.buttons.matching(NSPredicate(
@@ -2750,7 +2751,7 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("普通字号账期审计阅读区域")
         try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
-        tap(app.tabBars.buttons["首页"])
+        tapRootTab("首页")
         let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
         reveal(schedule)
         assertTouchTarget(schedule)
@@ -2774,7 +2775,7 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号卡片账期日程")
         try auditAccessibility(for: [.textClipped], captureFailureContext: true)
 
-        tap(app.tabBars.buttons["首页"])
+        tapRootTab("首页")
         let pendingCycles = app.buttons.matching(NSPredicate(
             format: "identifier BEGINSWITH %@", "dashboard.action.billingCycle."
         ))
@@ -2829,7 +2830,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testDashboardMetricsOpenMatchingActionsAndPreserveRepaymentUndo() throws {
         launch("dashboardActions")
-        tap(app.tabBars.buttons["首页"])
+        tapRootTab("首页")
         let overdue = app.buttons["dashboard.actions.overdue"]
         let today = app.buttons["dashboard.actions.today"]
         let upcoming = app.buttons["dashboard.actions.nextSevenDays"]
@@ -2886,7 +2887,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(enrollment.count, 2)
 
         relaunchAtLargestTextSize()
-        tap(app.tabBars.buttons["首页"])
+        tapRootTab("首页")
         reveal(today, scrollTowardTopWhenMissing: true, fullyVisible: true)
         assertTouchTarget(today)
         assertTouchTarget(upcoming)
@@ -3422,7 +3423,7 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openBillingFeedbackAccount() {
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         let account = app.buttons.matching(NSPredicate(
             format: "label CONTAINS %@ AND label CONTAINS %@", "尾号 1234", "尾号 5678"
         )).firstMatch
@@ -3852,7 +3853,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         let expectedName = largestText ? "UI Primary" : "UI Fixed"
@@ -4079,7 +4080,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func verifyAccountEditorNumericKeyboard(largestText: Bool) {
         let prefix = largestText ? "最大字号" : ""
         launch("core")
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         let sharedAccount = app.buttons.matching(NSPredicate(
             format: "label CONTAINS %@ AND label CONTAINS %@", "尾号 1234", "尾号 5678"
         )).firstMatch
@@ -4177,7 +4178,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         let search = app.searchFields["搜索银行、账户、卡片或末四位"]
         tap(search, scrollTowardTopWhenMissing: true)
         search.typeText("0123\n")
@@ -4214,7 +4215,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openOnboardingBillingStep() {
         launch("core")
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         tap(app.buttons["添加信用卡"])
         let bank = app.buttons["bank.cn.icbc"]
         reveal(bank, fullyVisible: true)
@@ -4394,7 +4395,7 @@ final class CoreFlowsUITests: XCTestCase {
         let prefix = largestText ? "最大字号" : ""
         let cardName = "UI Keyboard Card"
         launch("core")
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         tap(app.buttons["添加信用卡"])
         let bank = app.buttons["bank.cn.icbc"]
         reveal(bank, fullyVisible: true)
@@ -4449,7 +4450,7 @@ final class CoreFlowsUITests: XCTestCase {
 
         app.terminate()
         app.launch()
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         // Bank UUID ordering can put the saved card below several large rows.
         // Use the existing card search before checking the complete saved row.
         let search = app.searchFields["搜索银行、账户、卡片或末四位"]
@@ -4594,12 +4595,12 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openCard(_ name: String) {
-        tap(app.tabBars.buttons["卡片"])
+        tapRootTab("卡片")
         tap(app.buttons["card.\(name)"])
     }
 
     private func openPromotion(_ name: String) {
-        tap(app.tabBars.buttons["促销"])
+        tapRootTab("促销")
         openPromotionFromList(name)
     }
 
@@ -4746,6 +4747,38 @@ final class CoreFlowsUITests: XCTestCase {
     private func enter(_ text: String, into element: XCUIElement) {
         tap(element)
         element.typeText(text)
+    }
+
+    private func tapRootTab(_ title: String) {
+        let tabBar = app.tabBars.element
+        let button = tabBar.buttons[title]
+        reveal(button)
+        var previousBarFrame = tabBar.frame
+        var previousButtonFrame = button.frame
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, tabBar.exists, button.exists else { return false }
+            let barFrame = tabBar.frame
+            let buttonFrame = button.frame
+            defer {
+                previousBarFrame = barFrame
+                previousButtonFrame = buttonFrame
+            }
+            return !barFrame.isEmpty && !buttonFrame.isEmpty
+                && barFrame == previousBarFrame && buttonFrame == previousButtonFrame
+                && self.app.frame.contains(barFrame) && barFrame.contains(buttonFrame)
+                && buttonFrame.width >= 44 && buttonFrame.height >= 44
+                && button.isEnabled && button.isHittable
+        }, object: button)
+        guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed else {
+            XCTFail("Expected a foreground, enabled tab with stable visible geometry: \(title)")
+            return
+        }
+        assertTouchTarget(button)
+        let geometry = XCTAttachment(string: "tab=\(title); app=\(app.frame); bar=\(tabBar.frame); button=\(button.frame); selected=\(button.isSelected); enabled=\(button.isEnabled); state=\(app.state.rawValue)")
+        geometry.name = "原生底栏入口-\(title)"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        button.tap()
     }
 
     private func tap(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false) {
