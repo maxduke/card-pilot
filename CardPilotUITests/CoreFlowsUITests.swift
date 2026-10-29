@@ -31,20 +31,40 @@ final class CoreFlowsUITests: XCTestCase {
 
     override func tearDownWithError() throws {
         if let testRun, testRun.failureCount > 0 {
-            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            let screen = XCUIScreen.main.screenshot()
+            persistFailureArtifact(screen.pngRepresentation, filename: "screen.png")
+            persistFailureArtifact(Data("\(name)\n\(Date())\n".utf8), filename: "context.txt")
+            let screenshot = XCTAttachment(screenshot: screen)
             screenshot.lifetime = .keepAlways
             add(screenshot)
             // A query that already timed out cannot supply a reliable AX dump.
             // Keep the original failure and a screen capture without another AX
             // request consuming teardown's remaining execution allowance.
-            let hierarchy = XCTAttachment(string: didTimeOutEvaluatingUIQuery
+            let description = didTimeOutEvaluatingUIQuery
                 ? "The test reported an accessibility query timeout. Captured the screen without requesting another app accessibility snapshot; see the original issue and app-idle diagnostics."
-                : app.debugDescription)
+                : app.debugDescription
+            persistFailureArtifact(Data(description.utf8), filename: "accessibility.txt")
+            let hierarchy = XCTAttachment(string: description)
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
         }
         app.terminate()
         app = nil
+    }
+
+    private func persistFailureArtifact(_ data: Data, filename: String) {
+        // Keep failure evidence readable even if a cancelled xcresult cannot
+        // export attachments. Each real test invocation has its own session.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CardPilotUITestDiagnostics", isDirectory: true)
+            .appendingPathComponent(name.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
+            .appendingPathComponent(app.launchEnvironment["CARDPILOT_UI_SESSION"] ?? "unknown-session", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: directory.appendingPathComponent(filename), options: .atomic)
+        } catch {
+            print("Unable to persist native failure artifact \(filename): \(error)")
+        }
     }
 
     func testAccountBillingDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
@@ -4357,8 +4377,16 @@ final class CoreFlowsUITests: XCTestCase {
         focusLastFour(lastFour, navigationBar: navigation, form: form, dismissal: dismissal,
                           screenshot: "\(prefix)添加卡片末四位焦点准备")
         let previousLastFour = lastFour.value as? String ?? ""
-        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count) + "0123")
+        lastFour.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previousLastFour.count))
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", ""), object: lastFour)
+        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 5), .completed)
+        XCTAssertTrue(dismissal.exists)
+        XCTAssertTrue(keyboard.exists)
+        lastFour.typeText("0123")
+        let entered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "0123"), object: lastFour)
+        XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: 5), .completed)
         XCTAssertEqual(lastFour.value as? String, "0123")
+        captureScreenshot("\(prefix)添加卡片末四位纠正后保留前导零")
         XCTAssertTrue(lastFourError.waitForNonExistence(timeout: 5))
         XCTAssertTrue(dismissal.waitForExistence(timeout: 5))
         dismissal.tap()

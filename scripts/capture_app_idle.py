@@ -13,7 +13,13 @@ def run(command, timeout=10):
         result = subprocess.run(
             command, capture_output=True, text=True, errors="replace", timeout=timeout
         )
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
+        print(f"Capture failed: {error}", flush=True)
+        for output in (error.stdout, error.stderr):
+            if output:
+                print(output.decode(errors="replace") if isinstance(output, bytes) else output, flush=True)
+        return ""
+    except OSError as error:
         print(f"Capture failed: {error}", flush=True)
         return ""
     print(f"exit={result.returncode}\n{result.stdout}{result.stderr}", flush=True)
@@ -30,7 +36,7 @@ def capture(line, test_case, device_id, index):
     for pid in app_pids.split():
         if pid.isdecimal():
             run(["ps", "-p", pid, "-o", "pid,ppid,etime,time,%cpu,%mem,state,comm"])
-            run(["sample", pid, "1", "-file", str(evidence / f"app-{pid}.sample.txt")])
+            run(["sample", pid, "1", "-file", str(evidence / f"app-{pid}.sample.txt")], timeout=30)
     run(["xcrun", "simctl", "io", device_id, "screenshot", str(evidence / "screen.png")], timeout=15)
 
 
