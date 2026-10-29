@@ -34,13 +34,15 @@ jobs:
             -project CardPilot.xcodeproj
             -scheme CardPilotPerformance -configuration Release
             -destination "platform=iOS Simulator,id=$device_id"
-            -enableCodeCoverage NO
-            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO
             SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING
             CODE_SIGNING_ALLOWED=NO
           )
+          instrumentation_args=(
+            -enableCodeCoverage NO
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO
+          )
           xcodebuild "${build_args[@]}" -showBuildSettings -json > native-evidence/build-settings.json
-          python3 - "${build_args[@]}" <<'PY'
+          python3 - "${build_args[@]}" "${instrumentation_args[@]}" <<'PY'
           import json, sys
           from pathlib import Path
           rows = json.loads(Path("native-evidence/build-settings.json").read_text())
@@ -52,7 +54,7 @@ jobs:
           assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
           Path("native-evidence/build-command.json").write_text(json.dumps(["xcodebuild", "build-for-testing", *sys.argv[1:]], indent=2) + "\n")
           PY
-          xcodebuild build-for-testing "${build_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
+          xcodebuild build-for-testing "${build_args[@]}" "${instrumentation_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
       - name: Upload native compilation evidence
         if: always()
         uses: actions/upload-artifact@v7
