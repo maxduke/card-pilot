@@ -161,7 +161,7 @@ final class ReleaseEarlyV3FixtureGenerator: XCTestCase {
 
 // Diagnostic serializer only. No new models or archive/import behavior enter the released application.
 // The field map follows the current expected-records shape; absent newer optional fields stay nil.
-enum BackupError: Error { case invalidDecimal, unsavedChanges }
+enum BackupError: Error { case invalidDecimal, unsavedChanges, invalidReference }
 
 struct BackupDecimal: Codable, Equatable, Sendable {
     let value: Decimal
