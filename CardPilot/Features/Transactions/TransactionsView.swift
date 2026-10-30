@@ -3,11 +3,31 @@ import SwiftUI
 import UIKit
 
 struct TransactionsView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.currentDay) private var currentDay
     @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
     @Query private var cards: [Card]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
+    private let onAddCard: () -> Void
+
+    init(onAddCard: @escaping () -> Void = {}) {
+        self.onAddCard = onAddCard
+    }
+
+    var body: some View {
+        TransactionListContent(
+            transactions: transactions,
+            cards: cards,
+            promotions: promotions,
+            onAddCard: onAddCard
+        )
+    }
+}
+
+private struct TransactionListContent: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.currentDay) private var currentDay
+    private let transactions: [Transaction]
+    private let cards: [Card]
+    private let promotions: [Promotion]
 
     @State private var isPresentingEditor = false
     private let onAddCard: () -> Void
@@ -27,8 +47,12 @@ struct TransactionsView: View {
     @State private var searchText = ""
 
     init(
-        onAddCard: @escaping () -> Void = {}
+        transactions: [Transaction], cards: [Card], promotions: [Promotion],
+        onAddCard: @escaping () -> Void
     ) {
+        self.transactions = transactions
+        self.cards = cards
+        self.promotions = promotions
         self.onAddCard = onAddCard
     }
 
