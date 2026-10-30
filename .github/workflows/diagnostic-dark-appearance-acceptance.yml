@@ -1,0 +1,133 @@
+name: Native dark appearance acceptance
+'on':
+  push:
+    branches:
+    - diagnose/dark-appearance-acceptance
+permissions:
+  contents: read
+concurrency:
+  group: dark-appearance-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v5
+    - name: Verify exact accepted-main source
+      shell: bash
+      run: |
+        set -euo pipefail
+        production_source=4cae6cbdd60600381531dad0202279016c003e81
+        git fetch --no-tags --depth=1 origin "$production_source"
+        git rev-parse --verify "$production_source^{commit}" > production-source-revision.txt
+        git rev-parse HEAD > diagnostic-source-revision.txt
+        git diff --name-only "$production_source" HEAD > diagnostic-source-paths.txt
+        python3 - <<'PY_SCOPE'
+        from pathlib import Path
+        actual = set(Path("diagnostic-source-paths.txt").read_text().splitlines())
+        assert actual == {".github/workflows/diagnostic-dark-appearance-acceptance.yml"}, actual
+        PY_SCOPE
+        sw_vers > macos-version.txt
+        uname -m > architecture.txt
+    - name: Run existing core flows once on a small screen in dark mode
+      run: |
+        set -euo pipefail
+        xcodebuild -version | tee xcode-version.txt
+        xcrun simctl list devices available -j > simulators.json
+        device_id=$(python3 -c 'import json; devices=json.load(open("simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone SE (3rd generation)"))')
+        echo "CARDPILOT_TEST_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+        device_state=$(python3 -c 'import json, sys; devices=json.load(open("simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["state"] for d in devices if d["udid"] == sys.argv[1]))' "$device_id")
+        xcrun simctl help ui > simulator-ui-help.txt 2>&1
+        if [[ "$device_state" != "Booted" ]]; then
+          xcrun simctl boot "$device_id"
+        fi
+        xcrun simctl bootstatus "$device_id" -b
+        xcrun simctl ui "$device_id" appearance dark
+        xcrun simctl ui "$device_id" appearance > simulator-appearance-before.txt
+        python3 - <<'PY_APPEARANCE'
+        from pathlib import Path
+        assert Path("simulator-appearance-before.txt").read_text().strip() == "dark"
+        PY_APPEARANCE
+        test_args=(
+          -project CardPilot.xcodeproj -scheme CardPilot
+          -destination "platform=iOS Simulator,id=$device_id"
+          -resultBundlePath TestResults.xcresult
+          -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets
+          -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
+          -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOverviewPrioritizesProgressAndDistinguishesLimits
+          -parallel-testing-enabled NO -test-timeouts-enabled YES
+          -default-test-execution-time-allowance 180
+          -maximum-test-execution-time-allowance 300
+          CODE_SIGNING_ALLOWED=NO
+        )
+        python3 - "${test_args[@]}" <<'PY_COMMAND'
+        import json, sys
+        from pathlib import Path
+        Path("test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
+        PY_COMMAND
+        : > xcodebuild.log
+        python3 -u scripts/capture_app_idle.py xcodebuild.log "$device_id" > app-idle-monitor.log 2>&1 &
+        monitor_pid=$!
+        trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
+        xcodebuild test "${test_args[@]}" 2>&1 | tee xcodebuild.log
+      shell: bash
+    - name: Export native test evidence
+      if: always()
+      run: |
+        set -euo pipefail
+        python3 - "${CARDPILOT_TEST_DEVICE_ID:-}" <<'PY'
+        import shutil, sys
+        from pathlib import Path
+        copied = 0
+        if sys.argv[1]:
+            device = Path.home() / "Library/Developer/CoreSimulator/Devices" / sys.argv[1]
+            for source in (device / "data/Containers/Data/Application").glob("*/tmp/CardPilotUITestDiagnostics"):
+                destination = Path("test-failure-artifacts") / source.parents[1].name
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+                copied += 1
+        print(f"Copied direct native artifacts from {copied} simulator containers (including shutdown devices).")
+        PY
+        if [[ -n "${CARDPILOT_TEST_DEVICE_ID:-}" ]]; then
+          xcrun simctl ui "$CARDPILOT_TEST_DEVICE_ID" appearance > simulator-appearance-after.txt
+        fi
+        xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
+        xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
+        python3 - <<'PY_RESULT'
+        import json
+        from pathlib import Path
+        summary = json.loads(Path("summary.json").read_text())
+        assert Path("simulator-appearance-after.txt").read_text().strip() == "dark"
+        assert summary["result"] == "Passed", summary
+        assert summary["passedTests"] == summary["totalTestCount"] == 3, summary
+        assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
+        PY_RESULT
+    - name: Upload native test results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: native-dark-appearance-acceptance
+        path: |
+          TestResults.xcresult
+          summary.json
+          test-attachments
+          test-failure-artifacts
+          xcodebuild.log
+          app-idle-monitor.log
+          app-idle-diagnostics
+
+          production-source-revision.txt
+          diagnostic-source-revision.txt
+          diagnostic-source-paths.txt
+          test-command.json
+          xcode-version.txt
+          macos-version.txt
+          architecture.txt
+          simulators.json
+          simulator-ui-help.txt
+          simulator-appearance-before.txt
+          simulator-appearance-after.txt
+        retention-days: 7
+        if-no-files-found: warn
