@@ -578,7 +578,9 @@ extension BackupRecords {
         try validate("账期") { try billingCyclesByID.values.forEach { try $0.validate() } }
         try validate("促销") { try promotionsByID.values.forEach { try $0.validate() } }
         try validate("交易") { try transactionsByID.values.forEach { try $0.validate() } }
-        try validate("促销分配") { try allocationsByID.values.forEach { try $0.validate() } }
+        try validate("促销分配") {
+            try allocationsByID.values.forEach { try $0.validate(allowingArchivedZeroAmount: true) }
+        }
         try validate("账户账务配置") { try accountsByID.values.forEach { try $0.validateBillingConfiguration() } }
         // Explicit historical cycles may be far outside the current dashboard window.
         // Reject dates that would require calendar arithmetic beyond LocalDate's supported years.

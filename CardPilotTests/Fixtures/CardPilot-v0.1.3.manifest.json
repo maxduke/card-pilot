@@ -1,0 +1,32 @@
+{
+  "configurationName" : "CardPilotPrereleaseV3",
+  "counts" : {
+    "accounts" : 2,
+    "allocations" : 3,
+    "banks" : 1,
+    "billingCycles" : 2,
+    "billingRules" : 4,
+    "cards" : 3,
+    "networks" : 6,
+    "promotions" : 2,
+    "transactions" : 4
+  },
+  "expectedRecordsFormat" : "Diagnostic JSON of all native saved fields; not an old backup export",
+  "files" : [
+    {
+      "bytes" : 196608,
+      "name" : "CardPilot-v0.1.3.store",
+      "sha256" : "2210b7da7e6c6b10ea4ff2d69cacf6e95a37af793597e0803cfa0ab1907417db"
+    },
+    {
+      "bytes" : 8415,
+      "name" : "CardPilot-v0.1.3.expected-records.json",
+      "sha256" : "a3536d2411513803500195f08adbe38aefa94ede03e43ac36e373994acb33be4"
+    }
+  ],
+  "operatingSystem" : "Version 18.5 (Build 22F77)",
+  "origin" : "Synthetic data generated using immutable release models, not a user or old device database",
+  "releaseRevision" : "3553b38c19dbb38004d201bdfa7600648b35e6ee",
+  "releaseTag" : "v0.1.3",
+  "schemaVersion" : "3.0.0"
+}

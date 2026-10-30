@@ -1,0 +1,289 @@
+{
+  "accounts" : [
+    {
+      "bank" : "102C23A0-2AE7-4FE6-8C54-4ECA3FF5C2A2",
+      "creditLimit" : "12345678901234600000",
+      "id" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "limitCurrencyCode" : "HKD",
+      "notes" : "共享账户",
+      "statusRaw" : "active",
+      "trackingStartCycleKey" : 202401
+    },
+    {
+      "bank" : "102C23A0-2AE7-4FE6-8C54-4ECA3FF5C2A2",
+      "closedOn" : 20250830,
+      "id" : "4071B313-2EB8-4A58-A181-9D5B12A598E0",
+      "limitCurrencyCode" : "CNY",
+      "notes" : "已关闭",
+      "statusRaw" : "closed",
+      "trackingStartCycleKey" : 202401
+    }
+  ],
+  "allocations" : [
+    {
+      "currencyCode" : "HKD",
+      "id" : "13F2946D-7562-4E49-B4CD-291D9854B78C",
+      "promotion" : "D45971E0-05AE-4E72-98BC-154628C853C3",
+      "qualifyingAmount" : "50.123456789",
+      "transaction" : "25C321D0-B15B-4E68-8C76-3D85709B3465"
+    },
+    {
+      "currencyCode" : "HKD",
+      "id" : "DE325A9D-959C-4B22-9A94-4061FB450ADB",
+      "promotion" : "D45971E0-05AE-4E72-98BC-154628C853C3",
+      "qualifyingAmount" : "0.01",
+      "transaction" : "A1750FE5-A9F5-475D-962B-8B87BD277C32"
+    },
+    {
+      "currencyCode" : "HKD",
+      "id" : "F760568F-962B-4BA6-BD0F-AF8E87C41E94",
+      "promotion" : "D45971E0-05AE-4E72-98BC-154628C853C3",
+      "qualifyingAmount" : "0",
+      "transaction" : "A22CDDBD-8B0D-4161-844B-ECBFDD334380"
+    }
+  ],
+  "banks" : [
+    {
+      "archivedAt" : 810581688.123456,
+      "id" : "102C23A0-2AE7-4FE6-8C54-4ECA3FF5C2A2",
+      "name" : "历史银行",
+      "notes" : "银行备注",
+      "presetCode" : "cn.icbc"
+    }
+  ],
+  "billingCycles" : [
+    {
+      "account" : "4071B313-2EB8-4A58-A181-9D5B12A598E0",
+      "cycleKey" : 202507,
+      "id" : "8FF65828-1F41-49D9-B4D2-D0D9C91519D9"
+    },
+    {
+      "account" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "cycleKey" : 202508,
+      "id" : "D78271B8-3AB2-41F6-8DD2-584F234642CF",
+      "repaidAt" : 810581688.123456,
+      "repaymentDateOverride" : 20250901,
+      "statementDateOverride" : 20250809
+    }
+  ],
+  "billingRules" : [
+    {
+      "account" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "id" : "7861AC7A-B0B5-4726-A291-C90024BCA735",
+      "repaymentKindRaw" : "daysAfterStatement",
+      "repaymentValue" : 20,
+      "statementDay" : 5
+    },
+    {
+      "account" : "4071B313-2EB8-4A58-A181-9D5B12A598E0",
+      "id" : "797AEC4D-5FAC-4562-91AF-668B015416DB",
+      "repaymentKindRaw" : "daysAfterStatement",
+      "repaymentValue" : 20,
+      "statementDay" : 20
+    },
+    {
+      "account" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "effectiveCycleKey" : 202701,
+      "id" : "DF7059F1-0538-472A-BBD8-5C5D22D24CBE",
+      "repaymentKindRaw" : "daysAfterStatement",
+      "repaymentValue" : 20,
+      "statementDay" : 10
+    },
+    {
+      "account" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "effectiveCycleKey" : 202501,
+      "id" : "FCD0E156-2211-44C2-9AEF-B3A52B4A4117",
+      "repaymentKindRaw" : "daysAfterStatement",
+      "repaymentValue" : 20,
+      "statementDay" : 8
+    }
+  ],
+  "cards" : [
+    {
+      "account" : "4071B313-2EB8-4A58-A181-9D5B12A598E0",
+      "id" : "7F3A70C7-3373-41C9-8A5F-0B68CEA355C1",
+      "lastFour" : "9012",
+      "networks" : [
+        "48B2E239-4109-480E-97A6-808BBF0C896A"
+      ],
+      "nickname" : "",
+      "notes" : "",
+      "productName" : "已关闭账户的卡",
+      "statusRaw" : "inactive"
+    },
+    {
+      "account" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "id" : "C52F9170-20CB-47D9-8253-72C41059CB5E",
+      "lastFour" : "1234",
+      "networks" : [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002"
+      ],
+      "nickname" : "旧卡",
+      "notes" : "卡备注",
+      "productName" : "双标历史卡",
+      "statusRaw" : "inactive"
+    },
+    {
+      "account" : "3BB88E78-8837-4870-9588-2CE64016056D",
+      "id" : "DCFCC173-F255-41D8-9FC6-3546E9649D9B",
+      "lastFour" : "5678",
+      "networks" : [
+        "00000000-0000-0000-0000-000000000003"
+      ],
+      "nickname" : "",
+      "notes" : "",
+      "productName" : "共享卡",
+      "statusRaw" : "active"
+    }
+  ],
+  "networks" : [
+    {
+      "code" : "unionpay",
+      "displayName" : "银联",
+      "id" : "00000000-0000-0000-0000-000000000001",
+      "isBuiltIn" : true
+    },
+    {
+      "code" : "visa",
+      "displayName" : "Visa",
+      "id" : "00000000-0000-0000-0000-000000000002",
+      "isBuiltIn" : true
+    },
+    {
+      "code" : "mastercard",
+      "displayName" : "Mastercard",
+      "id" : "00000000-0000-0000-0000-000000000003",
+      "isBuiltIn" : true
+    },
+    {
+      "code" : "amex",
+      "displayName" : "American Express",
+      "id" : "00000000-0000-0000-0000-000000000004",
+      "isBuiltIn" : true
+    },
+    {
+      "code" : "jcb",
+      "displayName" : "JCB",
+      "id" : "00000000-0000-0000-0000-000000000005",
+      "isBuiltIn" : true
+    },
+    {
+      "code" : "custom",
+      "displayName" : "自定义组织",
+      "id" : "48B2E239-4109-480E-97A6-808BBF0C896A",
+      "isBuiltIn" : false
+    }
+  ],
+  "promotions" : [
+    {
+      "eligibleCards" : [
+        "DCFCC173-F255-41D8-9FC6-3546E9649D9B"
+      ],
+      "endOn" : 20250930,
+      "enrollmentStatusRaw" : "notRequired",
+      "exclusions" : "",
+      "id" : "5D66734C-EC02-47FE-9E8F-F49C0E976C41",
+      "notes" : "",
+      "organizingBanks" : [
+
+      ],
+      "organizingNetworks" : [
+
+      ],
+      "progressCurrencyCode" : "HKD",
+      "qualificationDateBasisRaw" : "transactionDate",
+      "rewardDescription" : "",
+      "rules" : "",
+      "seriesID" : "A857E14C-D60B-4D0D-9559-026FAA7AFE57",
+      "seriesIndex" : 1,
+      "stackingAllowed" : true,
+      "startOn" : 20250901,
+      "title" : "下一期"
+    },
+    {
+      "archivedAt" : 810581688.123456,
+      "eligibleCards" : [
+        "C52F9170-20CB-47D9-8253-72C41059CB5E",
+        "DCFCC173-F255-41D8-9FC6-3546E9649D9B"
+      ],
+      "endOn" : 20250831,
+      "enrolledOn" : 20250802,
+      "enrollmentDeadline" : 20250810,
+      "enrollmentStatusRaw" : "enrolled",
+      "exclusions" : "排除",
+      "id" : "D45971E0-05AE-4E72-98BC-154628C853C3",
+      "notes" : "活动备注",
+      "organizingBanks" : [
+        "102C23A0-2AE7-4FE6-8C54-4ECA3FF5C2A2"
+      ],
+      "organizingNetworks" : [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "perTransactionThreshold" : "10",
+      "progressCurrencyCode" : "HKD",
+      "qualificationDateBasisRaw" : "postingDate",
+      "qualificationThreshold" : "100",
+      "qualifyingCap" : "200",
+      "rewardDescription" : "奖励",
+      "rules" : "规则",
+      "seriesID" : "A857E14C-D60B-4D0D-9559-026FAA7AFE57",
+      "seriesIndex" : 0,
+      "stackingAllowed" : false,
+      "startOn" : 20250801,
+      "title" : "历史促销"
+    }
+  ],
+  "transactions" : [
+    {
+      "amount" : "12345678901234600000",
+      "card" : "C52F9170-20CB-47D9-8253-72C41059CB5E",
+      "category" : "分类",
+      "currencyCode" : "HKD",
+      "id" : "25C321D0-B15B-4E68-8C76-3D85709B3465",
+      "kindRaw" : "purchase",
+      "merchant" : "商户",
+      "notes" : "交易备注",
+      "postingOn" : 20250804,
+      "statusRaw" : "active",
+      "transactionOn" : 20250803
+    },
+    {
+      "amount" : "0.0000000000000000000000000001",
+      "card" : "C52F9170-20CB-47D9-8253-72C41059CB5E",
+      "category" : "",
+      "currencyCode" : "HKD",
+      "id" : "A1750FE5-A9F5-475D-962B-8B87BD277C32",
+      "kindRaw" : "refund",
+      "merchant" : "部分退款商户",
+      "notes" : "",
+      "originalTransaction" : "25C321D0-B15B-4E68-8C76-3D85709B3465",
+      "statusRaw" : "active",
+      "transactionOn" : 20250902
+    },
+    {
+      "amount" : "7.5",
+      "card" : "DCFCC173-F255-41D8-9FC6-3546E9649D9B",
+      "category" : "",
+      "currencyCode" : "HKD",
+      "id" : "A22CDDBD-8B0D-4161-844B-ECBFDD334380",
+      "kindRaw" : "purchase",
+      "merchant" : "零计入历史商户",
+      "notes" : "",
+      "statusRaw" : "active",
+      "transactionOn" : 20250806
+    },
+    {
+      "amount" : "88.88",
+      "card" : "DCFCC173-F255-41D8-9FC6-3546E9649D9B",
+      "category" : "",
+      "currencyCode" : "HKD",
+      "id" : "F54D9FEE-4844-49ED-9E1A-3416F632EF3B",
+      "kindRaw" : "purchase",
+      "merchant" : "已撤销商户",
+      "notes" : "",
+      "statusRaw" : "reversed",
+      "transactionOn" : 20250805
+    }
+  ]
+}

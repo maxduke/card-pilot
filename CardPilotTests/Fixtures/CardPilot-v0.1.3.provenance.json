@@ -1,0 +1,11 @@
+{
+  "releaseTag": "v0.1.3",
+  "releaseRevision": "3553b38c19dbb38004d201bdfa7600648b35e6ee",
+  "generatorRevision": "787154b1c3e14738c19517c129035521e54d7811",
+  "productionBlobs": {
+    "CardPilot/Domain/Models.swift": "2f34d149c537e1e2d046a2bb5bd3ad4d22560c6b",
+    "CardPilot.xcodeproj/project.pbxproj": "f043f89fbc269bc8f92071f3481c33ddc3db3206"
+  },
+  "workflowRun": "41027239031",
+  "workflowAttempt": "1"
+}
