@@ -22,7 +22,7 @@ jobs:
         set -euo pipefail
         mkdir -p native-evidence
         git rev-parse HEAD > native-evidence/source-revision.txt
-        formal_source=82b79e39a436898c6b41e246d4142702bdc7de85
+        formal_source=34ff4802e20b6de14d983f1671167cf9f7200d6f
         [[ "$formal_source" =~ ^[0-9a-f]{40}$ ]]
         git fetch --no-tags --depth=1 origin "$formal_source"
         git rev-parse --verify "$formal_source^{commit}" > native-evidence/formal-source-revision.txt
@@ -116,7 +116,7 @@ jobs:
         set -euo pipefail
         mkdir -p native-evidence
         git rev-parse HEAD > native-evidence/source-revision.txt
-        formal_source=82b79e39a436898c6b41e246d4142702bdc7de85
+        formal_source=34ff4802e20b6de14d983f1671167cf9f7200d6f
         [[ "$formal_source" =~ ^[0-9a-f]{40}$ ]]
         git fetch --no-tags --depth=1 origin "$formal_source"
         git rev-parse --verify "$formal_source^{commit}" > native-evidence/formal-source-revision.txt

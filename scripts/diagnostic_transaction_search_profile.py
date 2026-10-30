@@ -37,7 +37,7 @@ def capture(line, test_case, device_id, index):
         if pid.isdecimal():
             run(["ps", "-p", pid, "-o", "pid,ppid,etime,time,%cpu,%mem,state,comm"])
             report = run(["sudo", "-n", "/usr/sbin/spindump", pid, "2", "10", "-onlyTarget",
-                          "-timelimit", "25", "-noBinary", "-o",
+                          "-timelimit", "25", "-noIPC", "-noBinary", "-o",
                           str(Path("/tmp") / f"CardPilotSearch-{pid}.spindump.txt"),
                           "-stdout"], timeout=30)
             if report:
