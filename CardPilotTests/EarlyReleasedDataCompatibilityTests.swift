@@ -100,7 +100,6 @@ final class EarlyReleasedDataCompatibilityTests: XCTestCase {
     // Diagnostic only: run against the exact pre-change production files.
     func testBeforeSourceRejectsArchivedZeroAllocation() async throws {
         let fixture = try copiedFixture()
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let original = try CardPilotPersistence.makeContainer(at: fixture.storeURL)
         XCTAssertEqual(try BackupRecords.capture(ModelContext(original)), fixture.records)
         let store = BackupStore(directory: fixture.directory.appendingPathComponent("Recovery"),
