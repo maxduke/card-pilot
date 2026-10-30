@@ -1,4 +1,4 @@
-"""Capture bounded native app evidence after explicit search-ready markers."""
+"""Capture bounded native app system stacks after explicit search-ready markers."""
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,15 +29,19 @@ def run(command, timeout=10):
 def capture(line, test_case, device_id, index):
     evidence = Path("search-profile-diagnostics") / f"capture-{index:02d}"
     evidence.mkdir(parents=True, exist_ok=True)
-    trigger = f"{datetime.now(timezone.utc).isoformat()}\n{test_case}\n{line}"
+    trigger = f"{datetime.now(timezone.utc).isoformat()}\n{test_case}\ndevice={device_id}\n{line}"
     (evidence / "trigger.txt").write_text(trigger)
     print(trigger, flush=True)
     app_pids = run(["pgrep", "-f", "/CardPilot[.]app/CardPilot"])
     for pid in app_pids.split():
         if pid.isdecimal():
             run(["ps", "-p", pid, "-o", "pid,ppid,etime,time,%cpu,%mem,state,comm"])
-            run(["sample", pid, "1", "-file", str(evidence / f"app-{pid}.sample.txt")], timeout=30)
-    run(["xcrun", "simctl", "io", device_id, "screenshot", str(evidence / "screen.png")], timeout=15)
+            report = run(["sudo", "-n", "/usr/sbin/spindump", pid, "2", "10", "-onlyTarget",
+                          "-timelimit", "25", "-noBinary", "-o",
+                          str(Path("/tmp") / f"CardPilotSearch-{pid}.spindump.txt"),
+                          "-stdout"], timeout=30)
+            if report:
+                (evidence / f"app-{pid}.spindump.txt").write_text(report)
 
 
 def main():
