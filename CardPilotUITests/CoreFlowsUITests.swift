@@ -2303,6 +2303,70 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transaction.UI Previous Reversed"].exists)
     }
 
+    func testTransactionFilterRetainsSelectionAndRefreshesAfterSave() {
+        launch("transactionFilters")
+        tapRootTab("交易")
+        let count = app.staticTexts["transactions.results.count"]
+        func assertCount(_ label: String) {
+            XCTAssertTrue(count.waitForExistence(timeout: 10))
+            let ready = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "label == %@", label), object: count
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+            XCTAssertEqual(count.label, label)
+        }
+        assertCount("共 8 笔交易")
+        tap(app.buttons["transactions.filters"])
+        tap(app.buttons["transactions.filter.kind"])
+        tap(app.buttons["消费"])
+        tap(app.navigationBars["筛选交易"].buttons["完成"])
+        assertCount("共 6 笔交易")
+        let kind = app.buttons["移除筛选：消费"]
+        XCTAssertTrue(kind.exists)
+
+        tap(app.buttons["添加交易"])
+        tap(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true)
+        let cardPicker = app.navigationBars["选择卡片"]
+        XCTAssertTrue(cardPicker.waitForExistence(timeout: 10))
+        let sharedCard = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "UI Test Bank · UI Shared ·")
+        )
+        XCTAssertEqual(sharedCard.count, 1)
+        tap(sharedCard.element)
+        XCTAssertTrue(cardPicker.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["transactionCardPicker"].label.contains("UI Shared"))
+        enter("50", into: app.textFields["transactionAmount"])
+        enter("UI Query Refresh", into: app.textFields["商户（可选）"])
+        let save = app.buttons["saveTransaction"]
+        XCTAssertEqual(save.label, "保存交易")
+        tap(save)
+        XCTAssertTrue(app.navigationBars["添加交易"].waitForNonExistence(timeout: 10))
+        assertCount("共 7 笔交易")
+        XCTAssertTrue(kind.exists)
+        let row = app.buttons["transaction.UI Query Refresh"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Query Refresh").count, 1)
+        XCTAssertTrue(row.label.contains("50 CNY"))
+        reveal(row, fullyVisible: true)
+        captureScreenshot("筛选内保存后即时显示新交易并保留条件")
+
+        tap(kind)
+        assertCount("共 9 笔交易")
+        XCTAssertFalse(kind.exists)
+        XCTAssertFalse(app.buttons["transactions.filters.clear"].exists)
+        reveal(row, fullyVisible: true)
+        captureScreenshot("清除筛选后保留全部交易和新记录")
+
+        app.terminate()
+        app.launch()
+        tapRootTab("交易")
+        assertCount("共 9 笔交易")
+        XCTAssertEqual(app.buttons.matching(identifier: "transaction.UI Query Refresh").count, 1)
+        XCTAssertTrue(row.label.contains("50 CNY"))
+        reveal(row, fullyVisible: true)
+        captureScreenshot("交易查询边界调整后重启唯一读回")
+    }
+
     func testTransactionStatusKindAndCurrencyFiltersKeepCountsAndClear() {
         launch("transactionFilters")
         tapRootTab("交易")

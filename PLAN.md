@@ -1,13 +1,25 @@
 # CardPilot 首版实施计划
 
-## 当前 UX 第三十五批：交易保存动作职责拆分（2026-10-30）
+## 当前 UX 第三十六批：交易查询与输入状态边界（2026-10-30）
 
-继续 O20，把现有 `TransactionEditValues` 和 `TransactionEditActions` 从交易页面移到同目录的
-`TransactionEditActions.swift`。131 行声明体逐字迁移，唯一保存入口、页面与测试调用、校验、
-退款关系、手动分配、失败回滚及性能区间保持原样，便于独立维护保存流程。
-本地迁移对比和三种条件分支语法检查已通过；接下来执行当前 HEAD 完整 326 项原生测试与
-Release／`PERFORMANCE_TESTING` 原生构建，再完成适用审查、合并及主线验证。
-范围和验证边界见[第三十五批记录](docs/refactor-transaction-edit-actions-2026-10-29.md)。
+O19 的两万笔真实搜索阶段已取得目标应用栈：本次 2.15 秒采样的主线程经交易列表进入 `@Query` 读取，
+尚未进入现有数组筛选。当前把查询保留在原公开入口，搜索、筛选和编辑状态与原界面一起放入私有内容视图，
+通过原模型数组接收查询更新；不增加跨更新缓存、后台模型传递或新状态层。
+新增筛选内保存后即时更新、保留条件、清除和重启唯一读回的回归，原 95 项 UI 流程保持原样。
+先执行新流程和两万笔后置原生取证，再完成当前 HEAD 的 231＋96＝327 项与合并主线门禁。
+采样边界和实施范围见[第三十六批记录](docs/ux-transaction-query-boundary-2026-10-30.md)。
+
+## 已完成 UX 第三十五批：交易保存动作职责拆分（2026-10-30）
+
+现有 `TransactionEditValues` 和 `TransactionEditActions` 的 131 行声明体逐字移入独立文件，
+页面调用、校验、退款关系、手动分配、失败回滚和性能区间保留。
+[PR #71](https://github.com/maxduke/card-pilot/pull/71) HEAD `daa2da3` 的
+[PR CI](https://github.com/maxduke/card-pilot/actions/runs/40944273373) 与合并提交 `40428a5` 的
+[main CI](https://github.com/maxduke/card-pilot/actions/runs/40966636975) 均完整通过 326 项，
+零失败、跳过、用例重执行、workflow 重跑或进程重启；各自的一次促销保存内部 AX 点击恢复单独保留。
+[Release／PERFORMANCE_TESTING 原生构建](https://github.com/maxduke/card-pilot/actions/runs/40965766565)
+已编译两个模拟器架构的新文件，未执行测量。无待处理适用审查或可操作发现，原干净 main 已同步。
+范围与验证边界见[第三十五批记录](docs/refactor-transaction-edit-actions-2026-10-29.md)。
 
 ## 已完成 UX 第三十四批：交易输入、草稿与保存测量（2026-10-27）
 
