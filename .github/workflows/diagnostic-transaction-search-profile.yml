@@ -1,0 +1,110 @@
+name: Native transaction search stack profile
+
+on:
+  push:
+    branches: [diagnose/transaction-search-profile]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transaction-search-profile-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Profile one isolated Release search flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-evidence
+          git rev-parse HEAD > native-evidence/source-revision.txt
+          git rev-parse HEAD^ > native-evidence/formal-source-revision.txt
+          git diff --stat HEAD^ HEAD > native-evidence/diagnostic-source-diff.txt
+          uname -m > native-evidence/architecture.txt
+          sw_vers > native-evidence/macos-version.txt
+          xcodebuild -version > native-evidence/xcode-version.txt
+          xcrun simctl list devices available -j > native-evidence/simulators.json
+          device_id=$(python3 -c 'import json; devices=json.load(open("native-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+          echo "SEARCH_PROFILE_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+          build_args=(
+            -project CardPilot.xcodeproj
+            -scheme CardPilotPerformance -configuration Release
+            -destination "platform=iOS Simulator,id=$device_id"
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING
+            CODE_SIGNING_ALLOWED=NO
+          )
+          instrumentation_args=(
+            -enableCodeCoverage NO
+            -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO
+          )
+          xcodebuild "${build_args[@]}" -showBuildSettings -json > native-evidence/build-settings.json
+          python3 - "${build_args[@]}" <<'PY'
+          import json, sys
+          from pathlib import Path
+          rows = json.loads(Path("native-evidence/build-settings.json").read_text())
+          app = next(row["buildSettings"] for row in rows if row["target"] == "CardPilot")
+          assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
+          assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+          assert app.get("ENABLE_TESTABILITY", "NO") == "NO", app.get("ENABLE_TESTABILITY")
+          flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+          assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
+          Path("native-evidence/common-build-arguments.json").write_text(json.dumps(sys.argv[1:], indent=2) + "\n")
+          PY
+          test_args=(
+            "${build_args[@]}"
+            "${instrumentation_args[@]}"
+            -resultBundlePath SearchProfileResults.xcresult
+            -only-testing:CardPilotUITests/PerformanceUITests/testLargeTransactionSearchProfile
+            -parallel-testing-enabled NO
+            -test-timeouts-enabled YES
+            -default-test-execution-time-allowance 600
+            -maximum-test-execution-time-allowance 600
+          )
+          python3 - "${test_args[@]}" <<'PY'
+          import json, sys
+          from pathlib import Path
+          Path("native-evidence/test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
+          PY
+          touch native-evidence/xcodebuild.log
+          python3 scripts/diagnostic_transaction_search_profile.py native-evidence/xcodebuild.log "$device_id" > native-evidence/profile-monitor.log 2>&1 &
+          search_monitor_pid=$!
+          cleanup_search_monitor() {
+            kill "$search_monitor_pid" 2>/dev/null || true
+            wait "$search_monitor_pid" 2>/dev/null || true
+          }
+          trap cleanup_search_monitor EXIT
+          xcodebuild test "${test_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
+      - name: Export actual profile flow and fixture evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool get test-results summary --path SearchProfileResults.xcresult > native-evidence/summary.json
+          xcrun xcresulttool export attachments --path SearchProfileResults.xcresult --output-path native-evidence/attachments
+          python3 - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          simulator = Path.home() / "Library/Developer/CoreSimulator/Devices" / os.environ["SEARCH_PROFILE_DEVICE_ID"] / "data"
+          destination = Path("native-evidence/fixtures")
+          destination.mkdir(parents=True, exist_ok=True)
+          for report in simulator.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
+              shutil.copyfile(report, destination / (report.parent.name + ".json"))
+          PY
+      - name: Upload native search profile evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: transaction-search-profile
+          path: |
+            native-evidence
+            search-profile-diagnostics
+            SearchProfileResults.xcresult
+          retention-days: 7
+          if-no-files-found: error
