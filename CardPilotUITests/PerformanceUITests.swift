@@ -75,6 +75,42 @@ final class PerformanceUITests: XCTestCase {
     func testMediumTransactionScroll() { measureScroll(.medium) }
     func testLargeTransactionScroll() { measureScroll(.large) }
 
+    // Diagnostic-only stack capture: this is not a measured baseline.
+    func testLargeTransactionSearchProfile() {
+        func recordPhase(_ message: String) {
+            FileHandle.standardOutput.write(Data((message + "\n").utf8))
+        }
+        let session = UUID().uuidString
+        app.launchEnvironment["CARDPILOT_UI_SESSION"] = session
+        app.launchEnvironment["CARDPILOT_UI_SCENARIO"] = Profile.large.scenario
+        app.launch()
+        assertDashboardReady()
+        open(.transactions, profile: .large)
+        XCTAssertTrue(app.buttons["transaction.Baseline Latest"].waitForExistence(timeout: 30))
+        app.terminate()
+        freshLaunch()
+        open(.transactions, profile: .large)
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 30))
+        search.tap()
+        let metadata = XCTAttachment(string: "session=\(session); transactions=20000; expectedMatches=200; searches=5; measurements=none")
+        metadata.name = "search-profile-scope"
+        metadata.lifetime = .keepAlways
+        add(metadata)
+        recordPhase("CARDPILOT_SEARCH_PROFILE_BEGIN \(ISO8601DateFormatter().string(from: .now))")
+        for index in 0..<5 {
+            if index > 0 {
+                search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
+                assertResultCount(20_000)
+            }
+            recordPhase("CARDPILOT_SEARCH_QUERY_BEGIN index=\(index) time=\(ISO8601DateFormatter().string(from: .now))")
+            search.typeText("73519")
+            assertResultCount(200)
+            recordPhase("CARDPILOT_SEARCH_QUERY_END index=\(index) time=\(ISO8601DateFormatter().string(from: .now))")
+        }
+        capture("两万笔交易搜索采样-精确200条结果")
+    }
+
     private var options: XCTMeasureOptions {
         let options = XCTMeasureOptions()
         options.iterationCount = 10

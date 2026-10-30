@@ -1,0 +1,223 @@
+name: Native transaction query boundary preflight
+'on':
+  push:
+    branches:
+    - diagnose/transaction-query-boundary
+permissions:
+  contents: read
+concurrency:
+  group: transaction-query-boundary-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  filtered-save:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v5
+    - name: Verify filtered save, refresh, clear and relaunch
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p native-evidence
+        git rev-parse HEAD > native-evidence/source-revision.txt
+        formal_source=82b79e39a436898c6b41e246d4142702bdc7de85
+        [[ "$formal_source" =~ ^[0-9a-f]{40}$ ]]
+        git fetch --no-tags --depth=1 origin "$formal_source"
+        git rev-parse --verify "$formal_source^{commit}" > native-evidence/formal-source-revision.txt
+        git diff --stat "$formal_source" HEAD > native-evidence/diagnostic-source-diff.txt
+        git diff --name-only "$formal_source" HEAD > native-evidence/diagnostic-source-paths.txt
+        python3 - <<'PY_SCOPE'
+        from pathlib import Path
+        actual = set(Path("native-evidence/diagnostic-source-paths.txt").read_text().splitlines())
+        expected = {
+            ".github/workflows/diagnostic-transaction-query-boundary.yml",
+            "CardPilotUITests/PerformanceUITests.swift",
+            "scripts/diagnostic_transaction_search_profile.py",
+        }
+        assert actual == expected, actual
+        PY_SCOPE
+        uname -m > native-evidence/architecture.txt
+        sw_vers > native-evidence/macos-version.txt
+        xcodebuild -version > native-evidence/xcode-version.txt
+        xcrun simctl list devices available -j > native-evidence/simulators.json
+        device_id=$(python3 -c 'import json; devices=json.load(open("native-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+        echo "CARDPILOT_TEST_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+        test_args=(
+          -project CardPilot.xcodeproj -scheme CardPilot -configuration Debug
+          -destination "platform=iOS Simulator,id=$device_id"
+          -resultBundlePath QueryBoundaryUIResults.xcresult
+          -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionFilterRetainsSelectionAndRefreshesAfterSave
+          -parallel-testing-enabled NO -test-timeouts-enabled YES
+          -default-test-execution-time-allowance 180
+          -maximum-test-execution-time-allowance 300
+          CODE_SIGNING_ALLOWED=NO
+        )
+        python3 - "${test_args[@]}" <<'PY_COMMAND'
+        import json, sys
+        from pathlib import Path
+        Path("native-evidence/test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
+        PY_COMMAND
+        touch native-evidence/xcodebuild.log
+        python3 -u scripts/capture_app_idle.py native-evidence/xcodebuild.log "$device_id" > native-evidence/app-idle-monitor.log 2>&1 &
+        monitor_pid=$!
+        trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
+        xcodebuild test "${test_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
+    - name: Preserve direct artifacts before exporting UI results
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY_RAW'
+        import os, shutil
+        from pathlib import Path
+        selected_device = os.environ.get("CARDPILOT_TEST_DEVICE_ID")
+        copied = 0
+        if selected_device:
+            device = Path.home() / "Library/Developer/CoreSimulator/Devices" / selected_device
+            for source in (device / "data/Containers/Data/Application").glob("*/tmp/CardPilotUITestDiagnostics"):
+                destination = Path("native-evidence/test-failure-artifacts") / source.parents[1].name
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+                copied += 1
+        print(f"Copied direct native artifacts from {copied} simulator containers (including shutdown devices).")
+        PY_RAW
+        xcrun xcresulttool get test-results summary --path QueryBoundaryUIResults.xcresult > native-evidence/summary.json
+        xcrun xcresulttool export attachments --path QueryBoundaryUIResults.xcresult --output-path native-evidence/attachments
+        python3 - <<'PY_RESULT'
+        import json
+        from pathlib import Path
+        summary = json.loads(Path("native-evidence/summary.json").read_text())
+        assert summary["result"] == "Passed", summary
+        assert summary["totalTestCount"] == summary["passedTests"] == 1, summary
+        assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
+        PY_RESULT
+    - name: Upload native query boundary regression evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: transaction-query-boundary-ui
+        path: |
+          native-evidence
+          app-idle-diagnostics
+          QueryBoundaryUIResults.xcresult
+        retention-days: 7
+        if-no-files-found: error
+  release-search-profile:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v5
+    - name: Profile one isolated Release search flow
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p native-evidence
+        git rev-parse HEAD > native-evidence/source-revision.txt
+        formal_source=82b79e39a436898c6b41e246d4142702bdc7de85
+        [[ "$formal_source" =~ ^[0-9a-f]{40}$ ]]
+        git fetch --no-tags --depth=1 origin "$formal_source"
+        git rev-parse --verify "$formal_source^{commit}" > native-evidence/formal-source-revision.txt
+        git diff --stat "$formal_source" HEAD > native-evidence/diagnostic-source-diff.txt
+        git diff --name-only "$formal_source" HEAD > native-evidence/diagnostic-source-paths.txt
+        python3 - <<'PY_SCOPE'
+        from pathlib import Path
+        actual = set(Path("native-evidence/diagnostic-source-paths.txt").read_text().splitlines())
+        expected = {
+            ".github/workflows/diagnostic-transaction-query-boundary.yml",
+            "CardPilotUITests/PerformanceUITests.swift",
+            "scripts/diagnostic_transaction_search_profile.py",
+        }
+        assert actual == expected, actual
+        PY_SCOPE
+        uname -m > native-evidence/architecture.txt
+        sw_vers > native-evidence/macos-version.txt
+        xcodebuild -version > native-evidence/xcode-version.txt
+        xcrun simctl list devices available -j > native-evidence/simulators.json
+        device_id=$(python3 -c 'import json; devices=json.load(open("native-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+        echo "SEARCH_PROFILE_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+        build_args=(
+          -project CardPilot.xcodeproj
+          -scheme CardPilotPerformance -configuration Release
+          -destination "platform=iOS Simulator,id=$device_id"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS=PERFORMANCE_TESTING
+          CODE_SIGNING_ALLOWED=NO
+        )
+        instrumentation_args=(
+          -enableCodeCoverage NO
+          -enableAddressSanitizer NO -enableThreadSanitizer NO -enableUndefinedBehaviorSanitizer NO
+        )
+        xcodebuild "${build_args[@]}" -showBuildSettings -json > native-evidence/build-settings.json
+        python3 - "${build_args[@]}" <<'PY'
+        import json, sys
+        from pathlib import Path
+        rows = json.loads(Path("native-evidence/build-settings.json").read_text())
+        app = next(row["buildSettings"] for row in rows if row["target"] == "CardPilot")
+        assert app["CONFIGURATION"] == "Release", app["CONFIGURATION"]
+        assert app["SWIFT_OPTIMIZATION_LEVEL"] == "-O", app["SWIFT_OPTIMIZATION_LEVEL"]
+        assert app.get("ENABLE_TESTABILITY", "NO") == "NO", app.get("ENABLE_TESTABILITY")
+        flags = app["SWIFT_ACTIVE_COMPILATION_CONDITIONS"].split()
+        assert "PERFORMANCE_TESTING" in flags and "DEBUG" not in flags, flags
+        Path("native-evidence/common-build-arguments.json").write_text(json.dumps(sys.argv[1:], indent=2) + "\n")
+        PY
+        test_args=(
+          "${build_args[@]}"
+          "${instrumentation_args[@]}"
+          -resultBundlePath SearchProfileResults.xcresult
+          -only-testing:CardPilotUITests/PerformanceUITests/testLargeTransactionSearchProfile
+          -parallel-testing-enabled NO
+          -test-timeouts-enabled YES
+          -default-test-execution-time-allowance 600
+          -maximum-test-execution-time-allowance 600
+        )
+        python3 - "${test_args[@]}" <<'PY'
+        import json, sys
+        from pathlib import Path
+        Path("native-evidence/test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
+        PY
+        touch native-evidence/xcodebuild.log
+        python3 scripts/diagnostic_transaction_search_profile.py native-evidence/xcodebuild.log "$device_id" > native-evidence/profile-monitor.log 2>&1 &
+        search_monitor_pid=$!
+        cleanup_search_monitor() {
+          kill "$search_monitor_pid" 2>/dev/null || true
+          wait "$search_monitor_pid" 2>/dev/null || true
+        }
+        trap cleanup_search_monitor EXIT
+        xcodebuild test "${test_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
+    - name: Export actual profile flow and fixture evidence
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcrun xcresulttool get test-results summary --path SearchProfileResults.xcresult > native-evidence/summary.json
+        xcrun xcresulttool export attachments --path SearchProfileResults.xcresult --output-path native-evidence/attachments
+        python3 - <<'PY'
+        import json, os, shutil
+        from pathlib import Path
+        simulator = Path.home() / "Library/Developer/CoreSimulator/Devices" / os.environ["SEARCH_PROFILE_DEVICE_ID"] / "data"
+        destination = Path("native-evidence/fixtures")
+        destination.mkdir(parents=True, exist_ok=True)
+        for report in simulator.glob("Containers/Data/Application/*/tmp/CardPilotUITests/*/performance-fixture.json"):
+            shutil.copyfile(report, destination / (report.parent.name + ".json"))
+        PY
+        python3 - <<'PY_RESULT'
+        import json
+        from pathlib import Path
+        summary = json.loads(Path("native-evidence/summary.json").read_text())
+        assert summary["result"] == "Passed", summary
+        assert summary["totalTestCount"] == summary["passedTests"] == 1, summary
+        assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
+        PY_RESULT
+    - name: Upload isolated Release search profile evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: transaction-query-boundary-search-profile
+        path: |
+          native-evidence
+          search-profile-diagnostics
+          SearchProfileResults.xcresult
+        retention-days: 7
+        if-no-files-found: error
