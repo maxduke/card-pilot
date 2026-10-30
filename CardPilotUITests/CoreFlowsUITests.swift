@@ -223,6 +223,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testBillingCycleDateFeedbackAtLargestTextSizeAndDiscard() {
+        // Main run 41050284723 attempt 2 completed this discard/relaunch flow
+        // at 192s, beyond the 180s default. Use the existing 240s allowance.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyBillingDateFeedback(accountEditor: false, largestText: true)
     }
@@ -478,7 +481,43 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
         let history = app.buttons["card.transactions"]
         XCTAssertTrue(history.label.contains("共 1000 笔"))
-        tap(history)
+        // Attempt2 synthesized a tap but remained on the card detail. Establish
+        // a stable, unobscured row before the single tap and retain its evidence.
+        let cardNavigationBar = app.navigationBars["卡片详情"]
+        reveal(history, fullyVisible: true, navigationBar: cardNavigationBar)
+        var previousFrame = history.frame
+        var observation = "Card history entry readiness predicate has not run"
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, history.exists else { return false }
+            let frame = history.frame
+            let appFrame = self.app.frame
+            let contentTop = cardNavigationBar.frame.maxY
+            let viewport = CGRect(x: appFrame.minX, y: contentTop,
+                                  width: appFrame.width, height: self.contentBottom - contentTop)
+            let tolerance: CGFloat = 0.001
+            let stable = abs(frame.minX - previousFrame.minX) <= tolerance
+                && abs(frame.minY - previousFrame.minY) <= tolerance
+                && abs(frame.width - previousFrame.width) <= tolerance
+                && abs(frame.height - previousFrame.height) <= tolerance
+            previousFrame = frame
+            let contained = !frame.isEmpty && viewport.insetBy(dx: -tolerance, dy: -tolerance).contains(frame)
+            let enabled = history.isEnabled
+            let hittable = stable && contained && enabled && history.isHittable
+            observation = "row=\(frame); viewport=\(viewport); stable=\(stable); contained=\(contained); enabled=\(enabled); hittable=\(hittable)"
+            return stable && contained && enabled && hittable
+        }, object: history)
+        let result = XCTWaiter.wait(for: [ready], timeout: 10)
+        observation += "; waitResult=\(result.rawValue)"
+        let geometry = XCTAttachment(string: observation)
+        geometry.name = "两万笔单卡交易入口-位置"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        guard result == .completed else {
+            XCTFail("Expected a stable, unobscured card history entry. \(observation)")
+            return
+        }
+        captureScreenshot("两万笔单卡交易入口")
+        history.tap()
         let navigationBar = app.navigationBars["Baseline Card 19"]
         XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
         let latest = app.buttons["transaction.Baseline Latest"]
