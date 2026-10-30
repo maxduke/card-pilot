@@ -10,7 +10,6 @@ final class EarlyReleasedDataCompatibilityTests: XCTestCase {
 
     func testEarlyV3StorePreservesEveryFieldAcrossUpgradeSaveAndReopen() throws {
         let fixture = try copiedFixture()
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
         var expected = fixture.records
         XCTAssertTrue(expected.accounts.allSatisfy { $0.customName == nil })
         XCTAssertTrue(expected.promotions.allSatisfy { $0.benefitTransactionCap == nil })
@@ -34,7 +33,6 @@ final class EarlyReleasedDataCompatibilityTests: XCTestCase {
 
     func testEarlyV3ZeroAllocationSurvivesExportRestoreAndRelaunch() async throws {
         let fixture = try copiedFixture()
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let original = try CardPilotPersistence.makeContainer(at: fixture.storeURL)
         let recovery = fixture.directory.appendingPathComponent("Recovery")
         let store = BackupStore(directory: recovery, openLegacy: { original })
@@ -74,7 +72,6 @@ final class EarlyReleasedDataCompatibilityTests: XCTestCase {
 
     func testEarlyV3RestoreSaveFailureRetainsOriginalZeroAllocation() async throws {
         let fixture = try copiedFixture()
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let original = try CardPilotPersistence.makeContainer(at: fixture.storeURL)
         let recovery = fixture.directory.appendingPathComponent("Recovery")
         let store = BackupStore(directory: recovery, openLegacy: { original },
@@ -137,8 +134,12 @@ final class EarlyReleasedDataCompatibilityTests: XCTestCase {
             from: Data(contentsOf: resource(prefix + ".expected-records.json")))
         XCTAssertEqual(records.count, 27)
         XCTAssertEqual(records.allocations.filter { $0.qualifyingAmount.value == .zero }.count, 1)
-        let directory = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let directory = URL.temporaryDirectory
+            .appendingPathComponent("CardPilotEarlyReleasedDataTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Match the released-data tests: SwiftData can retain SQLite connections
+        // beyond container scope. Keep copies until the simulator test process exits.
         let storeURL = directory.appendingPathComponent("ledger.store")
         try FileManager.default.copyItem(at: resource(prefix + ".store"), to: storeURL)
         return Fixture(directory: directory, storeURL: storeURL, records: records)
