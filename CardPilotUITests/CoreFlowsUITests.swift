@@ -2325,7 +2325,16 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(kind.exists)
 
         tap(app.buttons["添加交易"])
-        selectTransactionCard("UI Shared")
+        tap(app.buttons["transactionCardPicker"], scrollTowardTopWhenMissing: true)
+        let cardPicker = app.navigationBars["选择卡片"]
+        XCTAssertTrue(cardPicker.waitForExistence(timeout: 10))
+        let sharedCard = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "UI Test Bank · UI Shared ·")
+        )
+        XCTAssertEqual(sharedCard.count, 1)
+        tap(sharedCard.element)
+        XCTAssertTrue(cardPicker.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["transactionCardPicker"].label.contains("UI Shared"))
         enter("50", into: app.textFields["transactionAmount"])
         enter("UI Query Refresh", into: app.textFields["商户（可选）"])
         let save = app.buttons["saveTransaction"]
