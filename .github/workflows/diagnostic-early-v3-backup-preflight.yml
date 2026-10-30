@@ -1,0 +1,108 @@
+name: Native early V3 backup compatibility preflight
+'on':
+  push:
+    branches:
+    - diagnose/early-v3-backup-preflight
+permissions:
+  contents: read
+concurrency:
+  group: early-v3-backup-preflight-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: macos-15
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - before
+        - candidate
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      CARDPILOT_PROBE_MODE: ${{ matrix.mode }}
+    steps:
+    - uses: actions/checkout@v5
+    - name: Verify pinned production source and native archive behavior
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p native-evidence
+        formal_source=8a0279fd1ab39200af3cf656af40b16fb6d5e427
+        before_source=65c4f25c617a8c1d07b2ed46df275812b255440f
+        [[ "$formal_source" =~ ^[0-9a-f]{40}$ ]]
+        git fetch --no-tags --depth=1 origin "$formal_source" "$before_source"
+        git rev-parse HEAD > native-evidence/diagnostic-source-revision.txt
+        git rev-parse --verify "$formal_source^{commit}" > native-evidence/formal-source-revision.txt
+        git diff --name-only "$formal_source" HEAD > native-evidence/diagnostic-source-paths.txt
+        python3 - <<'PY_SCOPE'
+        from pathlib import Path
+        actual = set(Path("native-evidence/diagnostic-source-paths.txt").read_text().splitlines())
+        assert actual == {
+            ".github/workflows/diagnostic-early-v3-backup-preflight.yml",
+            "CardPilotTests/EarlyReleasedDataCompatibilityTests.swift",
+        }, actual
+        PY_SCOPE
+        if [[ "$CARDPILOT_PROBE_MODE" == before ]]; then
+          git restore --source="$before_source" --worktree CardPilot/Domain/Models.swift CardPilot/Services/BackupArchive.swift
+          production_source=$before_source
+          cases=(testBeforeSourceRejectsArchivedZeroAllocation)
+        else
+          [[ "$CARDPILOT_PROBE_MODE" == candidate ]]
+          production_source=$formal_source
+          cases=(testEarlyV3StorePreservesEveryFieldAcrossUpgradeSaveAndReopen
+                 testEarlyV3ZeroAllocationSurvivesExportRestoreAndRelaunch
+                 testEarlyV3RestoreSaveFailureRetainsOriginalZeroAllocation)
+        fi
+        git diff --exit-code "$production_source" -- CardPilot CardPilot.xcodeproj > native-evidence/production-source-diff.txt
+        echo "$production_source" > native-evidence/production-source-revision.txt
+        git diff --name-status HEAD > native-evidence/working-tree-diff.txt
+        uname -m > native-evidence/architecture.txt
+        sw_vers > native-evidence/macos-version.txt
+        xcodebuild -version > native-evidence/xcode-version.txt
+        xcrun simctl list devices available -j > native-evidence/simulators.json
+        device_id=$(python3 -c 'import json; devices=json.load(open("native-evidence/simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
+        test_args=(
+          -project CardPilot.xcodeproj -scheme CardPilot -configuration Debug
+          -destination "platform=iOS Simulator,id=$device_id"
+          -resultBundlePath EarlyV3Results.xcresult
+          -parallel-testing-enabled NO -test-timeouts-enabled YES
+          -default-test-execution-time-allowance 180
+          -maximum-test-execution-time-allowance 300
+          CODE_SIGNING_ALLOWED=NO
+        )
+        for test_case in "${cases[@]}"; do
+          test_args+=("-only-testing:CardPilotTests/EarlyReleasedDataCompatibilityTests/$test_case")
+        done
+        python3 - "${test_args[@]}" <<'PY_COMMAND'
+        import json, sys
+        from pathlib import Path
+        Path("native-evidence/test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
+        PY_COMMAND
+        xcodebuild test "${test_args[@]}" 2>&1 | tee native-evidence/xcodebuild.log
+    - name: Export actual test results
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcrun xcresulttool get test-results summary --path EarlyV3Results.xcresult > native-evidence/summary.json
+        xcrun xcresulttool export attachments --path EarlyV3Results.xcresult --output-path native-evidence/attachments
+        python3 - <<'PY_RESULT'
+        import json, os
+        from pathlib import Path
+        summary = json.loads(Path("native-evidence/summary.json").read_text())
+        expected = 1 if os.environ["CARDPILOT_PROBE_MODE"] == "before" else 3
+        assert summary["result"] == "Passed", summary
+        assert summary["passedTests"] == summary["totalTestCount"] == expected, summary
+        assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
+        PY_RESULT
+    - name: Upload focused native compatibility evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: early-v3-backup-${{ matrix.mode }}
+        path: |
+          native-evidence
+          EarlyV3Results.xcresult
+        retention-days: 7
+        if-no-files-found: error

@@ -100,6 +100,23 @@ final class EarlyReleasedDataCompatibilityTests: XCTestCase {
         XCTAssertEqual(try BackupArchive.decode(BackupStore.read(retainedURL)).records, fixture.records)
     }
 
+    // Diagnostic only: run against the exact pre-change production files.
+    func testBeforeSourceRejectsArchivedZeroAllocation() async throws {
+        let fixture = try copiedFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let original = try CardPilotPersistence.makeContainer(at: fixture.storeURL)
+        XCTAssertEqual(try BackupRecords.capture(ModelContext(original)), fixture.records)
+        let store = BackupStore(directory: fixture.directory.appendingPathComponent("Recovery"),
+                                openLegacy: { original })
+        XCTAssertFalse(store.startupFailed)
+        do {
+            _ = try await store.exportData()
+            XCTFail("The pinned pre-change code must reproduce the archived-zero refusal")
+        } catch BackupError.invalidModelData(let category) {
+            XCTAssertEqual(category, "促销分配")
+        }
+    }
+
     private struct Fixture {
         let directory: URL
         let storeURL: URL
