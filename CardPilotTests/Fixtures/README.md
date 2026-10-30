@@ -38,3 +38,23 @@ failed staged save. A future schema change must run against these released
 inputs. The native compatibility tests now exercise the specific V3-to-V4
 upgrade on iOS 18.5. This does not prove other historical model families,
 iOS 17, physical-device upgrade, notification delivery or future migrations.
+
+## Early V3 input
+
+`CardPilot-v0.1.3.store` and `CardPilot-v0.1.3.expected-records.json` were generated
+from immutable v0.1.3 source `3553b38c19dbb38004d201bdfa7600648b35e6ee`; v0.1.2 has
+identical model source. The [generator](https://github.com/maxduke/card-pilot/commit/787154b1c3e14738c19517c129035521e54d7811)
+adds only a diagnostic test and workflow. Its [native run](https://github.com/maxduke/card-pilot/actions/runs/41027239031)
+passed one test with no failures or skips on Xcode 16.4 / iOS 18.5 simulator.
+
+The 27 records cover the same nine model types, including an active purchase
+with a zero HKD allocation accepted by the released editor/model. This input
+predates the optional promotion benefit count and account name. SQLite backup
+includes committed WAL; an independent copy was reopened with the old models
+and compared against every captured field and relationship.
+
+The expected JSON is an added diagnostic serialization of saved native fields,
+not a historical backup export: v0.1.3 had no full-backup feature. Payload bytes
+are unchanged; the original manifest and provenance were only given unique
+`CardPilot-v0.1.3.*.json` resource names. Keep all four inputs immutable and open
+only disposable store copies. These inputs do not prove V1/V2 or device migration.

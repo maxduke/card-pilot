@@ -762,8 +762,12 @@ final class PromotionAllocation {
         self.currencyCode = currencyCode
     }
 
-    func validate() throws {
-        guard qualifyingAmount > .zero else { throw ModelValidationError.invalidQualifyingAmount }
+    func validate(allowingArchivedZeroAmount: Bool = false) throws {
+        // Released v0.1.2/v0.1.3 editors allowed zero. Preserve those facts in
+        // backups while keeping every normal creation/edit call positive-only.
+        guard qualifyingAmount > .zero || (allowingArchivedZeroAmount && qualifyingAmount == .zero) else {
+            throw ModelValidationError.invalidQualifyingAmount
+        }
         guard isValidCurrencyCode(currencyCode) else {
             throw ModelValidationError.invalidCurrencyCode(currencyCode)
         }
