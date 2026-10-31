@@ -1,4 +1,4 @@
-name: Native increased-contrast acceptance
+name: Native clipping viewport diagnostic
 'on':
   push:
     branches:
@@ -10,11 +10,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   test:
-    name: Increased contrast (${{ matrix.appearance }})
+    name: Clipping viewport diagnostic (${{ matrix.appearance }})
     strategy:
       fail-fast: false
       matrix:
-        appearance: [light, dark]
+        appearance: [light]
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -34,11 +34,11 @@ jobs:
         python3 - <<'PY_SCOPE'
         from pathlib import Path
         actual = set(Path("diagnostic-source-paths.txt").read_text().splitlines())
-        assert actual == {".github/workflows/diagnostic-increased-contrast.yml"}, actual
+        assert actual == {".github/workflows/diagnostic-increased-contrast.yml", "CardPilotUITests/CoreFlowsUITests.swift"}, actual
         PY_SCOPE
         sw_vers > macos-version.txt
         uname -m > architecture.txt
-    - name: Run three original complete flows with increased contrast
+    - name: Record three viewports without classifying audit findings as passed
       run: |
         set -euo pipefail
         xcodebuild -version | tee xcode-version.txt
@@ -65,9 +65,7 @@ jobs:
           -project CardPilot.xcodeproj -scheme CardPilot
           -destination "platform=iOS Simulator,id=$device_id"
           -resultBundlePath TestResults.xcresult
-          -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets
-          -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
-          -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionOverviewPrioritizesProgressAndDistinguishesLimits
+          -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingClippingViewportDiagnostic
           -parallel-testing-enabled NO -test-timeouts-enabled YES
           -default-test-execution-time-allowance 180
           -maximum-test-execution-time-allowance 300
@@ -113,14 +111,14 @@ jobs:
         assert Path("simulator-appearance-after.txt").read_text().strip() == os.environ["CARDPILOT_TEST_APPEARANCE"]
         assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
         assert summary["result"] == "Passed", summary
-        assert summary["passedTests"] == summary["totalTestCount"] == 3, summary
+        assert summary["passedTests"] == summary["totalTestCount"] == 1, summary
         assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
         PY_RESULT
     - name: Upload native test results
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: native-increased-contrast-${{ matrix.appearance }}
+        name: native-clipping-viewport-${{ matrix.appearance }}
         path: |
           TestResults.xcresult
           summary.json
