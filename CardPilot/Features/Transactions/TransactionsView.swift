@@ -1297,7 +1297,8 @@ struct TransactionEditorForm: View {
     }
 
     private func editorContent(using scrollProxy: ScrollViewProxy) -> some View {
-        VStack(spacing: 0) {
+        let actionTitle = editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存"
+        return VStack(spacing: 0) {
             if needsPromotionConfirmation || editorStep == 1 { editorStepIndicator }
             Group {
                 if editorStep == 0 {
@@ -1349,7 +1350,8 @@ struct TransactionEditorForm: View {
                         save(scrollProxy: scrollProxy)
                     }
                 } label: {
-                    Text(editorStep == 0 ? (needsPromotionConfirmation ? "继续确认促销" : "保存交易") : "确认并保存")
+                    Text(dynamicTypeSize.isAccessibilitySize && editorStep == 0 && needsPromotionConfirmation
+                         ? "确认促销" : actionTitle)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -1357,6 +1359,7 @@ struct TransactionEditorForm: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .disabled(!isAmountPositive || selectedCard == nil)
+                .accessibilityLabel(actionTitle)
                 .accessibilityIdentifier("saveTransaction")
                 if isNumericInputFocused {
                     HStack {
@@ -1484,7 +1487,7 @@ struct TransactionEditorForm: View {
         let summary = "第 \(editorStep + 1) 步，共 2 步：\(editorStep == 0 ? "交易信息" : "确认促销")"
         return VStack(spacing: 0) {
             if dynamicTypeSize.isAccessibilitySize {
-                Text(summary)
+                Text("\(editorStep + 1)/2 · \(editorStep == 0 ? "交易信息" : "确认促销")")
                     .font(.caption.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
