@@ -471,8 +471,8 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testLargeCardHistoryScopesRowsAndRefreshesAfterRecording() {
-        // Run 40087999091 spent 99s preparing the Debug store and reached
-        // the first save at 176s. Keep the existing workflow's 240s maximum.
+        // Run 41232577050 completed this whole Debug flow in 173.927s.
+        // Retain the original 240s budget, including fixture setup.
         executionTimeAllowance = 240
         launch("performanceLarge")
         tapRootTab("卡片")
@@ -1248,7 +1248,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
         XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(amount.frame.maxY, min(contentBottom, form.frame.maxY))
+        // CGRect.maxY adds origin and height; the same edge can differ by one
+        // representable CGFloat (run 41182275972). Keep only that rounding margin.
+        XCTAssertLessThanOrEqual(amount.frame.maxY, min(contentBottom, form.frame.maxY).nextUp)
         XCTAssertTrue(amount.isHittable)
         captureScreenshot("最大字号交易金额键盘收起入口")
         dismissal.tap()
@@ -1271,7 +1273,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(amount.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(amount.frame))
         XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(amount.frame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertLessThanOrEqual(amount.frame.maxY, min(contentBottom, form.frame.maxY).nextUp)
         XCTAssertTrue(amount.isHittable)
         XCTAssertGreaterThanOrEqual(progress.frame.minY + 0.001, navigationBar.frame.maxY)
         XCTAssertLessThanOrEqual(progress.frame.maxY, save.frame.minY)
@@ -1299,7 +1301,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(allocation.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(allocation.frame))
         XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(allocation.frame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, min(contentBottom, form.frame.maxY).nextUp)
         XCTAssertTrue(allocation.isHittable)
         captureScreenshot("最大字号促销计入金额键盘收起入口")
         dismissal.tap()
@@ -1330,7 +1332,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(allocation.frame.isEmpty)
         XCTAssertTrue(app.frame.contains(allocation.frame))
         XCTAssertGreaterThanOrEqual(allocation.frame.minY + 0.001, max(navigationBar.frame.maxY, progress.frame.maxY))
-        XCTAssertLessThanOrEqual(allocation.frame.maxY, min(contentBottom, form.frame.maxY))
+        XCTAssertLessThanOrEqual(allocation.frame.maxY, min(contentBottom, form.frame.maxY).nextUp)
         XCTAssertTrue(allocation.isHittable)
         XCTAssertTrue(navigationBar.exists)
         XCTAssertTrue(back.isHittable)
@@ -2746,10 +2748,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(clear.exists)
     }
 
-    private func accountHistoryMonth(offset: Int) -> (key: Int, year: String, month: String) {
+    private func accountHistoryMonth(offset: Int, relativeTo referenceDate: Date = .now) -> (key: Int, year: String, month: String) {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let date = calendar.date(byAdding: .month, value: offset, to: Date())!
+        let date = calendar.date(byAdding: .month, value: offset, to: referenceDate)!
         let year = calendar.component(.year, from: date)
         let month = calendar.component(.month, from: date)
         return (year * 100 + month, String(year), "\(month) 月")
@@ -3488,13 +3490,16 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func verifyBillingDateFeedback(accountEditor: Bool, largestText: Bool) {
+        // Relaunch can cross a month boundary. Verify the original edited
+        // cycle and its saved dates throughout this correction/discard flow.
+        let referenceDate = Date()
         let prefix = (largestText ? "最大字号" : "") + (accountEditor ? "账户编辑" : "账期编辑")
         launch("billingDateFeedback")
         openBillingFeedbackAccount()
         if accountEditor {
             tap(app.navigationBars["账户详情"].buttons["编辑"])
         } else {
-            openBillingFeedbackCycle(offset: 0)
+            openBillingFeedbackCycle(offset: 0, relativeTo: referenceDate)
             tap(app.buttons["调整本期日期"])
         }
         let navigationBar = app.navigationBars[accountEditor ? "编辑信用卡账户" : "调整本期日期"]
@@ -3534,9 +3539,9 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launch()
         openBillingFeedbackAccount()
-        openBillingFeedbackCycle(offset: 0)
-        assertBillingFeedbackDate("账单日", monthOffset: 0, day: largestText ? 5 : 20)
-        assertBillingFeedbackDate("还款日", monthOffset: largestText ? 0 : 1, day: 15)
+        openBillingFeedbackCycle(offset: 0, relativeTo: referenceDate)
+        assertBillingFeedbackDate("账单日", monthOffset: 0, day: largestText ? 5 : 20, relativeTo: referenceDate)
+        assertBillingFeedbackDate("还款日", monthOffset: largestText ? 0 : 1, day: 15, relativeTo: referenceDate)
         let status = app.staticTexts["状态、已还款"]
         reveal(status, fullyVisible: true)
         captureScreenshot("\(prefix)日期及已还款状态读回")
@@ -3568,14 +3573,15 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["账户详情"].waitForExistence(timeout: 10))
     }
 
-    private func openBillingFeedbackCycle(offset: Int, scrollTowardTopWhenMissing: Bool = false) {
+    private func openBillingFeedbackCycle(offset: Int, scrollTowardTopWhenMissing: Bool = false,
+                                         relativeTo referenceDate: Date = .now) {
         let history = app.buttons["account.cycleHistory"]
         reveal(history, scrollTowardTopWhenMissing: scrollTowardTopWhenMissing, fullyVisible: true,
                navigationBar: app.navigationBars["账户详情"])
         history.tap()
         let navigationBar = app.navigationBars["全部账期"]
         XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
-        let month = accountHistoryMonth(offset: offset)
+        let month = accountHistoryMonth(offset: offset, relativeTo: referenceDate)
         let cycle = app.buttons["account.history.cycle.\(month.key)"]
         // A partly exposed row can be hittable at the tab bar's edge.
         reveal(cycle, fullyVisible: true, navigationBar: navigationBar)
@@ -3583,8 +3589,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
     }
 
-    private func assertBillingFeedbackDate(_ field: String, monthOffset: Int, day: Int) {
-        let key = accountHistoryMonth(offset: monthOffset).key
+    private func assertBillingFeedbackDate(_ field: String, monthOffset: Int, day: Int,
+                                          relativeTo referenceDate: Date = .now) {
+        let key = accountHistoryMonth(offset: monthOffset, relativeTo: referenceDate).key
         let text = String(format: "%04d年%02d月%02d日", key / 100, key % 100, day)
         // Native LabeledContent exposes its label and value as one AX text.
         let date = app.staticTexts["\(field)、\(text)"]

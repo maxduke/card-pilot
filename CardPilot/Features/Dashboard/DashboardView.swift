@@ -20,6 +20,17 @@ struct DashboardView: View {
     private var today: LocalDate { currentDay.today }
 
     var body: some View {
+        let billingItems = dashboardBillingItems(for: accounts, today: today, timeZone: CardPilotUI.homeTimeZone)
+        let actionBillingItems = self.actionBillingItems(from: billingItems)
+        let actionCounts = dashboardActionCounts(
+            billingItems: actionBillingItems,
+            enrollmentPromotions: enrollmentClosingSoonPromotions,
+            today: today
+        )
+        let filteredActionBillingItems = self.filteredActionBillingItems(from: actionBillingItems)
+        let scheduleBillingItems = self.scheduleBillingItems(from: billingItems, excluding: actionBillingItems)
+        let accountsWithBillingItems = self.accountsWithBillingItems(from: scheduleBillingItems)
+
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -56,6 +67,7 @@ struct DashboardView: View {
                                 } actions: {
                                     Button("添加信用卡", systemImage: "plus", action: onAddCard)
                                         .buttonStyle(.borderedProminent)
+                                        .foregroundStyle(Color(uiColor: .systemBackground))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 300)
                             } else {
@@ -138,7 +150,7 @@ struct DashboardView: View {
                                 Text("账户日程")
                                     .font(.headline)
                                 ForEach(accountsWithBillingItems, id: \.id) { account in
-                                    AccountScheduleCard(account: account, items: billingItems(for: account)) { item in
+                                    AccountScheduleCard(account: account, items: scheduleBillingItems.filter { $0.account.id == account.id }) { item in
                                         markRepaid(item)
                                     }
                                 }
@@ -235,24 +247,16 @@ struct DashboardView: View {
         )
     }
 
-    private var actionBillingItems: [DashboardBillingItem] {
+    private func actionBillingItems(from items: [DashboardBillingItem]) -> [DashboardBillingItem] {
         let limit = today.addingDays(7)
-        return billingItems.filter {
+        return items.filter {
             $0.kind == .repayment && ($0.status == .overdue || $0.date <= limit)
         }
     }
 
-    private var actionCounts: DashboardActionCounts {
-        dashboardActionCounts(
-            billingItems: actionBillingItems,
-            enrollmentPromotions: enrollmentClosingSoonPromotions,
-            today: today
-        )
-    }
-
-    private var filteredActionBillingItems: [DashboardBillingItem] {
-        guard let selectedActionPeriod else { return actionBillingItems }
-        return actionBillingItems.filter {
+    private func filteredActionBillingItems(from items: [DashboardBillingItem]) -> [DashboardBillingItem] {
+        guard let selectedActionPeriod else { return items }
+        return items.filter {
             dashboardActionPeriod(for: $0.date, isOverdue: $0.status == .overdue, today: today) == selectedActionPeriod
         }
     }
@@ -266,24 +270,16 @@ struct DashboardView: View {
         }
     }
 
-    private var accountsWithBillingItems: [CreditCardAccount] {
+    private func accountsWithBillingItems(from items: [DashboardBillingItem]) -> [CreditCardAccount] {
         var seen = Set<UUID>()
-        return scheduleBillingItems.compactMap { item in
+        return items.compactMap { item in
             seen.insert(item.account.id).inserted ? item.account : nil
         }
     }
 
-    private func billingItems(for account: CreditCardAccount) -> [DashboardBillingItem] {
-        scheduleBillingItems.filter { $0.account.id == account.id }
-    }
-
-    private var scheduleBillingItems: [DashboardBillingItem] {
-        let actionIDs = Set(actionBillingItems.map(\.id))
-        return billingItems.filter { !actionIDs.contains($0.id) }
-    }
-
-    private var billingItems: [DashboardBillingItem] {
-        dashboardBillingItems(for: accounts, today: today, timeZone: CardPilotUI.homeTimeZone)
+    private func scheduleBillingItems(from items: [DashboardBillingItem], excluding actionItems: [DashboardBillingItem]) -> [DashboardBillingItem] {
+        let actionIDs = Set(actionItems.map(\.id))
+        return items.filter { !actionIDs.contains($0.id) }
     }
 
     private func isEndingSoon(_ promotion: Promotion) -> Bool {
@@ -711,6 +707,7 @@ private struct BillingItemRow: View {
                     Button("标记已还", action: markRepaid)
                         .font(.caption.weight(.semibold))
                         .buttonStyle(.borderedProminent)
+                        .foregroundStyle(Color(uiColor: .systemBackground))
                         .controlSize(.regular)
                         .frame(minHeight: 44)
                         .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
