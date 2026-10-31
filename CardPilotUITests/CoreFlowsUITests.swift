@@ -471,10 +471,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testLargeCardHistoryScopesRowsAndRefreshesAfterRecording() {
-        // Run 41216003348 reached the card tab at about 140s and confirmation
-        // at 211s. Observe the complete Debug flow within the
-        // existing workflow's 300s maximum, including its setup cost.
-        executionTimeAllowance = 300
+        // Run 41232577050 completed this whole Debug flow in 173.927s.
+        // Retain the original 240s budget, including fixture setup.
+        executionTimeAllowance = 240
         launch("performanceLarge")
         tapRootTab("卡片")
         enter("Baseline Card 19", into: app.searchFields.firstMatch)

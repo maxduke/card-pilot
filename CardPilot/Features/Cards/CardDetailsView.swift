@@ -562,15 +562,17 @@ struct BillingCycleRow: View {
     let today: LocalDate
 
     var body: some View {
-        (
+        VStack(alignment: .leading, spacing: 7) {
             Text("\(CardPilotUI.monthKeyText(cycle.cycleKey))账期")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.primary)
-            + Text("\n\(statusTitle)")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(statusColor)
-            + Text(" · 账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today)) · 还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))")
-        )
+            (
+                Text(statusTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(statusColor)
+                + Text(" · 账单 \(CardPilotUI.shortDateText(cycle.statementDate, relativeTo: today)) · 还款 \(CardPilotUI.shortDateText(cycle.repaymentDate, relativeTo: today))")
+            )
+        }
         .font(.caption)
         .foregroundStyle(.secondary)
         .monospacedDigit()
