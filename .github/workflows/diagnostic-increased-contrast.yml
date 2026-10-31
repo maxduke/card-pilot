@@ -1,4 +1,4 @@
-name: Native dashboard update and large-history validation
+name: Native billing-row typography validation
 'on':
   push:
     branches:
@@ -6,24 +6,35 @@ name: Native dashboard update and large-history validation
 permissions:
   contents: read
 concurrency:
-  group: dashboard-history-${{ github.ref }}
+  group: billing-row-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   test:
-    name: Dashboard and large history (iPhone 16 Pro)
+    name: Billing row (${{ matrix.appearance }}, ${{ matrix.contrast }})
+    strategy:
+      fail-fast: false
+      matrix:
+        appearance:
+        - light
+        - dark
+        contrast:
+        - disabled
+        - enabled
     runs-on: macos-15
     timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      CARDPILOT_TEST_APPEARANCE: light
-      CARDPILOT_TEST_CONTRAST: disabled
+      CARDPILOT_TEST_APPEARANCE: ${{ matrix.appearance }}
+      CARDPILOT_TEST_CONTRAST: ${{ matrix.contrast }}
     steps:
     - uses: actions/checkout@v5
     - name: Verify exact candidate source
       shell: bash
       run: 'set -euo pipefail
 
-        production_source=2d62185f7b2e2c7529c825703046d7dc37ca451d
+        production_source=6c5656efca3179dfa1318ec7ac603cc482a89450
+
+        [[ "$production_source" =~ ^[0-9a-f]{40}$ ]]
 
         git fetch --no-tags --depth=1 origin "$production_source"
 
@@ -48,10 +59,10 @@ jobs:
         uname -m > architecture.txt
 
         '
-    - name: Run both original complete flows once
+    - name: Run ordinary and largest original billing flows once
       run: "set -euo pipefail\nxcodebuild -version | tee xcode-version.txt\nxcrun simctl list devices available -j > simulators.json\n\
         device_id=$(python3 -c 'import json; devices=json.load(open(\"simulators.json\"))[\"devices\"][\"com.apple.CoreSimulator.SimRuntime.iOS-18-5\"\
-        ]; print(next(d[\"udid\"] for d in devices if d[\"name\"] == \"iPhone 16 Pro\"))')\necho \"CARDPILOT_TEST_DEVICE_ID=$device_id\"\
+        ]; print(next(d[\"udid\"] for d in devices if d[\"name\"] == \"iPhone SE (3rd generation)\"))')\necho \"CARDPILOT_TEST_DEVICE_ID=$device_id\"\
         \ >> \"$GITHUB_ENV\"\ndevice_state=$(python3 -c 'import json, sys; devices=json.load(open(\"simulators.json\"))[\"\
         devices\"][\"com.apple.CoreSimulator.SimRuntime.iOS-18-5\"]; print(next(d[\"state\"] for d in devices if d[\"udid\"\
         ] == sys.argv[1]))' \"$device_id\")\nxcrun simctl help ui > simulator-ui-help.txt 2>&1\nif [[ \"$device_state\" !=\
@@ -62,44 +73,24 @@ jobs:
         simulator-appearance-before.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_APPEARANCE\"]\nassert Path(\"\
         simulator-contrast-before.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_CONTRAST\"]\nPY_APPEARANCE\ntest_args=(\n\
         \  -project CardPilot.xcodeproj -scheme CardPilot\n  -destination \"platform=iOS Simulator,id=$device_id\"\n  -resultBundlePath\
-        \ TestResults.xcresult\n  -only-testing:CardPilotUITests/CoreFlowsUITests/testDashboardMetricsOpenMatchingActionsAndPreserveRepaymentUndo\n\
-        \  -only-testing:CardPilotUITests/CoreFlowsUITests/testLargeCardHistoryScopesRowsAndRefreshesAfterRecording\n  -parallel-testing-enabled\
-        \ NO -test-timeouts-enabled YES\n  -default-test-execution-time-allowance 180\n  -maximum-test-execution-time-allowance\
+        \ TestResults.xcresult\n  -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesSupportAccessibleTextAndNavigationTargets\n\
+        \  -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets\n\
+        \  -parallel-testing-enabled NO -test-timeouts-enabled YES\n  -default-test-execution-time-allowance 180\n  -maximum-test-execution-time-allowance\
         \ 300\n  CODE_SIGNING_ALLOWED=NO\n)\npython3 - \"${test_args[@]}\" <<'PY_COMMAND'\nimport json, sys\nfrom pathlib\
         \ import Path\nPath(\"test-command.json\").write_text(json.dumps([\"xcodebuild\", \"test\", *sys.argv[1:]], indent=2)\
         \ + \"\\n\")\nPY_COMMAND\n: > xcodebuild.log\npython3 -u scripts/capture_app_idle.py xcodebuild.log \"$device_id\"\
-        \ > app-idle-monitor.log 2>&1 &\nmonitor_pid=$!\nmkdir -p save-diagnostics\nsample_after_confirmation() {\n  set +e\n\
-        \  history_deadline=$((SECONDS + 1200))\n  while (( SECONDS < history_deadline )); do\n    history_save_taps=$(awk\
-        \ '/^Test Case .* started[.]/ { active = /testLargeCardHistoryScopesRowsAndRefreshesAfterRecording/; count=0 } active\
-        \ && /t =.*Tap \"saveTransaction\" Button/ { count++ } END { print count+0 }' xcodebuild.log 2>/dev/null)\n    if\
-        \ [ \"${history_save_taps:-0}\" -ge 2 ]; then\n      date -u +%Y-%m-%dT%H:%M:%SZ > save-diagnostics/triggered-at.txt\n\
-        \      tail -n 25 xcodebuild.log > save-diagnostics/trigger-events.log\n      ps -axo pid,ppid,pcpu,rss,etime,comm\
-        \ > save-diagnostics/processes.txt\n      /usr/bin/sample -h > save-diagnostics/sample-help.txt 2>&1\n      history_app_pid=$(pgrep\
-        \ -x CardPilot | head -n 1)\n      history_runner_pid=$(pgrep -f '/CardPilotUITests-Runner.app/CardPilotUITests-Runner'\
-        \ | head -n 1)\n      printf 'app=%s\\nrunner=%s\\n' \"$history_app_pid\" \"$history_runner_pid\" > save-diagnostics/pids.txt\n\
-        \      if [ -n \"$history_app_pid\" ]; then\n        ( /usr/bin/sample \"$history_app_pid\" 5 10 -mayDie -file save-diagnostics/app-sample.txt\
-        \ > save-diagnostics/app-sample.log 2>&1\n          printf '%s\\n' \"$?\" > save-diagnostics/app-sample-exit.txt )\
-        \ &\n        history_app_sample=$!\n      fi\n      if [ -n \"$history_runner_pid\" ]; then\n        ( /usr/bin/sample\
-        \ \"$history_runner_pid\" 5 10 -mayDie -file save-diagnostics/runner-sample.txt > save-diagnostics/runner-sample.log\
-        \ 2>&1\n          printf '%s\\n' \"$?\" > save-diagnostics/runner-sample-exit.txt ) &\n        history_runner_sample=$!\n\
-        \      fi\n      if [ -n \"${history_app_sample:-}\" ]; then wait \"$history_app_sample\"; fi\n      if [ -n \"${history_runner_sample:-}\"\
-        \ ]; then wait \"$history_runner_sample\"; fi\n      return\n    fi\n    sleep 1\n  done\n  printf 'Confirmation save\
-        \ was not observed before sampler deadline.\\n' > save-diagnostics/not-triggered.txt\n}\nsample_after_confirmation\
-        \ &\nhistory_sampler_pid=$!\ntrap 'kill \"$monitor_pid\" \"$history_sampler_pid\" 2>/dev/null || true; wait \"$monitor_pid\"\
-        \ 2>/dev/null || true; wait \"$history_sampler_pid\" 2>/dev/null || true' EXIT\nNSUnbufferedIO=YES xcodebuild test\
-        \ \"${test_args[@]}\" 2>&1 | tee xcodebuild.log\n"
+        \ > app-idle-monitor.log 2>&1 &\nmonitor_pid=$!\ntrap 'kill \"$monitor_pid\" 2>/dev/null || true; wait \"$monitor_pid\"\
+        \ 2>/dev/null || true' EXIT\nxcodebuild test \"${test_args[@]}\" 2>&1 | tee xcodebuild.log\n"
       shell: bash
     - name: Export native test evidence
       if: always()
       run: "set -euo pipefail\npython3 - \"${CARDPILOT_TEST_DEVICE_ID:-}\" <<'PY'\nimport shutil, sys\nfrom pathlib import\
         \ Path\ncopied = 0\nif sys.argv[1]:\n    device = Path.home() / \"Library/Developer/CoreSimulator/Devices\" / sys.argv[1]\n\
-        \    reports = Path(\"fixture-reports\")\n    reports.mkdir(exist_ok=True)\n    for report in (device / \"data/Containers/Data/Application\"\
-        ).glob(\"*/tmp/CardPilotUITests/*/performance-fixture.json\"):\n        shutil.copyfile(report, reports / (report.parent.name\
-        \ + \".json\"))\n    for source in (device / \"data/Containers/Data/Application\").glob(\"*/tmp/CardPilotUITestDiagnostics\"\
-        ):\n        destination = Path(\"test-failure-artifacts\") / source.parents[1].name\n        shutil.copytree(source,\
-        \ destination, dirs_exist_ok=True)\n        copied += 1\nprint(f\"Copied direct native artifacts from {copied} simulator\
-        \ containers (including shutdown devices).\")\nPY\nif [[ -n \"${CARDPILOT_TEST_DEVICE_ID:-}\" ]]; then\n  xcrun simctl\
-        \ ui \"$CARDPILOT_TEST_DEVICE_ID\" appearance > simulator-appearance-after.txt\n  xcrun simctl ui \"$CARDPILOT_TEST_DEVICE_ID\"\
+        \    for source in (device / \"data/Containers/Data/Application\").glob(\"*/tmp/CardPilotUITestDiagnostics\"):\n \
+        \       destination = Path(\"test-failure-artifacts\") / source.parents[1].name\n        shutil.copytree(source, destination,\
+        \ dirs_exist_ok=True)\n        copied += 1\nprint(f\"Copied direct native artifacts from {copied} simulator containers\
+        \ (including shutdown devices).\")\nPY\nif [[ -n \"${CARDPILOT_TEST_DEVICE_ID:-}\" ]]; then\n  xcrun simctl ui \"\
+        $CARDPILOT_TEST_DEVICE_ID\" appearance > simulator-appearance-after.txt\n  xcrun simctl ui \"$CARDPILOT_TEST_DEVICE_ID\"\
         \ increase_contrast > simulator-contrast-after.txt\nfi\nxcrun xcresulttool get test-results summary --path TestResults.xcresult\
         \ > summary.json\nxcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments\n\
         python3 - <<'PY_RESULT'\nimport json, os\nfrom pathlib import Path\nsummary = json.loads(Path(\"summary.json\").read_text())\n\
@@ -112,7 +103,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: native-dashboard-large-history
+        name: native-billing-row-${{ matrix.appearance }}-${{ matrix.contrast }}
         path: 'TestResults.xcresult
 
           summary.json
@@ -153,10 +144,6 @@ jobs:
           simulator-contrast-before.txt
 
           simulator-contrast-after.txt
-
-          save-diagnostics
-
-          fixture-reports
 
           '
         retention-days: 7
