@@ -26,7 +26,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        production_source=47302acc367d79f041a9295a289fc70be2a9944f
+        production_source=c4887dd167fa5941af25af6c171860b2b17fb0f4
         git fetch --no-tags --depth=1 origin "$production_source"
         git rev-parse --verify "$production_source^{commit}" > production-source-revision.txt
         git rev-parse HEAD > diagnostic-source-revision.txt
