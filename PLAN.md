@@ -10,6 +10,9 @@
 [四配置专项](https://github.com/maxduke/card-pilot/actions/runs/41180924179) 各完整通过一次，12 张当前原图已实际验收，
 该模式的主按钮实测提升至 9.0333:1。正式 PR 与精确 main 的 330＋2 项仍为交付门禁，
 见[第三十九批记录](docs/ux-primary-action-contrast-2026-10-31.md)。
+[PR #76](https://github.com/maxduke/card-pilot/pull/76) 首轮小屏两项通过，大屏为 329／330：
+输入框与表单底边仅差一个 `CGFloat` 表示单位，约 5.6843e-14 点。
+当前仅校准原数字键盘用例四处底边比较的机器舍入，实际像素／整点越界仍失败；原失败保留。
 
 ## 已完成 UX 第三十八批：小屏辅助字号交易录入（2026-10-31）
 
