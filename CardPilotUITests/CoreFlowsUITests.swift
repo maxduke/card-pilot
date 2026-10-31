@@ -2906,7 +2906,7 @@ final class CoreFlowsUITests: XCTestCase {
             format: "identifier BEGINSWITH %@", "dashboard.action.billingCycle."
         ))
         let pendingIDs = (0..<pendingCycles.count).map { pendingCycles.element(boundBy: $0).identifier }
-        var pendingTitles: [XCUIElement] = []
+        var pendingTitles: [(element: XCUIElement, size: CGSize)] = []
         // The core fixture's 21st-day repayment appears when overdue or within
         // seven days; audit every other checkpoint regardless.
         for identifier in pendingIDs {
@@ -2927,20 +2927,31 @@ final class CoreFlowsUITests: XCTestCase {
                 accountKind = "共享账户"
             }
             let text = pendingCycle.staticTexts["查看账期"]
+            XCTAssertEqual(text.label, "查看账期")
             XCTAssertTrue(text.isHittable)
-            XCTAssertTrue(app.frame.contains(text.frame))
-            XCTAssertGreaterThanOrEqual(text.frame.minY + 0.001, app.navigationBars["CardPilot"].frame.maxY)
-            XCTAssertLessThanOrEqual(text.frame.maxY, contentBottom)
+            let textFrame = text.frame
+            XCTAssertFalse(textFrame.isEmpty)
+            XCTAssertTrue(app.frame.contains(textFrame))
+            XCTAssertGreaterThanOrEqual(textFrame.minY + 0.001, app.navigationBars["CardPilot"].frame.maxY)
+            XCTAssertLessThanOrEqual(textFrame.maxY, contentBottom)
             captureScreenshot("最大字号首页待办\(accountKind)账期完整文字")
+            let titleScreenshot = XCTAttachment(screenshot: text.screenshot())
+            titleScreenshot.name = "最大字号首页待办\(accountKind)账期文字原图"
+            titleScreenshot.lifetime = .keepAlways
+            add(titleScreenshot)
+            let geometry = XCTAttachment(string: "identifier=\(identifier); text=\(textFrame); navigationBar=\(app.navigationBars["CardPilot"].frame); contentBottom=\(contentBottom)")
+            geometry.name = "最大字号首页待办\(accountKind)账期文字位置"
+            geometry.lifetime = .keepAlways
+            add(geometry)
             pendingCycle.tap()
             XCTAssertTrue(app.navigationBars["账期详情"].waitForExistence(timeout: 10))
             tap(app.navigationBars["账期详情"].buttons.firstMatch)
-            pendingTitles.append(text)
+            pendingTitles.append((element: text, size: textFrame.size))
         }
         let promotion = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.promotion.")).firstMatch
         reveal(promotion, fullyVisible: true)
         captureScreenshot("最大字号首页活动摘要")
-        try auditAccessibility(for: [.textClipped], captureFailureContext: true, verifiedClippedTexts: pendingTitles)
+        try auditAccessibility(for: [.textClipped], captureFailureContext: true, verifiedDashboardCycleTitles: pendingTitles)
         let schedule = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "dashboard.billingCycle.")).firstMatch
         reveal(schedule, fullyVisible: true)
         assertTouchTarget(schedule)
@@ -4667,7 +4678,7 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func auditAccessibility(for types: XCUIAccessibilityAuditType, captureFailureContext: Bool = false,
-                                    verifiedClippedTexts: [XCUIElement] = []) throws {
+                                    verifiedDashboardCycleTitles: [(element: XCUIElement, size: CGSize)] = []) throws {
         let original = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = original }
@@ -4689,19 +4700,25 @@ final class CoreFlowsUITests: XCTestCase {
             }
             // iOS 18.5 gives this literal a full-button frame and reports clipping
             // while its native element PNG contains all four glyphs (39635652351).
-            // Only the largest dashboard checkpoint supplies these exact titles,
-            // after checking each complete label, viewport and navigation. Keep
-            // the raw report and original element PNG for final visual acceptance.
+            // At the promotion checkpoint it can instead report an already
+            // verified title partly under the navigation bar (41151527961).
+            // Only this checkpoint supplies titles after full viewport and
+            // navigation checks. Require their original size and current frame;
+            // retain both the fully visible PNG and the reported viewport crop.
+            let navigationBar = self.app.navigationBars["CardPilot"]
             if UIDevice.current.systemVersion == "18.5",
                issue.auditType == .textClipped,
                let element = issue.element,
                element.elementType == .staticText,
                element.label == "查看账期",
                !element.frame.isEmpty, self.app.frame.contains(element.frame),
-               element.frame.minY + 0.001 >= self.app.navigationBars["CardPilot"].frame.maxY,
+               navigationBar.exists,
+               element.frame.minY + 0.001 >= navigationBar.frame.minY,
+               element.frame.maxY > navigationBar.frame.maxY,
                element.frame.maxY <= self.contentBottom,
-               verifiedClippedTexts.contains(where: {
-                   $0.label == element.label && $0.frame == element.frame && $0.isHittable
+               verifiedDashboardCycleTitles.contains(where: {
+                   $0.size == element.frame.size && $0.element.label == element.label
+                       && $0.element.frame == element.frame && $0.element.isHittable
                }) {
                 let screenshot = XCTAttachment(screenshot: element.screenshot())
                 screenshot.name = "iOS18.5账期审计报告对应文字原图"
