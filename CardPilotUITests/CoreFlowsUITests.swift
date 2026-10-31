@@ -2885,50 +2885,6 @@ final class CoreFlowsUITests: XCTestCase {
         try auditAccessibility(for: [.hitRegion, .textClipped])
     }
 
-    // Diagnostic branch only: collect unfiltered issues at three viewports.
-    // Returning true below records observations; it does not replace the
-    // unchanged production audit or turn its retained red result into a pass.
-    func testBillingClippingViewportDiagnostic() throws {
-        executionTimeAllowance = 240
-        launch("core")
-        openCard("UI Primary")
-        relaunchAtLargestTextSize()
-        openCard("UI Primary")
-        let cycle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "billingCycle.")).firstMatch
-        var observations: [String] = []
-
-        func recordViewport(_ name: String) throws {
-            captureAccessibilityAuditContext("增强对比度视口\(name)")
-            let cycleGeometry = cycle.exists ? "identifier=\(cycle.identifier); frame=\(cycle.frame)" : "cycle not present in viewport"
-            let geometry = "\(cycleGeometry); navigationBar=\(app.navigationBars["卡片详情"].frame); contentBottom=\(contentBottom)"
-            var issues: [String] = []
-            try app.performAccessibilityAudit(for: [.textClipped]) { issue in
-                let details = "\(issue.compactDescription)\n\(issue.detailedDescription)\n\(issue.element?.debugDescription ?? "No associated element")"
-                issues.append(details)
-                return true
-            }
-            let result = "phase=\(name); count=\(issues.count); \(geometry)\n" + issues.joined(separator: "\n---\n")
-            let attachment = XCTAttachment(string: result)
-            attachment.name = "增强对比度视口\(name)原始审计"
-            attachment.lifetime = .keepAlways
-            add(attachment)
-            observations.append(result)
-        }
-
-        reveal(cycle, fullyVisible: true)
-        assertTouchTarget(cycle)
-        try recordViewport("A原始账期")
-        app.collectionViews.firstMatch.swipeDown(velocity: .slow)
-        try recordViewport("B向上滚动")
-        reveal(cycle, fullyVisible: true)
-        assertTouchTarget(cycle)
-        try recordViewport("C重新显示账期")
-        let attachment = XCTAttachment(string: observations.joined(separator: "\n\n"))
-        attachment.name = "增强对比度视口对照汇总"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-    }
-
     func testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets() throws {
         executionTimeAllowance = 240
         launch("core")

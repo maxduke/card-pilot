@@ -1,4 +1,4 @@
-name: Native clipping viewport diagnostic
+name: Native primary-action contrast validation
 'on':
   push:
     branches:
@@ -10,23 +10,25 @@ concurrency:
   cancel-in-progress: false
 jobs:
   test:
-    name: Clipping viewport diagnostic (${{ matrix.appearance }})
+    name: Primary action (${{ matrix.appearance }}, ${{ matrix.contrast }})
     strategy:
       fail-fast: false
       matrix:
-        appearance: [light]
+        appearance: [light, dark]
+        contrast: [disabled, enabled]
     runs-on: macos-15
     timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       CARDPILOT_TEST_APPEARANCE: ${{ matrix.appearance }}
+      CARDPILOT_TEST_CONTRAST: ${{ matrix.contrast }}
     steps:
     - uses: actions/checkout@v5
     - name: Verify exact accepted-main source
       shell: bash
       run: |
         set -euo pipefail
-        production_source=c1bbd08a8677f70b6935ab5d07fafe068f0d5159
+        production_source=a40aa6104ffa403ca6bfdfa3a4910ac0d3fef2d1
         git fetch --no-tags --depth=1 origin "$production_source"
         git rev-parse --verify "$production_source^{commit}" > production-source-revision.txt
         git rev-parse HEAD > diagnostic-source-revision.txt
@@ -34,11 +36,11 @@ jobs:
         python3 - <<'PY_SCOPE'
         from pathlib import Path
         actual = set(Path("diagnostic-source-paths.txt").read_text().splitlines())
-        assert actual == {".github/workflows/diagnostic-increased-contrast.yml", "CardPilotUITests/CoreFlowsUITests.swift"}, actual
+        assert actual == {".github/workflows/diagnostic-increased-contrast.yml"}, actual
         PY_SCOPE
         sw_vers > macos-version.txt
         uname -m > architecture.txt
-    - name: Record three viewports without classifying audit findings as passed
+    - name: Run the original numeric flow once in each selected UI configuration
       run: |
         set -euo pipefail
         xcodebuild -version | tee xcode-version.txt
@@ -53,19 +55,19 @@ jobs:
         xcrun simctl bootstatus "$device_id" -b
         xcrun simctl ui "$device_id" appearance "$CARDPILOT_TEST_APPEARANCE"
         xcrun simctl ui "$device_id" appearance > simulator-appearance-before.txt
-        xcrun simctl ui "$device_id" increase_contrast enabled
+        xcrun simctl ui "$device_id" increase_contrast "$CARDPILOT_TEST_CONTRAST"
         xcrun simctl ui "$device_id" increase_contrast > simulator-contrast-before.txt
         python3 - <<'PY_APPEARANCE'
         import os
         from pathlib import Path
         assert Path("simulator-appearance-before.txt").read_text().strip() == os.environ["CARDPILOT_TEST_APPEARANCE"]
-        assert Path("simulator-contrast-before.txt").read_text().strip() == "enabled"
+        assert Path("simulator-contrast-before.txt").read_text().strip() == os.environ["CARDPILOT_TEST_CONTRAST"]
         PY_APPEARANCE
         test_args=(
           -project CardPilot.xcodeproj -scheme CardPilot
           -destination "platform=iOS Simulator,id=$device_id"
           -resultBundlePath TestResults.xcresult
-          -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingClippingViewportDiagnostic
+          -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
           -parallel-testing-enabled NO -test-timeouts-enabled YES
           -default-test-execution-time-allowance 180
           -maximum-test-execution-time-allowance 300
@@ -109,7 +111,7 @@ jobs:
         from pathlib import Path
         summary = json.loads(Path("summary.json").read_text())
         assert Path("simulator-appearance-after.txt").read_text().strip() == os.environ["CARDPILOT_TEST_APPEARANCE"]
-        assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
+        assert Path("simulator-contrast-after.txt").read_text().strip() == os.environ["CARDPILOT_TEST_CONTRAST"]
         assert summary["result"] == "Passed", summary
         assert summary["passedTests"] == summary["totalTestCount"] == 1, summary
         assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
@@ -118,7 +120,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: native-clipping-viewport-${{ matrix.appearance }}
+        name: native-primary-action-${{ matrix.appearance }}-${{ matrix.contrast }}
         path: |
           TestResults.xcresult
           summary.json
