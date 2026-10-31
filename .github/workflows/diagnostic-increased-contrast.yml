@@ -23,7 +23,7 @@ jobs:
       shell: bash
       run: 'set -euo pipefail
 
-        production_source=2d62185
+        production_source=2d62185f7b2e2c7529c825703046d7dc37ca451d
 
         git fetch --no-tags --depth=1 origin "$production_source"
 
