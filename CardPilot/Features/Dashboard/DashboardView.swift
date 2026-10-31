@@ -56,6 +56,7 @@ struct DashboardView: View {
                                 } actions: {
                                     Button("添加信用卡", systemImage: "plus", action: onAddCard)
                                         .buttonStyle(.borderedProminent)
+                                        .foregroundStyle(Color(uiColor: .systemBackground))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 300)
                             } else {
@@ -711,6 +712,7 @@ private struct BillingItemRow: View {
                     Button("标记已还", action: markRepaid)
                         .font(.caption.weight(.semibold))
                         .buttonStyle(.borderedProminent)
+                        .foregroundStyle(Color(uiColor: .systemBackground))
                         .controlSize(.regular)
                         .frame(minHeight: 44)
                         .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")

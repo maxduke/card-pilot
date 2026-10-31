@@ -45,6 +45,7 @@ struct TransactionEditorView: View {
                                     ready = true
                                 }
                                 .buttonStyle(.borderedProminent)
+                                .foregroundStyle(Color(uiColor: .systemBackground))
                                 .controlSize(.large)
                             }
                             if loadFailed { Button("重试") { load() } }

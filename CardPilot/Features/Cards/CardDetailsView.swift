@@ -415,6 +415,7 @@ private struct CardTransactionHistoryView: View {
                 } actions: {
                     Button("记一笔", systemImage: "plus") { showingEditor = true }
                         .buttonStyle(.borderedProminent)
+                        .foregroundStyle(Color(uiColor: .systemBackground))
                 }
             } else {
                 let sections = groupedTransactionsByDate(transactions)
