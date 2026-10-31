@@ -1366,6 +1366,7 @@ struct TransactionEditorForm: View {
                         Spacer()
                         Button { focusedInput = nil } label: {
                             Text("收起键盘")
+                                .fixedSize(horizontal: false, vertical: true)
                                 .frame(minWidth: 44, minHeight: 44)
                                 .contentShape(Rectangle())
                         }
@@ -1502,7 +1503,7 @@ struct TransactionEditorForm: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize && isNumericInputFocused ? 0 : 10)
         // Keep this header's background below the navigation bar, within the
         // same safe-area bounds as its content and accessibility element.
         .background(.bar, ignoresSafeAreaEdges: [])
