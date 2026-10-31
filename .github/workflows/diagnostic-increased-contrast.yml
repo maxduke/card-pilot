@@ -1,4 +1,4 @@
-name: Native primary-action contrast validation
+name: Native billing month and large-history validation
 'on':
   push:
     branches:
@@ -6,142 +6,158 @@ name: Native primary-action contrast validation
 permissions:
   contents: read
 concurrency:
-  group: increased-contrast-${{ github.ref }}
+  group: billing-history-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   test:
-    name: Primary action (${{ matrix.appearance }}, ${{ matrix.contrast }})
-    strategy:
-      fail-fast: false
-      matrix:
-        appearance: [light, dark]
-        contrast: [disabled, enabled]
+    name: Billing and large history (iPhone 16 Pro)
     runs-on: macos-15
     timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      CARDPILOT_TEST_APPEARANCE: ${{ matrix.appearance }}
-      CARDPILOT_TEST_CONTRAST: ${{ matrix.contrast }}
+      CARDPILOT_TEST_APPEARANCE: light
+      CARDPILOT_TEST_CONTRAST: disabled
     steps:
     - uses: actions/checkout@v5
-    - name: Verify exact accepted-main source
+    - name: Verify exact candidate source
       shell: bash
-      run: |
-        set -euo pipefail
-        production_source=a40aa6104ffa403ca6bfdfa3a4910ac0d3fef2d1
+      run: 'set -euo pipefail
+
+        production_source=7c6100e84012e4365a68870f09204decf6f09be4
+
         git fetch --no-tags --depth=1 origin "$production_source"
+
         git rev-parse --verify "$production_source^{commit}" > production-source-revision.txt
+
         git rev-parse HEAD > diagnostic-source-revision.txt
+
         git diff --name-only "$production_source" HEAD > diagnostic-source-paths.txt
-        python3 - <<'PY_SCOPE'
+
+        python3 - <<''PY_SCOPE''
+
         from pathlib import Path
+
         actual = set(Path("diagnostic-source-paths.txt").read_text().splitlines())
+
         assert actual == {".github/workflows/diagnostic-increased-contrast.yml"}, actual
+
         PY_SCOPE
+
         sw_vers > macos-version.txt
+
         uname -m > architecture.txt
-    - name: Run the original numeric flow once in each selected UI configuration
-      run: |
-        set -euo pipefail
-        xcodebuild -version | tee xcode-version.txt
-        xcrun simctl list devices available -j > simulators.json
-        device_id=$(python3 -c 'import json; devices=json.load(open("simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone SE (3rd generation)"))')
-        echo "CARDPILOT_TEST_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
-        device_state=$(python3 -c 'import json, sys; devices=json.load(open("simulators.json"))["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["state"] for d in devices if d["udid"] == sys.argv[1]))' "$device_id")
-        xcrun simctl help ui > simulator-ui-help.txt 2>&1
-        if [[ "$device_state" != "Booted" ]]; then
-          xcrun simctl boot "$device_id"
-        fi
-        xcrun simctl bootstatus "$device_id" -b
-        xcrun simctl ui "$device_id" appearance "$CARDPILOT_TEST_APPEARANCE"
-        xcrun simctl ui "$device_id" appearance > simulator-appearance-before.txt
-        xcrun simctl ui "$device_id" increase_contrast "$CARDPILOT_TEST_CONTRAST"
-        xcrun simctl ui "$device_id" increase_contrast > simulator-contrast-before.txt
-        python3 - <<'PY_APPEARANCE'
-        import os
-        from pathlib import Path
-        assert Path("simulator-appearance-before.txt").read_text().strip() == os.environ["CARDPILOT_TEST_APPEARANCE"]
-        assert Path("simulator-contrast-before.txt").read_text().strip() == os.environ["CARDPILOT_TEST_CONTRAST"]
-        PY_APPEARANCE
-        test_args=(
-          -project CardPilot.xcodeproj -scheme CardPilot
-          -destination "platform=iOS Simulator,id=$device_id"
-          -resultBundlePath TestResults.xcresult
-          -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
-          -parallel-testing-enabled NO -test-timeouts-enabled YES
-          -default-test-execution-time-allowance 180
-          -maximum-test-execution-time-allowance 300
-          CODE_SIGNING_ALLOWED=NO
-        )
-        python3 - "${test_args[@]}" <<'PY_COMMAND'
-        import json, sys
-        from pathlib import Path
-        Path("test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
-        PY_COMMAND
-        : > xcodebuild.log
-        python3 -u scripts/capture_app_idle.py xcodebuild.log "$device_id" > app-idle-monitor.log 2>&1 &
-        monitor_pid=$!
-        trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
-        xcodebuild test "${test_args[@]}" 2>&1 | tee xcodebuild.log
+
+        '
+    - name: Run both original complete flows once
+      run: "set -euo pipefail\nxcodebuild -version | tee xcode-version.txt\nxcrun simctl list devices available -j > simulators.json\n\
+        device_id=$(python3 -c 'import json; devices=json.load(open(\"simulators.json\"))[\"devices\"][\"com.apple.CoreSimulator.SimRuntime.iOS-18-5\"\
+        ]; print(next(d[\"udid\"] for d in devices if d[\"name\"] == \"iPhone 16 Pro\"))')\necho \"CARDPILOT_TEST_DEVICE_ID=$device_id\"\
+        \ >> \"$GITHUB_ENV\"\ndevice_state=$(python3 -c 'import json, sys; devices=json.load(open(\"simulators.json\"))[\"\
+        devices\"][\"com.apple.CoreSimulator.SimRuntime.iOS-18-5\"]; print(next(d[\"state\"] for d in devices if d[\"udid\"\
+        ] == sys.argv[1]))' \"$device_id\")\nxcrun simctl help ui > simulator-ui-help.txt 2>&1\nif [[ \"$device_state\" !=\
+        \ \"Booted\" ]]; then\n  xcrun simctl boot \"$device_id\"\nfi\nxcrun simctl bootstatus \"$device_id\" -b\nxcrun simctl\
+        \ ui \"$device_id\" appearance \"$CARDPILOT_TEST_APPEARANCE\"\nxcrun simctl ui \"$device_id\" appearance > simulator-appearance-before.txt\n\
+        xcrun simctl ui \"$device_id\" increase_contrast \"$CARDPILOT_TEST_CONTRAST\"\nxcrun simctl ui \"$device_id\" increase_contrast\
+        \ > simulator-contrast-before.txt\npython3 - <<'PY_APPEARANCE'\nimport os\nfrom pathlib import Path\nassert Path(\"\
+        simulator-appearance-before.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_APPEARANCE\"]\nassert Path(\"\
+        simulator-contrast-before.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_CONTRAST\"]\nPY_APPEARANCE\ntest_args=(\n\
+        \  -project CardPilot.xcodeproj -scheme CardPilot\n  -destination \"platform=iOS Simulator,id=$device_id\"\n  -resultBundlePath\
+        \ TestResults.xcresult\n  -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountDateOverrideFeedbackAtLargestTextSizeAndDiscard\n\
+        \  -only-testing:CardPilotUITests/CoreFlowsUITests/testLargeCardHistoryScopesRowsAndRefreshesAfterRecording\n  -parallel-testing-enabled\
+        \ NO -test-timeouts-enabled YES\n  -default-test-execution-time-allowance 180\n  -maximum-test-execution-time-allowance\
+        \ 300\n  CODE_SIGNING_ALLOWED=NO\n)\npython3 - \"${test_args[@]}\" <<'PY_COMMAND'\nimport json, sys\nfrom pathlib\
+        \ import Path\nPath(\"test-command.json\").write_text(json.dumps([\"xcodebuild\", \"test\", *sys.argv[1:]], indent=2)\
+        \ + \"\\n\")\nPY_COMMAND\n: > xcodebuild.log\npython3 -u scripts/capture_app_idle.py xcodebuild.log \"$device_id\"\
+        \ > app-idle-monitor.log 2>&1 &\nmonitor_pid=$!\nmkdir -p save-diagnostics\nsample_after_confirmation() {\n  set +e\n\
+        \  history_deadline=$((SECONDS + 1200))\n  while (( SECONDS < history_deadline )); do\n    history_save_taps=$(awk\
+        \ '/^Test Case .* started[.]/ { active = /testLargeCardHistoryScopesRowsAndRefreshesAfterRecording/; count=0 } active\
+        \ && /t =.*Tap \"saveTransaction\" Button/ { count++ } END { print count+0 }' xcodebuild.log 2>/dev/null)\n    if\
+        \ [ \"${history_save_taps:-0}\" -ge 2 ]; then\n      date -u +%Y-%m-%dT%H:%M:%SZ > save-diagnostics/triggered-at.txt\n\
+        \      tail -n 25 xcodebuild.log > save-diagnostics/trigger-events.log\n      ps -axo pid,ppid,pcpu,rss,etime,comm\
+        \ > save-diagnostics/processes.txt\n      /usr/bin/sample -h > save-diagnostics/sample-help.txt 2>&1\n      history_app_pid=$(pgrep\
+        \ -x CardPilot | head -n 1)\n      history_runner_pid=$(pgrep -f '/CardPilotUITests-Runner.app/CardPilotUITests-Runner'\
+        \ | head -n 1)\n      printf 'app=%s\\nrunner=%s\\n' \"$history_app_pid\" \"$history_runner_pid\" > save-diagnostics/pids.txt\n\
+        \      if [ -n \"$history_app_pid\" ]; then\n        ( /usr/bin/sample \"$history_app_pid\" 5 10 -mayDie -file save-diagnostics/app-sample.txt\
+        \ > save-diagnostics/app-sample.log 2>&1\n          printf '%s\\n' \"$?\" > save-diagnostics/app-sample-exit.txt )\
+        \ &\n        history_app_sample=$!\n      fi\n      if [ -n \"$history_runner_pid\" ]; then\n        ( /usr/bin/sample\
+        \ \"$history_runner_pid\" 5 10 -mayDie -file save-diagnostics/runner-sample.txt > save-diagnostics/runner-sample.log\
+        \ 2>&1\n          printf '%s\\n' \"$?\" > save-diagnostics/runner-sample-exit.txt ) &\n        history_runner_sample=$!\n\
+        \      fi\n      if [ -n \"${history_app_sample:-}\" ]; then wait \"$history_app_sample\"; fi\n      if [ -n \"${history_runner_sample:-}\"\
+        \ ]; then wait \"$history_runner_sample\"; fi\n      return\n    fi\n    sleep 1\n  done\n  printf 'Confirmation save\
+        \ was not observed before sampler deadline.\\n' > save-diagnostics/not-triggered.txt\n}\nsample_after_confirmation\
+        \ &\nhistory_sampler_pid=$!\ntrap 'kill \"$monitor_pid\" \"$history_sampler_pid\" 2>/dev/null || true; wait \"$monitor_pid\"\
+        \ 2>/dev/null || true; wait \"$history_sampler_pid\" 2>/dev/null || true' EXIT\nNSUnbufferedIO=YES xcodebuild test\
+        \ \"${test_args[@]}\" 2>&1 | tee xcodebuild.log\n"
       shell: bash
     - name: Export native test evidence
       if: always()
-      run: |
-        set -euo pipefail
-        python3 - "${CARDPILOT_TEST_DEVICE_ID:-}" <<'PY'
-        import shutil, sys
-        from pathlib import Path
-        copied = 0
-        if sys.argv[1]:
-            device = Path.home() / "Library/Developer/CoreSimulator/Devices" / sys.argv[1]
-            for source in (device / "data/Containers/Data/Application").glob("*/tmp/CardPilotUITestDiagnostics"):
-                destination = Path("test-failure-artifacts") / source.parents[1].name
-                shutil.copytree(source, destination, dirs_exist_ok=True)
-                copied += 1
-        print(f"Copied direct native artifacts from {copied} simulator containers (including shutdown devices).")
-        PY
-        if [[ -n "${CARDPILOT_TEST_DEVICE_ID:-}" ]]; then
-          xcrun simctl ui "$CARDPILOT_TEST_DEVICE_ID" appearance > simulator-appearance-after.txt
-          xcrun simctl ui "$CARDPILOT_TEST_DEVICE_ID" increase_contrast > simulator-contrast-after.txt
-        fi
-        xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
-        xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
-        python3 - <<'PY_RESULT'
-        import json, os
-        from pathlib import Path
-        summary = json.loads(Path("summary.json").read_text())
-        assert Path("simulator-appearance-after.txt").read_text().strip() == os.environ["CARDPILOT_TEST_APPEARANCE"]
-        assert Path("simulator-contrast-after.txt").read_text().strip() == os.environ["CARDPILOT_TEST_CONTRAST"]
-        assert summary["result"] == "Passed", summary
-        assert summary["passedTests"] == summary["totalTestCount"] == 1, summary
-        assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
-        PY_RESULT
+      run: "set -euo pipefail\npython3 - \"${CARDPILOT_TEST_DEVICE_ID:-}\" <<'PY'\nimport shutil, sys\nfrom pathlib import\
+        \ Path\ncopied = 0\nif sys.argv[1]:\n    device = Path.home() / \"Library/Developer/CoreSimulator/Devices\" / sys.argv[1]\n\
+        \    reports = Path(\"fixture-reports\")\n    reports.mkdir(exist_ok=True)\n    for report in (device / \"data/Containers/Data/Application\"\
+        ).glob(\"*/tmp/CardPilotUITests/*/performance-fixture.json\"):\n        shutil.copyfile(report, reports / (report.parent.name\
+        \ + \".json\"))\n    for source in (device / \"data/Containers/Data/Application\").glob(\"*/tmp/CardPilotUITestDiagnostics\"\
+        ):\n        destination = Path(\"test-failure-artifacts\") / source.parents[1].name\n        shutil.copytree(source,\
+        \ destination, dirs_exist_ok=True)\n        copied += 1\nprint(f\"Copied direct native artifacts from {copied} simulator\
+        \ containers (including shutdown devices).\")\nPY\nif [[ -n \"${CARDPILOT_TEST_DEVICE_ID:-}\" ]]; then\n  xcrun simctl\
+        \ ui \"$CARDPILOT_TEST_DEVICE_ID\" appearance > simulator-appearance-after.txt\n  xcrun simctl ui \"$CARDPILOT_TEST_DEVICE_ID\"\
+        \ increase_contrast > simulator-contrast-after.txt\nfi\nxcrun xcresulttool get test-results summary --path TestResults.xcresult\
+        \ > summary.json\nxcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments\n\
+        python3 - <<'PY_RESULT'\nimport json, os\nfrom pathlib import Path\nsummary = json.loads(Path(\"summary.json\").read_text())\n\
+        assert Path(\"simulator-appearance-after.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_APPEARANCE\"]\n\
+        assert Path(\"simulator-contrast-after.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_CONTRAST\"]\nassert\
+        \ summary[\"result\"] == \"Passed\", summary\nassert summary[\"passedTests\"] == summary[\"totalTestCount\"] == 2,\
+        \ summary\nassert summary[\"failedTests\"] == summary[\"skippedTests\"] == summary[\"expectedFailures\"] == 0, summary\n\
+        PY_RESULT\n"
     - name: Upload native test results
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: native-primary-action-${{ matrix.appearance }}-${{ matrix.contrast }}
-        path: |
-          TestResults.xcresult
+        name: native-billing-month-large-history
+        path: 'TestResults.xcresult
+
           summary.json
+
           test-attachments
+
           test-failure-artifacts
+
           xcodebuild.log
+
           app-idle-monitor.log
+
           app-idle-diagnostics
 
+
           production-source-revision.txt
+
           diagnostic-source-revision.txt
+
           diagnostic-source-paths.txt
+
           test-command.json
+
           xcode-version.txt
+
           macos-version.txt
+
           architecture.txt
+
           simulators.json
+
           simulator-ui-help.txt
+
           simulator-appearance-before.txt
+
           simulator-appearance-after.txt
+
           simulator-contrast-before.txt
+
           simulator-contrast-after.txt
+
+          save-diagnostics
+
+          fixture-reports
+
+          '
         retention-days: 7
         if-no-files-found: warn
