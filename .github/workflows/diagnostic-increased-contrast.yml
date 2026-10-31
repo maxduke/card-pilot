@@ -1,4 +1,4 @@
-name: Native billing month and large-history validation
+name: Native dashboard update and large-history validation
 'on':
   push:
     branches:
@@ -6,11 +6,11 @@ name: Native billing month and large-history validation
 permissions:
   contents: read
 concurrency:
-  group: billing-history-${{ github.ref }}
+  group: dashboard-history-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   test:
-    name: Billing and large history (iPhone 16 Pro)
+    name: Dashboard and large history (iPhone 16 Pro)
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -23,7 +23,7 @@ jobs:
       shell: bash
       run: 'set -euo pipefail
 
-        production_source=7c6100e84012e4365a68870f09204decf6f09be4
+        production_source=2d62185
 
         git fetch --no-tags --depth=1 origin "$production_source"
 
@@ -62,7 +62,7 @@ jobs:
         simulator-appearance-before.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_APPEARANCE\"]\nassert Path(\"\
         simulator-contrast-before.txt\").read_text().strip() == os.environ[\"CARDPILOT_TEST_CONTRAST\"]\nPY_APPEARANCE\ntest_args=(\n\
         \  -project CardPilot.xcodeproj -scheme CardPilot\n  -destination \"platform=iOS Simulator,id=$device_id\"\n  -resultBundlePath\
-        \ TestResults.xcresult\n  -only-testing:CardPilotUITests/CoreFlowsUITests/testAccountDateOverrideFeedbackAtLargestTextSizeAndDiscard\n\
+        \ TestResults.xcresult\n  -only-testing:CardPilotUITests/CoreFlowsUITests/testDashboardMetricsOpenMatchingActionsAndPreserveRepaymentUndo\n\
         \  -only-testing:CardPilotUITests/CoreFlowsUITests/testLargeCardHistoryScopesRowsAndRefreshesAfterRecording\n  -parallel-testing-enabled\
         \ NO -test-timeouts-enabled YES\n  -default-test-execution-time-allowance 180\n  -maximum-test-execution-time-allowance\
         \ 300\n  CODE_SIGNING_ALLOWED=NO\n)\npython3 - \"${test_args[@]}\" <<'PY_COMMAND'\nimport json, sys\nfrom pathlib\
@@ -112,7 +112,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: native-billing-month-large-history
+        name: native-dashboard-large-history
         path: 'TestResults.xcresult
 
           summary.json
