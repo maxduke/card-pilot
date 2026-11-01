@@ -140,6 +140,7 @@ private struct LockShield: View {
                     .foregroundStyle(.secondary)
                 Button(isAuthenticating ? "正在验证…" : "解锁", action: unlock)
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(Color(uiColor: .systemBackground))
                     .controlSize(.large)
                     .disabled(isAuthenticating)
                     .accessibilityIdentifier("unlockApp")

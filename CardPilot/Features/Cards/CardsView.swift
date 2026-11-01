@@ -38,6 +38,7 @@ struct CardsView: View {
                     } actions: {
                         Button("添加信用卡", systemImage: "plus") { showingCardOnboarding = true }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(Color(uiColor: .systemBackground))
                     }
                 } else if visibleBanks.isEmpty {
                     ContentUnavailableView.search(text: query)
@@ -589,6 +590,7 @@ private struct CardOnboardingView: View {
                             Spacer()
                             Button(step == .card ? "完成" : "继续") { advance(using: scrollProxy) }
                                 .buttonStyle(.borderedProminent)
+                                .foregroundStyle(Color(uiColor: .systemBackground))
                                 .fixedSize(horizontal: true, vertical: false)
                                 .disabled(step == .bank && !bankIsReady)
                                 .accessibilityIdentifier("onboarding.advance")

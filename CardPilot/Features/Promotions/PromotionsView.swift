@@ -177,6 +177,7 @@ struct PromotionsView: View {
                                 showingEditor = true
                             }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(Color(uiColor: .systemBackground))
                         } else {
                             Button("清除搜索") { searchText = "" }
                         }

@@ -98,9 +98,12 @@ jobs:
           xcrun simctl bootstatus "$device_id" -b
           xcrun simctl ui "$device_id" appearance dark
           xcrun simctl ui "$device_id" appearance > simulator-appearance-before.txt
+          xcrun simctl ui "$device_id" increase_contrast enabled
+          xcrun simctl ui "$device_id" increase_contrast > simulator-contrast-before.txt
           python3 - <<'PY_APPEARANCE'
           from pathlib import Path
           assert Path("simulator-appearance-before.txt").read_text().strip() == "dark"
+          assert Path("simulator-contrast-before.txt").read_text().strip() == "enabled"
           PY_APPEARANCE
           test_args=(
             -project CardPilot.xcodeproj -scheme CardPilot
@@ -141,6 +144,7 @@ jobs:
           PY
           if [[ -n "${CARDPILOT_TEST_DEVICE_ID:-}" ]]; then
             xcrun simctl ui "$CARDPILOT_TEST_DEVICE_ID" appearance > simulator-appearance-after.txt
+            xcrun simctl ui "$CARDPILOT_TEST_DEVICE_ID" increase_contrast > simulator-contrast-after.txt
           fi
           xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
           xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
@@ -149,6 +153,7 @@ jobs:
           from pathlib import Path
           summary = json.loads(Path("summary.json").read_text())
           assert Path("simulator-appearance-after.txt").read_text().strip() == "dark"
+          assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
           assert summary["result"] == "Passed", summary
           assert summary["passedTests"] == summary["totalTestCount"] == 2, summary
           assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
@@ -174,5 +179,7 @@ jobs:
             simulators.json
             simulator-appearance-before.txt
             simulator-appearance-after.txt
+            simulator-contrast-before.txt
+            simulator-contrast-after.txt
           retention-days: 7
           if-no-files-found: warn

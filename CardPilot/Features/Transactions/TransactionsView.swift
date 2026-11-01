@@ -69,6 +69,7 @@ private struct TransactionListContent: View {
                         } actions: {
                             Button("添加信用卡", systemImage: "plus", action: onAddCard)
                                 .buttonStyle(.borderedProminent)
+                                .foregroundStyle(Color(uiColor: .systemBackground))
                         }
                     } else {
                         ContentUnavailableView {
@@ -81,6 +82,7 @@ private struct TransactionListContent: View {
                                 isPresentingEditor = true
                             }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(Color(uiColor: .systemBackground))
                         }
                     }
                 } else if filtered.isEmpty {
@@ -1355,6 +1357,7 @@ struct TransactionEditorForm: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(Color(uiColor: .systemBackground))
                 .controlSize(.large)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
