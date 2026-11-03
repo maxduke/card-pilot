@@ -72,9 +72,8 @@ final class AccountSummaryTests: XCTestCase {
                       "Full names remain available to accessibility, details, and notifications.")
         account.customName = "日常共享账户"
         XCTAssertEqual(CardPilotUI.compactAccountName(account), "日常共享账户")
-        account.customName = nil
-        account.cards = []
-        XCTAssertEqual(CardPilotUI.compactAccountName(account), "同一家银行 · CNY 信用卡账户")
+        let emptyAccount = CreditCardAccount(bank: account.bank)
+        XCTAssertEqual(CardPilotUI.compactAccountName(emptyAccount), "同一家银行 · CNY 信用卡账户")
     }
     private let utc = TimeZone(secondsFromGMT: 0)!
 
