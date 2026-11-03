@@ -2986,6 +2986,10 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(schedule)
         assertTouchTarget(schedule)
         captureScreenshot("首页账期日程")
+        let sharedAccountName = app.staticTexts["UI Test Bank · 尾号 1234 / 5678"]
+        XCTAssertTrue(sharedAccountName.exists)
+        XCTAssertEqual(sharedAccountName.value as? String,
+                       "UI Test Bank · UI Primary · 尾号 1234 / UI Shared · 尾号 5678")
         try auditAccessibility(for: [.hitRegion, .textClipped])
     }
 

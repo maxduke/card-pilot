@@ -666,6 +666,8 @@ private struct BillingItemRow: View {
     let markRepaid: () -> Void
 
     var body: some View {
+        let accountName = CardPilotUI.accountName(item.account)
+        let compactAccountName = CardPilotUI.compactAccountName(item.account)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 10) {
                 Image(systemName: item.kind.icon)
@@ -679,13 +681,11 @@ private struct BillingItemRow: View {
                         Text(item.kind.title)
                             .font(.subheadline.weight(.medium))
                         Text(showsBank
-                             ? "\(CardPilotUI.compactAccountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
+                             ? "\(compactAccountName) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
                              : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .accessibilityLabel(showsBank
-                                ? "\(CardPilotUI.accountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
-                                : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
+                            .accessibilityValue(showsBank && accountName != compactAccountName ? accountName : "")
                     }
                     if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                     VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 3) {
@@ -713,7 +713,7 @@ private struct BillingItemRow: View {
                         .foregroundStyle(Color(uiColor: .systemBackground))
                         .controlSize(.regular)
                         .frame(minHeight: 44)
-                        .accessibilityLabel("标记 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
+                        .accessibilityLabel("标记 \(accountName) \(CardPilotUI.monthKeyText(item.cycleKey))账期已还款")
                         .accessibilityIdentifier("\(showsBank ? "dashboard.action.repay" : "dashboard.repay").\(item.id)")
                 }
             }
@@ -732,7 +732,7 @@ private struct BillingItemRow: View {
             .font(.caption)
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
-            .accessibilityLabel("查看 \(CardPilotUI.accountName(item.account)) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
+            .accessibilityLabel("查看 \(accountName) \(CardPilotUI.monthKeyText(item.cycleKey))账期")
             .accessibilityIdentifier("\(showsBank ? "dashboard.action.billingCycle" : "dashboard.billingCycle").\(item.id)")
         }
         .padding(.vertical, 10)
@@ -746,13 +746,15 @@ private struct AccountScheduleCard: View {
     let markRepaid: (DashboardBillingItem) -> Void
 
     var body: some View {
+        let accountName = CardPilotUI.accountName(account)
+        let compactAccountName = CardPilotUI.compactAccountName(account)
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 BankBadge(bank: account.bank)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(CardPilotUI.compactAccountName(account))
+                    Text(compactAccountName)
                         .font(.headline)
-                        .accessibilityLabel(CardPilotUI.accountName(account))
+                        .accessibilityValue(accountName != compactAccountName ? accountName : "")
                     Text(accountSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
