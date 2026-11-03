@@ -628,4 +628,37 @@ final class PromotionCalculatorTests: XCTestCase {
             ).isEmpty
         )
     }
+
+    func testSeriesSearchOpensTheMatchingPeriodAndRetainsSeriesHistory() {
+        let seriesID = UUID()
+        let bank = Bank(name: "搜索银行")
+        let account = CreditCardAccount(bank: bank)
+        let oldCard = Card(account: account, productName: "旧旅行卡", networks: [], lastFour: "2468")
+        let past = Promotion(seriesID: seriesID, seriesIndex: 0, title: "首期旅行回馈",
+                             startOn: 20260101, endOn: 20260131, organizingBanks: [bank],
+                             eligibleCards: [oldCard], progressCurrencyCode: "CNY")
+        let current = Promotion(seriesID: seriesID, seriesIndex: 1, title: "本期日常回馈",
+                                startOn: 20260201, endOn: 20260228, organizingBanks: [bank],
+                                progressCurrencyCode: "CNY")
+
+        for query in ["首期旅行", "2468"] {
+            let groups = PromotionPresentation.groups(from: [current, past], today: 20260215,
+                                                       includeArchived: false, searchText: query)
+            XCTAssertEqual(groups.count, 1)
+            XCTAssertEqual(groups.first?.representative.id, past.id)
+            XCTAssertEqual(groups.first?.status, .history)
+            XCTAssertEqual(groups.first?.periods.map(\.id), [past.id, current.id])
+            XCTAssertEqual(groups.first?.totalPeriodCount, 2)
+        }
+        let sharedMatch = PromotionPresentation.groups(from: [past, current], today: 20260215,
+                                                       includeArchived: false, searchText: bank.name)
+        XCTAssertEqual(sharedMatch.first?.representative.id, current.id)
+
+        past.archivedAt = Date()
+        XCTAssertTrue(PromotionPresentation.groups(from: [past, current], today: 20260215,
+                                                  includeArchived: false, searchText: "2468").isEmpty)
+        XCTAssertEqual(PromotionPresentation.groups(from: [past, current], today: 20260215,
+                                                    includeArchived: true, searchText: "2468")
+            .first?.representative.id, past.id)
+    }
 }

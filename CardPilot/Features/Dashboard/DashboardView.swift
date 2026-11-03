@@ -679,10 +679,13 @@ private struct BillingItemRow: View {
                         Text(item.kind.title)
                             .font(.subheadline.weight(.medium))
                         Text(showsBank
-                             ? "\(CardPilotUI.accountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
+                             ? "\(CardPilotUI.compactAccountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
                              : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel(showsBank
+                                ? "\(CardPilotUI.accountName(item.account)) · \(CardPilotUI.monthKeyText(item.cycleKey))账期"
+                                : "\(CardPilotUI.monthKeyText(item.cycleKey))账期")
                     }
                     if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                     VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 3) {
@@ -747,8 +750,9 @@ private struct AccountScheduleCard: View {
             HStack(spacing: 12) {
                 BankBadge(bank: account.bank)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(CardPilotUI.accountName(account))
+                    Text(CardPilotUI.compactAccountName(account))
                         .font(.headline)
+                        .accessibilityLabel(CardPilotUI.accountName(account))
                     Text(accountSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -773,8 +777,11 @@ private struct AccountScheduleCard: View {
     }
 
     private var accountSubtitle: String {
-        let names = account.cards.map { $0.nickname.isEmpty ? $0.productName : $0.nickname }.sorted()
-        let cards = names.isEmpty ? "未添加卡片" : names.count == 1 ? names[0] : "\(names[0]) 等 \(names.count) 张卡"
+        let cards = switch account.cards.count {
+        case 0: "未添加卡片"
+        case 1: "独立账单账户"
+        case let count: "\(count) 张卡共用账单"
+        }
         return account.status == .closed ? "已关闭 · \(cards)" : cards
     }
 }

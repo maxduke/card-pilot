@@ -8,7 +8,6 @@ struct CardDetailView: View {
     @Query(sort: \CardNetwork.displayName) private var networks: [CardNetwork]
     @Query(sort: \Card.id) private var cards: [Card]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
-    @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
 
     @State private var showingCardEditor = false
     @State private var showingTransactionEditor = false
@@ -164,7 +163,6 @@ struct CardDetailView: View {
                 transaction: nil,
                 cards: cards,
                 promotions: promotions,
-                transactions: transactions,
                 initialCard: card
             )
         }
@@ -400,7 +398,6 @@ private struct CardTransactionHistoryView: View {
 
     @Query(sort: \Card.id) private var cards: [Card]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
-    @Query(sort: \Transaction.transactionOn, order: .reverse) private var allTransactions: [Transaction]
     @State private var detailTransaction: Transaction?
     @State private var showingEditor = false
 
@@ -450,7 +447,6 @@ private struct CardTransactionHistoryView: View {
                 transaction: nil,
                 cards: cards,
                 promotions: promotions,
-                transactions: allTransactions,
                 initialCard: card
             )
         }
@@ -462,8 +458,7 @@ private struct CardTransactionHistoryView: View {
                 TransactionDetailView(
                     transaction: detailTransaction,
                     cards: cards,
-                    promotions: promotions,
-                    transactions: allTransactions
+                    promotions: promotions
                 )
             }
         }
