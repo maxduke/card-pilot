@@ -8,7 +8,6 @@ struct RootView: View {
     @Query(sort: \CreditCardAccount.id) private var accounts: [CreditCardAccount]
     @Query(sort: \Card.id) private var cards: [Card]
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
-    @Query(sort: \Transaction.transactionOn, order: .reverse) private var transactions: [Transaction]
     @AppStorage("cardPilot.statementReminderOffsets") private var statementOffsets = "7,3,1,0"
     @AppStorage("cardPilot.repaymentReminderOffsets") private var repaymentOffsets = "7,3,1,0"
     @AppStorage("cardPilot.statementRemindersEnabled") private var statementRemindersEnabled = true
@@ -82,7 +81,7 @@ struct RootView: View {
             SettingsView().environmentObject(appLock)
         }
         .trackedSheet(isPresented: $showingTransactionEditor, onDismiss: handlePendingQuickActions) {
-            TransactionEditorView(transaction: nil, cards: cards, promotions: promotions, transactions: transactions)
+            TransactionEditorView(transaction: nil, cards: cards, promotions: promotions)
         }
         .trackedSheet(item: $notificationTarget, onDismiss: handlePendingQuickActions) { target in
             NavigationStack {

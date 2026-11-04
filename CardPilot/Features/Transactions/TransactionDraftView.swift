@@ -8,7 +8,6 @@ struct TransactionEditorView: View {
     let transaction: Transaction?
     let cards: [Card]
     let promotions: [Promotion]
-    let transactions: [Transaction]
     var initialPromotion: Promotion? = nil
     var initialCard: Card? = nil
     var initialRefundOriginal: Transaction? = nil
@@ -27,7 +26,7 @@ struct TransactionEditorView: View {
         Group {
             if transaction != nil || ready {
                 TransactionEditorForm(transaction: transaction, cards: cards, promotions: promotions,
-                                      transactions: transactions, initialPromotion: initialPromotion,
+                                      initialPromotion: initialPromotion,
                                       initialCard: initialCard, initialRefundOriginal: initialRefundOriginal,
                                       draft: resumedDraft, draftStore: store)
             } else {

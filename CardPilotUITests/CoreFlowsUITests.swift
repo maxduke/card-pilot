@@ -144,6 +144,68 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("最大字号账期选择放弃后读回")
     }
 
+    func testAccountMonthSwitchProtectsUnsavedDates() {
+        verifyAccountMonthSwitchProtectsUnsavedDates(largestText: false)
+    }
+
+    func testAccountMonthSwitchProtectsUnsavedDatesAtLargestTextSize() {
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyAccountMonthSwitchProtectsUnsavedDates(largestText: true)
+    }
+
+    private func verifyAccountMonthSwitchProtectsUnsavedDates(largestText: Bool) {
+        launch("billingDateFeedback")
+        openBillingFeedbackAccount()
+        tap(app.navigationBars["账户详情"].buttons["编辑"])
+        let navigationBar = app.navigationBars["编辑信用卡账户"]
+        let form = app.collectionViews["account.editor.form"]
+        let picker = app.buttons["account.editor.override.cycle"]
+        let repayment = app.switches["account.editor.override.repayment.enabled"]
+        let currentMonth = futureRuleMonth(offset: 0)
+        let nextMonth = futureRuleMonth(offset: 1)
+
+        func selectMonth(_ month: String) {
+            reveal(picker, scrollTowardTopWhenMissing: true, fullyVisible: true,
+                   navigationBar: navigationBar, contentContainer: form)
+            picker.tap()
+            if largestText {
+                let monthNavigation = app.navigationBars["账期"]
+                XCTAssertTrue(monthNavigation.waitForExistence(timeout: 10))
+                let choice = app.buttons[month]
+                reveal(choice, scrollTowardTopWhenMissing: month == currentMonth,
+                       fullyVisible: true, navigationBar: monthNavigation)
+                choice.tap()
+                XCTAssertTrue(monthNavigation.waitForNonExistence(timeout: 10))
+            } else {
+                tap(app.buttons[month])
+            }
+        }
+
+        setBillingDateToggle("account.editor.override.repayment.enabled", enabled: false)
+        selectMonth(nextMonth)
+        tap(app.buttons["继续编辑"])
+        XCTAssertEqual(picker.value as? String, currentMonth)
+        reveal(repayment, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(repayment.value as? String, "0", "Cancelling the switch must keep the unsaved input.")
+
+        selectMonth(nextMonth)
+        tap(app.buttons["放弃日期修改并切换"])
+        XCTAssertEqual(picker.value as? String, nextMonth)
+        selectMonth(currentMonth)
+        XCTAssertEqual(picker.value as? String, currentMonth)
+        reveal(repayment, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
+        XCTAssertEqual(repayment.value as? String, "1")
+        captureScreenshot(largestText ? "最大字号切换账期保护未保存日期" : "切换账期保护未保存日期")
+        navigationBar.buttons["保存"].tap()
+        XCTAssertTrue(navigationBar.waitForNonExistence(timeout: 10))
+        openBillingFeedbackCycle(offset: 0)
+        assertBillingFeedbackDate("还款日", monthOffset: 0, day: 15)
+        let paid = app.staticTexts["状态、已还款"]
+        reveal(paid, fullyVisible: true)
+        XCTAssertTrue(paid.exists)
+    }
+
     func testBillingRulePickersAtLargestTextSizeSaveEffectiveMonth() {
         // The complete picker/save/relaunch/history flow reached its final
         // checks at 194.74s in run 39900003418. Keep the existing 240s maximum.
@@ -1133,6 +1195,46 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionAllocationSearchPreservesSelectionAndAmount() {
         verifyPromotionAllocationSearch(largestText: false)
+    }
+
+    func testPromotionAllocationSearchHidesUnselectedNonmatchingCandidates() {
+        launch("allocationFeedback")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        let navigationBar = app.navigationBars["添加交易"]
+        let progress = app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch
+        let form = app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch
+        let amount = app.textFields["transactionAmount"]
+        reveal(amount, navigationBar: navigationBar, contentHeader: progress, contentContainer: form)
+        amount.tap()
+        amount.typeText("125.50")
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.buttons["返回修改交易"].waitForExistence(timeout: 10))
+
+        for title in ["UI Second", "UI Last"] {
+            let toggle = app.switches["allocation.toggle.\(title)"]
+            let control = toggle.switches.firstMatch
+            reveal(control, fullyVisible: true, navigationBar: navigationBar,
+                   contentHeader: progress, contentContainer: form)
+            XCTAssertEqual(toggle.value as? String, "1")
+            control.tap()
+            XCTAssertEqual(toggle.value as? String, "0")
+        }
+        let search = app.textFields["allocation.search"]
+        reveal(search, scrollTowardTopWhenMissing: true, navigationBar: navigationBar,
+               contentHeader: progress, contentContainer: form)
+        search.tap()
+        search.typeText("UI Last")
+        XCTAssertTrue(app.staticTexts["搜索结果"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "allocation.toggle.UI Second").firstMatch.exists)
+        let result = app.descendants(matching: .any).matching(identifier: "allocation.toggle.UI Last").firstMatch
+        XCTAssertTrue(result.exists)
+        let retainedAmount = app.textFields["allocation.amount.\(allocationFeedbackFirstTitle)"]
+        XCTAssertEqual(retainedAmount.value as? String, "125.5")
+        XCTAssertTrue(app.staticTexts["已选活动"].exists)
+        XCTAssertTrue(app.staticTexts["搜索结果"].exists)
+        captureScreenshot("促销搜索分开已选活动与匹配结果")
     }
 
     func testPromotionAllocationSearchAtLargestTextSize() {
@@ -2884,6 +2986,10 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(schedule)
         assertTouchTarget(schedule)
         captureScreenshot("首页账期日程")
+        let sharedAccountName = app.staticTexts["UI Test Bank · 尾号 1234 / 5678"]
+        XCTAssertTrue(sharedAccountName.exists)
+        XCTAssertEqual(sharedAccountName.value as? String,
+                       "UI Test Bank · UI Primary · 尾号 1234 / UI Shared · 尾号 5678")
         try auditAccessibility(for: [.hitRegion, .textClipped])
     }
 

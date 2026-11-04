@@ -60,6 +60,21 @@ final class AccountSummaryTests: XCTestCase {
         XCTAssertTrue(label.contains("下次账单 2026年09月10日"))
         XCTAssertTrue(label.contains("逾期还款 2026年09月03日"))
     }
+
+    func testCompactAccountNamesKeepTailIdentityAndCustomNames() {
+        let account = CreditCardAccount(bank: Bank(name: "同一家银行"))
+        account.cards = [
+            Card(account: account, productName: "共享旅行信用卡", networks: [], lastFour: "5678"),
+            Card(account: account, productName: "日常消费信用卡", networks: [], lastFour: "1234")
+        ]
+        XCTAssertEqual(CardPilotUI.compactAccountName(account), "同一家银行 · 尾号 1234 / 5678")
+        XCTAssertTrue(CardPilotUI.accountName(account).contains("共享旅行信用卡"),
+                      "Full names remain available to accessibility, details, and notifications.")
+        account.customName = "日常共享账户"
+        XCTAssertEqual(CardPilotUI.compactAccountName(account), "日常共享账户")
+        let emptyAccount = CreditCardAccount(bank: account.bank)
+        XCTAssertEqual(CardPilotUI.compactAccountName(emptyAccount), "同一家银行 · CNY 信用卡账户")
+    }
     private let utc = TimeZone(secondsFromGMT: 0)!
 
     func testUsesSavedOverridesAndSkipsPaidRepaymentForActiveAccount() throws {

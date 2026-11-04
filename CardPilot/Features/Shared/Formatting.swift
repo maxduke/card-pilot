@@ -439,6 +439,17 @@ enum CardPilotUI {
         return "\(account.bank.name) · \(identity)" + (cards.count > 2 ? " 等 \(cards.count) 张卡" : "")
     }
 
+    static func compactAccountName(_ account: CreditCardAccount) -> String {
+        if let name = account.customName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        let lastFours = account.cards.map(\.lastFour).sorted().prefix(2)
+        let identity = lastFours.isEmpty
+            ? "\(account.limitCurrencyCode) 信用卡账户"
+            : "尾号 \(lastFours.joined(separator: " / "))"
+        return "\(account.bank.name) · \(identity)"
+    }
+
     static func accountAccessibilityLabel(_ account: CreditCardAccount, summary: CardAccountBillingSummary) -> String {
         var parts = [accountName(account)]
         if account.status == .closed { parts.append("已关闭") }
