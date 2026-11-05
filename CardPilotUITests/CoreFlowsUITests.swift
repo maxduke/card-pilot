@@ -1071,7 +1071,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
         launch("core")
-        let promotionsTab = app.tabBars.buttons["促销"]
+        let promotionsTab = rootTabButton("促销")
         reveal(promotionsTab)
         promotionsTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
@@ -3392,7 +3392,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openNewPromotionEditor() {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
-        let tab = app.tabBars.buttons["促销"]
+        let tab = rootTabButton("促销")
         XCTAssertTrue(tab.waitForExistence(timeout: 10))
         XCTAssertTrue(tab.isEnabled && tab.isHittable)
         XCTAssertTrue(app.frame.contains(tab.frame))
@@ -3426,7 +3426,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
+        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: 10))
     }
 
     func testBackupExportFilenameCancellationAndLargestTextRecord() throws {
@@ -4403,7 +4403,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func selectCardsTab() {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         let tabBar = app.tabBars.firstMatch
-        let cards = tabBar.buttons["卡片"]
+        let cards = rootTabButton("卡片")
         XCTAssertTrue(cards.waitForExistence(timeout: 10))
         XCTAssertTrue(cards.isEnabled)
         XCTAssertTrue(cards.isHittable)
@@ -4962,7 +4962,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func launch(_ scenario: String) {
         app.launchEnvironment["CARDPILOT_UI_SCENARIO"] = scenario
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
+        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: 10))
     }
 
     private func openCard(_ name: String) {
@@ -5138,9 +5138,15 @@ final class CoreFlowsUITests: XCTestCase {
         element.typeText(text)
     }
 
+    private func rootTabButton(_ title: String) -> XCUIElement {
+        // Native tab identifiers can use the SF Symbol name. Match the
+        // visible localized label explicitly, independently of that identifier.
+        app.tabBars.buttons.matching(NSPredicate(format: "label == %@", title)).firstMatch
+    }
+
     private func tapRootTab(_ title: String) {
         let tabBar = app.tabBars.element
-        let button = tabBar.buttons[title]
+        let button = rootTabButton(title)
         reveal(button)
         let started = ProcessInfo.processInfo.systemUptime
         let tolerance: CGFloat = 0.001
