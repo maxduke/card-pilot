@@ -634,6 +634,21 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(row.frame.minX, app.frame.minX)
             XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.maxX)
             captureScreenshot("\(largestText ? "最大字号" : "普通字号")金额布局-\(merchant)")
+            // The full merchant/card identity can make an accessibility row
+            // taller than the viewport. Inspect its amount at the lower edge too.
+            for _ in 0..<4 {
+                let overflow = row.frame.maxY - contentBottom
+                if overflow <= 0 { break }
+                let startY = contentBottom - 20
+                let distance = min(overflow + 20, startY - navigationBar.frame.maxY - 30)
+                let origin = app.coordinate(withNormalizedOffset: .zero)
+                origin.withOffset(CGVector(dx: row.frame.midX - app.frame.minX, dy: startY - app.frame.minY))
+                    .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(
+                        dx: row.frame.midX - app.frame.minX, dy: startY - distance - app.frame.minY
+                    )))
+            }
+            XCTAssertLessThanOrEqual(row.frame.maxY, contentBottom)
+            captureScreenshot("\(largestText ? "最大字号" : "普通字号")完整金额-\(merchant)")
             let top = max(row.frame.minY, navigationBar.frame.maxY,
                           app.staticTexts["transactions.results.count"].frame.maxY)
             let bottom = min(row.frame.maxY, contentBottom)

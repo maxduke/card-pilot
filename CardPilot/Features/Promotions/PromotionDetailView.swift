@@ -145,30 +145,7 @@ struct PromotionDetailView: View {
                     }
                 }
             }
-            Section("报名与资格") {
-                detailValueRow("报名状态", value: enrollmentText)
-                    .accessibilityIdentifier("promotion.enrollmentStatus")
-                if displayedPromotion.enrollmentStatus == .notEnrolled {
-                    Button("标记已报名", systemImage: "person.crop.circle.badge.checkmark", action: markEnrolled)
-                    Text("请先在银行完成报名，再更新这里的记录。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                if let enrolledOn = displayedPromotion.enrolledOn {
-                    detailValueRow("报名日期", value: CardPilotUI.dateText(enrolledOn))
-                }
-                if let deadline = displayedPromotion.enrollmentDeadline {
-                    detailValueRow("报名截止", value: CardPilotUI.dateText(deadline))
-                    if displayedPromotion.enrollmentStatus == .notEnrolled {
-                        NavigationLink("报名提醒设置", systemImage: "bell") {
-                            ReminderSettingsView()
-                        }
-                        .accessibilityIdentifier("promotion.enrollment.reminders")
-                    }
-                }
-                detailValueRow("资格日期依据", value: qualificationBasisText)
-                    .accessibilityIdentifier("promotion.qualificationBasis")
-            }
+            enrollmentSection
             Section("活动信息") {
                 detailValueRow("本期有效期", value: CardPilotUI.dateRangeText(start: displayedPromotion.startOn, end: displayedPromotion.endOn))
                 detailValueRow("系列", value: displayedPromotion.seriesID == nil ? "独立活动" : periodIndexText(displayedPromotion))
@@ -348,6 +325,33 @@ struct PromotionDetailView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    private var enrollmentSection: some View {
+        Section("报名与资格") {
+            detailValueRow("报名状态", value: enrollmentText)
+                .accessibilityIdentifier("promotion.enrollmentStatus")
+            if displayedPromotion.enrollmentStatus == .notEnrolled {
+                Button("标记已报名", systemImage: "person.crop.circle.badge.checkmark", action: markEnrolled)
+                Text("请先在银行完成报名，再更新这里的记录。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if let enrolledOn = displayedPromotion.enrolledOn {
+                detailValueRow("报名日期", value: CardPilotUI.dateText(enrolledOn))
+            }
+            if let deadline = displayedPromotion.enrollmentDeadline {
+                detailValueRow("报名截止", value: CardPilotUI.dateText(deadline))
+                if displayedPromotion.enrollmentStatus == .notEnrolled {
+                    NavigationLink("报名提醒设置", systemImage: "bell") {
+                        ReminderSettingsView()
+                    }
+                    .accessibilityIdentifier("promotion.enrollment.reminders")
+                }
+            }
+            detailValueRow("资格日期依据", value: qualificationBasisText)
+                .accessibilityIdentifier("promotion.qualificationBasis")
+        }
     }
 
     private var seriesSection: some View {

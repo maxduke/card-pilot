@@ -515,6 +515,7 @@ struct TransactionRow: View {
     private var amount: some View {
         Text(signedAmountText(transaction))
             .font(.subheadline.weight(.semibold).monospacedDigit())
+            .multilineTextAlignment(.trailing)
             .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
             .strikethrough(transaction.status == .reversed)

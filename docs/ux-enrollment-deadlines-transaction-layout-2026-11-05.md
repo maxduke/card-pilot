@@ -29,3 +29,5 @@
 本地 Swift 6.0.3 对全部应用和测试源码的 iOS Simulator DEBUG 语法解析、workflow YAML／shell 语法及 `git diff --check` 已通过。
 源码清点为 245 项单元／集成方法和 102 项普通 UI 方法；实际执行数量、iOS SDK 编译及截图结果以当前提交的原生 CI 为准。
 本地 Linux 无法执行 iOS SDK 类型检查或原生 UI。真实 iPhone 的通知送达、系统专注模式和点击通知后的完整流程仍需真机验证。
+
+首次原生运行 [41987581907](https://github.com/maxduke/card-pilot/actions/runs/41987581907) 在编译阶段报告活动详情 `body` 类型检查超时，没有执行测试。随后把现有“报名与资格”区块提取为独立视图属性，缩小类型检查表达式；继续以新提交验证，没有重跑原失败提交。
