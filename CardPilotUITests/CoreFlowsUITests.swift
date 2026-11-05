@@ -4967,7 +4967,25 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openCard(_ name: String) {
         tapRootTab("卡片")
-        tap(app.buttons["card.\(name)"])
+        let navigationBar = app.navigationBars["卡片"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let card = app.buttons["card.\(name)"]
+        reveal(card, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+        // A large row can be partly behind the search/navigation or tab bar.
+        // Activate one real visible area rather than its offscreen AX center.
+        let frame = app.frame
+        let viewport = CGRect(x: frame.minX, y: navigationBar.frame.maxY,
+                              width: frame.width, height: contentBottom - navigationBar.frame.maxY)
+        let visible = card.frame.intersection(viewport)
+        XCTAssertGreaterThanOrEqual(visible.width, 44)
+        XCTAssertGreaterThanOrEqual(visible.height, 44)
+        let point = CGVector(dx: visible.midX - frame.minX, dy: visible.midY - frame.minY)
+        let geometry = XCTAttachment(string: "row=\(card.frame); viewport=\(viewport); visible=\(visible); tap=\(point)")
+        geometry.name = "原生卡片入口-\(name)"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
     private func openPromotion(_ name: String) {
