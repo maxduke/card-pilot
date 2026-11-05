@@ -31,3 +31,5 @@
 本地 Linux 无法执行 iOS SDK 类型检查或原生 UI。真实 iPhone 的通知送达、系统专注模式和点击通知后的完整流程仍需真机验证。
 
 首次原生运行 [41987581907](https://github.com/maxduke/card-pilot/actions/runs/41987581907) 在编译阶段报告活动详情 `body` 类型检查超时，没有执行测试。随后把现有“报名与资格”区块提取为独立视图属性，缩小类型检查表达式；继续以新提交验证，没有重跑原失败提交。
+
+第二次运行 [41988799639](https://github.com/maxduke/card-pilot/actions/runs/41988799639) 在独立区块中给出具体的类型推断错误。报名提醒导航入口随后改用项目现有的 `NavigationLink { destination } label: { Label(...) }` 形式；前两次编译均未进入测试，不能计作测试通过。

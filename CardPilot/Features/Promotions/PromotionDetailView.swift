@@ -343,8 +343,10 @@ struct PromotionDetailView: View {
             if let deadline = displayedPromotion.enrollmentDeadline {
                 detailValueRow("报名截止", value: CardPilotUI.dateText(deadline))
                 if displayedPromotion.enrollmentStatus == .notEnrolled {
-                    NavigationLink("报名提醒设置", systemImage: "bell") {
+                    NavigationLink {
                         ReminderSettingsView()
+                    } label: {
+                        Label("报名提醒设置", systemImage: "bell")
                     }
                     .accessibilityIdentifier("promotion.enrollment.reminders")
                 }
