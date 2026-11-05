@@ -256,7 +256,7 @@ enum UITestBootstrap {
             let values = ["12.5", "1234567.89", "0.001"]
             for index in names.indices {
                 let transaction = Transaction(
-                    id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!,
+                    id: UUID(uuidString: String(format: "78000000-0000-0000-0000-%012d", index + 1))!,
                     card: index == 1 ? sibling : card,
                     kind: index == 2 ? .refund : .purchase,
                     transactionOn: today.rawValue, amount: Decimal(string: values[index])!,

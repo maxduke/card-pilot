@@ -161,7 +161,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.navigationBars["账户详情"].buttons["编辑"])
         let navigationBar = app.navigationBars["编辑信用卡账户"]
         let form = app.collectionViews["account.editor.form"]
-        let picker = app.buttons["account.editor.override.cycle"]
+        let picker = form.buttons["account.editor.override.cycle"]
         let repayment = app.switches["account.editor.override.repayment.enabled"]
         let currentMonth = futureRuleMonth(offset: 0)
         let nextMonth = futureRuleMonth(offset: 1)
@@ -183,18 +183,26 @@ final class CoreFlowsUITests: XCTestCase {
             }
         }
 
+        func assertSelectedMonth(_ month: String) {
+            // Run 41993839392 captured the correct December state after the
+            // immediate assertion had read November during dialog dismissal.
+            let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", month), object: picker)
+            XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 10), .completed)
+            XCTAssertEqual(picker.value as? String, month)
+        }
+
         setBillingDateToggle("account.editor.override.repayment.enabled", enabled: false)
         selectMonth(nextMonth)
         tap(app.buttons["继续编辑"])
-        XCTAssertEqual(picker.value as? String, currentMonth)
+        assertSelectedMonth(currentMonth)
         reveal(repayment, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         XCTAssertEqual(repayment.value as? String, "0", "Cancelling the switch must keep the unsaved input.")
 
         selectMonth(nextMonth)
         tap(app.buttons["放弃日期修改并切换"])
-        XCTAssertEqual(picker.value as? String, nextMonth)
+        assertSelectedMonth(nextMonth)
         selectMonth(currentMonth)
-        XCTAssertEqual(picker.value as? String, currentMonth)
+        assertSelectedMonth(currentMonth)
         reveal(repayment, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         XCTAssertEqual(repayment.value as? String, "1")
         captureScreenshot(largestText ? "最大字号切换账期保护未保存日期" : "切换账期保护未保存日期")
@@ -534,9 +542,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testLargeCardHistoryScopesRowsAndRefreshesAfterRecording() {
-        // Run 41232577050 completed this whole Debug flow in 173.927s.
-        // Retain the original 240s budget, including fixture setup.
-        executionTimeAllowance = 240
+        // The full flow completed its last assertions at 243.10s in run
+        // 41993839392, including about 150s of synthetic fixture startup.
+        executionTimeAllowance = 300
         launch("performanceLarge")
         tapRootTab("卡片")
         enter("Baseline Card 19", into: app.searchFields.firstMatch)
@@ -814,6 +822,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testPromotionEnrollmentDatesAtLargestTextSizeDiscardChanges() throws {
+        // The complete cancel/relaunch/readback flow reached its screenshot
+        // at 207s in run 41993839392, beyond the former 180s allowance.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("promotionOverview")
         openPromotion("UI Available")
