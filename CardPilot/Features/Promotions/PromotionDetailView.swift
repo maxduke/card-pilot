@@ -66,6 +66,7 @@ struct PromotionDetailView: View {
                 seriesSection
             }
             progressSection
+            enrollmentSection
             Section("更新进度") {
                 Button {
                     showingTransactionEditor = true
@@ -145,7 +146,6 @@ struct PromotionDetailView: View {
                     }
                 }
             }
-            enrollmentSection
             Section("活动信息") {
                 detailValueRow("本期有效期", value: CardPilotUI.dateRangeText(start: displayedPromotion.startOn, end: displayedPromotion.endOn))
                 detailValueRow("系列", value: displayedPromotion.seriesID == nil ? "独立活动" : periodIndexText(displayedPromotion))

@@ -473,6 +473,7 @@ struct TransactionRow: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.vertical, 7)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(transactionAccessibilityLabel(transaction))
         .accessibilityHint("查看交易详情")
