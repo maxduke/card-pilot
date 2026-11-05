@@ -159,6 +159,12 @@ struct PromotionDetailView: View {
                 }
                 if let deadline = displayedPromotion.enrollmentDeadline {
                     detailValueRow("报名截止", value: CardPilotUI.dateText(deadline))
+                    if displayedPromotion.enrollmentStatus == .notEnrolled {
+                        NavigationLink("报名提醒设置", systemImage: "bell") {
+                            ReminderSettingsView()
+                        }
+                        .accessibilityIdentifier("promotion.enrollment.reminders")
+                    }
                 }
                 detailValueRow("资格日期依据", value: qualificationBasisText)
                     .accessibilityIdentifier("promotion.qualificationBasis")
@@ -482,11 +488,7 @@ struct PromotionDetailView: View {
     }
 
     private var enrollmentText: String {
-        switch displayedPromotion.enrollmentStatus {
-        case .notRequired: return "无需报名"
-        case .notEnrolled: return "尚未报名"
-        case .enrolled: return "已报名"
-        }
+        promotionEnrollmentText(displayedPromotion, today: currentDay.today.rawValue)
     }
 
     private var qualificationBasisText: String {

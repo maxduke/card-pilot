@@ -18,6 +18,7 @@ final class CoreFlowsUITests: XCTestCase {
             "-cardPilot.appLockEnabled", "NO",
             "-cardPilot.statementRemindersEnabled", "NO",
             "-cardPilot.repaymentRemindersEnabled", "NO",
+            "-cardPilot.enrollmentRemindersEnabled", "NO",
             "-cardPilot.lastUsedCardID", ""
         ]
     }
@@ -608,6 +609,88 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
         XCTAssertTrue(history.label.contains("共 1001 笔"))
         captureScreenshot("两万笔单卡新增后统计")
+    }
+
+    func testTransactionAmountsRemainReadableWithMixedLengthNames() {
+        verifyTransactionAmountLayout(largestText: false)
+    }
+
+    func testTransactionAmountsRemainReadableAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyTransactionAmountLayout(largestText: true)
+    }
+
+    private func verifyTransactionAmountLayout(largestText: Bool) {
+        launch("deadlineAndAmounts")
+        tapRootTab("交易")
+        let cases = [("UI Short", "12.5 CNY"),
+                     ("UI 长商户名称用于验证金额不会随名称长度切换布局", "1,234,567.89 CNY"),
+                     ("UI Refund", "−0.001 HKD")]
+        for (merchant, amount) in cases {
+            let row = app.buttons["transaction.\(merchant)"]
+            let navigationBar = app.navigationBars["交易"]
+            reveal(row, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+            XCTAssertTrue(row.label.contains(amount))
+            XCTAssertGreaterThanOrEqual(row.frame.minX, app.frame.minX)
+            XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.maxX)
+            captureScreenshot("\(largestText ? "最大字号" : "普通字号")金额布局-\(merchant)")
+            let top = max(row.frame.minY, navigationBar.frame.maxY,
+                          app.staticTexts["transactions.results.count"].frame.maxY)
+            let bottom = min(row.frame.maxY, contentBottom)
+            XCTAssertGreaterThanOrEqual(bottom - top, 44)
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: row.frame.midX - app.frame.minX, dy: (top + bottom) / 2 - app.frame.minY
+            )).tap()
+            XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts[amount].exists)
+            tap(app.navigationBars["交易详情"].buttons["完成"])
+            XCTAssertTrue(app.navigationBars["交易详情"].waitForNonExistence(timeout: 10))
+        }
+    }
+
+    func testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize() throws {
+        let index = try XCTUnwrap(app.launchArguments.firstIndex(of: "-cardPilot.enrollmentRemindersEnabled"))
+        app.launchArguments.removeSubrange(index...index + 1)
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("deadlineAndAmounts")
+        openPromotion("UI Deadline Upcoming")
+        tap(app.buttons["promotion.enrollment.reminders"])
+        let navigationBar = app.navigationBars["通知与提醒"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let enabled = app.switches["reminders.enrollment.enabled"]
+        reveal(enabled, fullyVisible: true, navigationBar: navigationBar)
+        if enabled.value as? String == "1" { enabled.switches.firstMatch.tap() }
+        XCTAssertEqual(enabled.value as? String, "0")
+        let offsets = app.buttons["reminders.enrollment.offsets"]
+        XCTAssertTrue(offsets.waitForExistence(timeout: 5))
+        XCTAssertFalse(offsets.isEnabled)
+        enabled.switches.firstMatch.tap()
+        XCTAssertEqual(enabled.value as? String, "1")
+        tap(offsets)
+        XCTAssertTrue(app.navigationBars["报名截止提醒"].waitForExistence(timeout: 10))
+        let threeDays = app.switches["提前 3 天"]
+        if threeDays.value as? String != "1" { tap(threeDays.switches.firstMatch) }
+        XCTAssertEqual(threeDays.value as? String, "1")
+        captureScreenshot("最大字号报名截止提醒节点")
+        tap(app.navigationBars["报名截止提醒"].buttons["完成"])
+        app.terminate()
+        app.launch()
+        openPromotion("UI Deadline Upcoming")
+        tap(app.buttons["promotion.enrollment.reminders"])
+        reveal(enabled, fullyVisible: true, navigationBar: navigationBar)
+        XCTAssertEqual(enabled.value as? String, "1")
+        tap(offsets)
+        XCTAssertTrue(app.navigationBars["报名截止提醒"].waitForExistence(timeout: 10))
+        XCTAssertEqual(threeDays.value as? String, "1")
+        captureScreenshot("最大字号报名截止提醒重启读回")
+        tap(app.navigationBars["报名截止提醒"].buttons["完成"])
+        tap(navigationBar.buttons.element(boundBy: 0))
+        tap(app.navigationBars["UI Deadline Upcoming"].buttons.element(boundBy: 0))
+        openPromotionFromList("UI Deadline Past")
+        let status = app.descendants(matching: .any).matching(identifier: "promotion.enrollmentStatus").firstMatch
+        reveal(status, fullyVisible: true)
+        XCTAssertTrue(status.label.contains("报名已截止"))
+        captureScreenshot("最大字号报名已截止状态")
     }
 
     func testFirstCardReminderSettingsPersistAndRemainAccessible() throws {

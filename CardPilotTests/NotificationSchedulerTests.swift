@@ -77,7 +77,7 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(plans.count, 4)
         XCTAssertEqual(Set(plans.map(\.identifier)).count, 4)
         XCTAssertTrue(plans.allSatisfy { $0.identifier.hasPrefix(LocalNotificationScheduler.identifierPrefix) })
-        XCTAssertNotEqual(plans[0].accountID, plans[1].accountID)
+        XCTAssertNotEqual(plans[0].target, plans[1].target)
     }
 
     func testPlansOrderByFireDateAcrossBillingCycles() throws {
@@ -111,7 +111,10 @@ final class NotificationSchedulerTests: XCTestCase {
             now: try LocalDate(rawValue: 20260906).date(in: timeZone)
         )
 
-        XCTAssertEqual(plans.map(\.cycleKey), [202609, 202608])
+        let expected = [202609, 202608].map {
+            NotificationTarget.billing(BillingCycleTarget(accountID: accountID, cycleKey: $0))
+        }
+        XCTAssertEqual(plans.map(\.target), expected)
     }
 
     func testPaidCycleKeepsStatementReminderAndDropsRepaymentReminder() throws {
@@ -163,7 +166,7 @@ final class NotificationSchedulerTests: XCTestCase {
 
         let first48 = plans.prefix(LocalNotificationScheduler.requestLimit)
         for accountID in accountIDs {
-            let accountPlans = first48.filter { $0.accountID == accountID }
+            let accountPlans = first48.filter { $0.target == .billing(BillingCycleTarget(accountID: accountID, cycleKey: cycle.cycleKey)) }
             XCTAssertTrue(accountPlans.contains { $0.event == .statement }, "缺少账单提醒：\(accountID)")
             XCTAssertTrue(accountPlans.contains { $0.event == .repayment }, "缺少还款提醒：\(accountID)")
         }
@@ -297,6 +300,154 @@ final class NotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(client.requests.mapValues {
             ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents.hour
         }, previousHours)
+    }
+
+    func testEnrollmentPlansOnlyIncludeOpenUnregisteredDeadlinesAndDeduplicateOffsets() throws {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let eligible = enrollmentFixture()
+        let enrolled = enrollmentFixture()
+        enrolled.enrollmentStatus = .enrolled
+        let notRequired = enrollmentFixture()
+        notRequired.enrollmentStatus = .notRequired
+        notRequired.enrollmentDeadline = nil
+        let archived = enrollmentFixture()
+        archived.archivedAt = .now
+        let expired = enrollmentFixture()
+        expired.enrollmentDeadline = 20260831
+        let ended = enrollmentFixture()
+        ended.startOn = 20260801
+        ended.endOn = 20260831
+        ended.enrollmentDeadline = 20260830
+        let noDeadline = enrollmentFixture()
+        noDeadline.enrollmentDeadline = nil
+        let plans = try LocalNotificationScheduler.plans(
+            cycles: [], statementOffsets: [], repaymentOffsets: [], reminderHour: 9, reminderMinute: 30,
+            timeZone: utc, now: try LocalDate(rawValue: 20260901).date(in: utc),
+            promotions: [eligible, enrolled, notRequired, archived, expired, ended, noDeadline],
+            enrollmentOffsets: [1, 1, 0, -1, 366]
+        )
+        XCTAssertEqual(plans.count, 2)
+        XCTAssertEqual(Set(plans.map(\.identifier)).count, 2)
+        XCTAssertTrue(plans.allSatisfy { $0.target == .promotion(eligible.id) && $0.event == .enrollment })
+        XCTAssertEqual(plans.map { LocalDate(date: $0.fireDate, timeZone: utc).rawValue }, [20260904, 20260905])
+        XCTAssertTrue(plans[0].body.contains(eligible.title))
+        XCTAssertTrue(plans[1].body.contains("今天报名截止"))
+    }
+
+    func testEnrollmentPlansUseFixedTimeZoneAndSkipElapsedTimes() throws {
+        let timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let promotion = enrollmentFixture()
+        let midnight = try LocalDate(rawValue: 20260905).date(in: timeZone)
+        func plans(at now: Date) throws -> [LocalNotificationScheduler.ReminderPlan] {
+            try LocalNotificationScheduler.plans(
+                cycles: [], statementOffsets: [], repaymentOffsets: [], reminderHour: 9, reminderMinute: 30,
+                timeZone: timeZone, now: now, promotions: [promotion], enrollmentOffsets: [1, 0]
+            )
+        }
+        let before = try plans(at: midnight.addingTimeInterval(9 * 3600))
+        XCTAssertEqual(before.count, 1)
+        XCTAssertEqual(before.first?.fireDate, midnight.addingTimeInterval(9.5 * 3600))
+        XCTAssertTrue(try plans(at: midnight.addingTimeInterval(9.5 * 3600)).isEmpty)
+        XCTAssertTrue(try plans(at: midnight.addingTimeInterval(10 * 3600)).isEmpty)
+    }
+
+    func testEnrollmentAndBillingShareOneChronologicalLimitAndKeepRepaymentPriority() throws {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let cycle = BillingCycle(cycleKey: 202609, statementDate: try LocalDate(rawValue: 20260905),
+            repaymentDate: try LocalDate(rawValue: 20260905), status: .pending, repaidAt: nil)
+        let plans = try LocalNotificationScheduler.plans(
+            cycles: [.init(accountID: UUID(), accountName: "账户", cycle: cycle)],
+            statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0,
+            timeZone: utc, now: try LocalDate(rawValue: 20260901).date(in: utc),
+            promotions: (0..<50).map { _ in enrollmentFixture() }, enrollmentOffsets: [0]
+        )
+        XCTAssertEqual(plans.count, 52)
+        XCTAssertEqual(plans.first?.event, .repayment)
+        XCTAssertEqual(plans.last?.event, .statement)
+        XCTAssertTrue(plans.dropFirst().dropLast().allSatisfy { $0.event == .enrollment })
+        let result = LocalNotificationScheduler.scheduleResult(for: plans)
+        XCTAssertEqual(result.scheduledCount, 48)
+        XCTAssertEqual(result.omittedCount, 4)
+        XCTAssertEqual(result.firstOmittedDate, plans[48].fireDate)
+    }
+
+    func testEnrollmentRebuildUpdatesDeadlineAndRemovesCompletedArchivedDeletedOrDisabledReminders() async throws {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let now = try LocalDate(rawValue: 20260901).date(in: utc)
+        let client = TestNotificationClient()
+        let scheduler = LocalNotificationScheduler(client: client)
+        let promotion = enrollmentFixture()
+        let billing = try reminderFixture(accountID: UUID(), paid: false)
+        func rebuild(promotions: [Promotion], offsets: [Int] = [0]) async throws {
+            _ = try await scheduler.rebuild(
+                cycles: [billing], statementOffsets: [0], repaymentOffsets: [0], reminderHour: 9, reminderMinute: 0,
+                timeZone: utc, now: now, promotions: promotions, enrollmentOffsets: offsets
+            )
+        }
+        try await rebuild(promotions: [promotion])
+        let request = try XCTUnwrap(client.requests.values.first { $0.content.userInfo["promotionID"] != nil })
+        XCTAssertEqual(NotificationTarget(userInfo: request.content.userInfo), .promotion(promotion.id))
+        XCTAssertEqual(client.requests.count, 3)
+        promotion.enrollmentDeadline = 20260906
+        promotion.title = "更名后的活动"
+        try await rebuild(promotions: [promotion])
+        let updated = try XCTUnwrap(client.requests[request.identifier])
+        XCTAssertEqual((updated.trigger as? UNCalendarNotificationTrigger)?.dateComponents.day, 6)
+        XCTAssertTrue(updated.content.body.contains("更名后的活动"))
+        for change in 0..<5 {
+            switch change {
+            case 0: promotion.enrollmentStatus = .enrolled
+            case 1: promotion.archivedAt = .now
+            case 2: promotion.enrollmentDeadline = nil
+            default: break
+            }
+            try await rebuild(promotions: change == 3 ? [] : [promotion], offsets: change == 4 ? [] : [0])
+            XCTAssertNil(client.requests[request.identifier])
+            XCTAssertEqual(client.requests.count, 2, "Billing reminders must survive enrollment changes")
+            promotion.enrollmentStatus = .notEnrolled
+            promotion.archivedAt = nil
+            promotion.enrollmentDeadline = 20260906
+            try await rebuild(promotions: [promotion])
+            XCTAssertNotNil(client.requests[request.identifier])
+        }
+    }
+
+    func testEnrollmentCompletionWinsOverAnInFlightNotificationAdd() async throws {
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let now = try LocalDate(rawValue: 20260901).date(in: utc)
+        let client = TestNotificationClient()
+        let scheduler = LocalNotificationScheduler(client: client)
+        let promotion = enrollmentFixture()
+        let addStarted = expectation(description: "Enrollment add is suspended")
+        client.pauseNextAdd = true
+        client.onPausedAdd = { addStarted.fulfill() }
+        let old = Task {
+            try await scheduler.rebuild(
+                cycles: [], statementOffsets: [], repaymentOffsets: [], reminderHour: 9, reminderMinute: 0,
+                timeZone: utc, now: now, promotions: [promotion], enrollmentOffsets: [0]
+            )
+        }
+        await fulfillment(of: [addStarted], timeout: 2)
+        promotion.enrollmentStatus = .enrolled
+        let latestStarted = expectation(description: "Completed enrollment rebuild is enqueued")
+        let latest = Task {
+            latestStarted.fulfill()
+            return try await scheduler.rebuild(
+                cycles: [], statementOffsets: [], repaymentOffsets: [], reminderHour: 9, reminderMinute: 0,
+                timeZone: utc, now: now, promotions: [promotion], enrollmentOffsets: [0]
+            )
+        }
+        await fulfillment(of: [latestStarted], timeout: 2)
+        client.resumeAdd()
+        _ = try? await old.value
+        let result = try await latest.value
+        XCTAssertEqual(result.scheduledCount, 0)
+        XCTAssertTrue(client.requests.isEmpty, "A late add must not restore a completed enrollment reminder")
+    }
+
+    private func enrollmentFixture() -> Promotion {
+        Promotion(title: "待报名活动", startOn: 20260910, endOn: 20260930,
+                  enrollmentStatus: .notEnrolled, enrollmentDeadline: 20260905, progressCurrencyCode: "CNY")
     }
 
     private func reminderFixture(accountID: UUID, paid: Bool) throws -> BillingReminderCycle {

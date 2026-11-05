@@ -21,10 +21,43 @@ struct BillingCycleTarget: Hashable, Identifiable, Sendable {
     }
 }
 
+enum NotificationTarget: Hashable, Identifiable, Sendable {
+    case billing(BillingCycleTarget)
+    case promotion(UUID)
+
+    var id: String {
+        switch self {
+        case .billing(let target): return "billing.\(target.id)"
+        case .promotion(let id): return "promotion.\(id)"
+        }
+    }
+
+    var userInfo: [AnyHashable: Any] {
+        switch self {
+        case .billing(let target):
+            return ["accountID": target.accountID.uuidString, "cycleKey": target.cycleKey]
+        case .promotion(let id):
+            return ["promotionID": id.uuidString]
+        }
+    }
+
+    init?(userInfo: [AnyHashable: Any]) {
+        if let value = userInfo["promotionID"] {
+            guard let rawID = value as? String, let id = UUID(uuidString: rawID),
+                  userInfo["accountID"] == nil, userInfo["cycleKey"] == nil else { return nil }
+            self = .promotion(id)
+        } else if let target = BillingCycleTarget(userInfo: userInfo) {
+            self = .billing(target)
+        } else {
+            return nil
+        }
+    }
+}
+
 @MainActor
 final class NotificationRouter: ObservableObject {
     static let shared = NotificationRouter()
-    @Published private(set) var pendingTarget: BillingCycleTarget?
+    @Published private(set) var pendingTarget: NotificationTarget?
     @Published private(set) var presentations: Set<UUID> = []
 
     enum ResponseSource: Hashable { case notificationCenter, sceneConnection }
@@ -35,9 +68,9 @@ final class NotificationRouter: ObservableObject {
     private var lastResponse: ResponseIdentity?
     private var responseSources: Set<ResponseSource> = []
 
-    func receive(_ target: BillingCycleTarget) { pendingTarget = target }
+    func receive(_ target: NotificationTarget) { pendingTarget = target }
 
-    func receive(_ target: BillingCycleTarget, requestID: String, deliveredAt: Date, source: ResponseSource) {
+    func receive(_ target: NotificationTarget, requestID: String, deliveredAt: Date, source: ResponseSource) {
         let identity = ResponseIdentity(requestID: requestID, deliveredAt: deliveredAt)
         if lastResponse == identity, !responseSources.contains(source) {
             // A cold launch can provide the same response through both UIKit and UN.
@@ -52,14 +85,14 @@ final class NotificationRouter: ObservableObject {
 
     func receiveSceneResponse(_ response: UNNotificationResponse) {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let target = BillingCycleTarget(userInfo: response.notification.request.content.userInfo) else { return }
+              let target = NotificationTarget(userInfo: response.notification.request.content.userInfo) else { return }
         receive(target, requestID: response.notification.request.identifier,
                 deliveredAt: response.notification.date, source: .sceneConnection)
     }
     func presentationOpened(_ id: UUID) { presentations.insert(id) }
     func presentationClosed(_ id: UUID) { presentations.remove(id) }
 
-    func takeTarget(isActive: Bool, isLocked: Bool, isBusy: Bool) -> BillingCycleTarget? {
+    func takeTarget(isActive: Bool, isLocked: Bool, isBusy: Bool) -> NotificationTarget? {
         guard isActive, !isLocked, !isBusy, presentations.isEmpty else { return nil }
         defer { pendingTarget = nil }
         return pendingTarget
@@ -74,7 +107,7 @@ final class BillingNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let target = BillingCycleTarget(userInfo: response.notification.request.content.userInfo) else {
+              let target = NotificationTarget(userInfo: response.notification.request.content.userInfo) else {
             completionHandler()
             return
         }

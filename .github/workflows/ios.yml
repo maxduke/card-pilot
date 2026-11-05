@@ -81,7 +81,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
-      - name: Run the two complete small-screen flows
+      - name: Run complete small-screen flows
         run: |
           set -euo pipefail
           git rev-parse HEAD > source-revision.txt
@@ -111,6 +111,9 @@ jobs:
             -resultBundlePath TestResults.xcresult
             -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets
             -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableWithMixedLengthNames
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize
             -parallel-testing-enabled NO -test-timeouts-enabled YES
             -default-test-execution-time-allowance 180
             -maximum-test-execution-time-allowance 300
@@ -155,7 +158,7 @@ jobs:
           assert Path("simulator-appearance-after.txt").read_text().strip() == "dark"
           assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
           assert summary["result"] == "Passed", summary
-          assert summary["passedTests"] == summary["totalTestCount"] == 2, summary
+          assert summary["passedTests"] == summary["totalTestCount"] == 5, summary
           assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
           PY_RESULT
       - name: Upload small-screen test results

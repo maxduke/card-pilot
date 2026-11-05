@@ -59,6 +59,23 @@ final class UITestFixtureTests: XCTestCase {
         }
     }
 
+    func testDeadlineAndAmountFixturePreservesPrecisionAndEnrollmentAcrossBackup() throws {
+        let today = try LocalDate(rawValue: 20261105)
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .deadlineAndAmounts, today: today)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+        XCTAssertEqual(transactions.count, 3)
+        let refund = try XCTUnwrap(transactions.first { $0.kind == .refund })
+        XCTAssertEqual(refund.amount, Decimal(string: "0.001"))
+        XCTAssertEqual(refund.status, .reversed)
+        let promotions = try restored.mainContext.fetch(FetchDescriptor<Promotion>())
+        XCTAssertEqual(promotions.first { $0.title == "UI Deadline Upcoming" }?.enrollmentDeadline, 20261106)
+        XCTAssertEqual(promotions.first { $0.title == "UI Deadline Past" }?.enrollmentDeadline, 20261104)
+    }
+
     func testCoreFixturePassesFullBackupValidation() throws {
         let container = try CardPilotPersistence.makeContainer(inMemory: true)
         try UITestBootstrap.seed(container.mainContext)

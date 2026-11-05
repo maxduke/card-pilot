@@ -525,6 +525,21 @@ final class PromotionCalculatorTests: XCTestCase {
         XCTAssertEqual(targets.map(\.id), [selected.id, current.id, upcoming.id])
     }
 
+    func testEnrollmentPresentationDistinguishesCutoffFromActualEnrollment() {
+        let promotion = Promotion(title: "报名活动", startOn: 20260801, endOn: 20260831,
+            enrollmentStatus: .notEnrolled, enrollmentDeadline: 20260810, progressCurrencyCode: "CNY")
+        XCTAssertEqual(promotionEnrollmentText(promotion, today: 20260809), "尚未报名")
+        XCTAssertEqual(promotionEnrollmentText(promotion, today: 20260810), "尚未报名")
+        XCTAssertEqual(promotionEnrollmentText(promotion, today: 20260811), "报名已截止 · 尚未报名")
+        promotion.enrollmentStatus = .enrolled
+        XCTAssertEqual(promotionEnrollmentText(promotion, today: 20260811), "已报名")
+        promotion.enrollmentStatus = .notRequired
+        XCTAssertEqual(promotionEnrollmentText(promotion, today: 20260811), "无需报名")
+        promotion.enrollmentStatus = .notEnrolled
+        promotion.enrollmentDeadline = nil
+        XCTAssertEqual(promotionEnrollmentText(promotion, today: 20260811), "尚未报名")
+    }
+
     func testPromotionPresentationGroupsSeriesAndChoosesCurrentPeriod() {
         let seriesID = UUID()
         let past = Promotion(

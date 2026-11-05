@@ -75,7 +75,7 @@ final class LocalNotificationScheduler {
         await client.authorizationStatus()
     }
 
-    /// A single separate slot survives billing rebuilds and never evicts the 48 billing requests.
+    /// A separate slot survives rebuilds without evicting the 48 scheduled reminders.
     func sendTestReminder() async throws {
         let status = await client.authorizationStatus()
         switch status {
@@ -99,7 +99,9 @@ final class LocalNotificationScheduler {
         reminderHour: Int,
         reminderMinute: Int,
         timeZone: TimeZone,
-        now: Date = .now
+        now: Date = .now,
+        promotions: [Promotion] = [],
+        enrollmentOffsets: [Int] = []
     ) async throws -> NotificationScheduleResult {
         let plans = try Self.plans(
             cycles: cycles,
@@ -108,7 +110,9 @@ final class LocalNotificationScheduler {
             reminderHour: reminderHour,
             reminderMinute: reminderMinute,
             timeZone: timeZone,
-            now: now
+            now: now,
+            promotions: promotions,
+            enrollmentOffsets: enrollmentOffsets
         )
         try Task.checkCancellation()
         revision += 1
@@ -143,7 +147,7 @@ final class LocalNotificationScheduler {
             content.title = plan.title
             content.body = plan.body
             content.sound = .default
-            content.userInfo = ["accountID": plan.accountID.uuidString, "cycleKey": plan.cycleKey]
+            content.userInfo = plan.target.userInfo
             var components = LocalDate.calendar(timeZone: timeZone)
                 .dateComponents([.year, .month, .day, .hour, .minute], from: plan.fireDate)
             components.timeZone = timeZone
@@ -180,7 +184,9 @@ final class LocalNotificationScheduler {
         reminderHour: Int,
         reminderMinute: Int,
         timeZone: TimeZone,
-        now: Date
+        now: Date,
+        promotions: [Promotion] = [],
+        enrollmentOffsets: [Int] = []
     ) throws -> [ReminderPlan] {
         guard (0...23).contains(reminderHour), (0...59).contains(reminderMinute) else {
             throw SchedulingError.invalidTime
@@ -206,8 +212,7 @@ final class LocalNotificationScheduler {
                     components.calendar = LocalDate.calendar(timeZone: timeZone)
                     guard let fireDate = components.date, fireDate > now else { continue }
                     plans.append(ReminderPlan(
-                        accountID: item.accountID,
-                        cycleKey: item.cycle.cycleKey,
+                        target: .billing(BillingCycleTarget(accountID: item.accountID, cycleKey: item.cycle.cycleKey)),
                         event: event,
                         identifier: "\(identifierPrefix)\(item.accountID.uuidString).\(item.cycle.cycleKey).\(event.rawValue).\(offset)",
                         title: event == .statement ? "CardPilot 账单日提醒" : "CardPilot 还款日提醒",
@@ -219,16 +224,40 @@ final class LocalNotificationScheduler {
                 }
             }
         }
+        let today = LocalDate(date: now, timeZone: timeZone)
+        for promotion in promotions {
+            guard promotion.archivedAt == nil, promotion.enrollmentStatus == .notEnrolled,
+                  promotion.endOn >= today.rawValue,
+                  let rawDeadline = promotion.enrollmentDeadline,
+                  let deadline = try? LocalDate(rawValue: rawDeadline), deadline >= today else { continue }
+            for offset in Set(enrollmentOffsets.filter { (0...365).contains($0) }).sorted() {
+                let date = deadline.addingDays(-offset, timeZone: timeZone)
+                let fireDate = LocalDate.calendar(timeZone: timeZone).date(from: DateComponents(
+                    year: date.year, month: date.month, day: date.day,
+                    hour: reminderHour, minute: reminderMinute
+                ))
+                guard let fireDate, fireDate > now else { continue }
+                plans.append(ReminderPlan(
+                    target: .promotion(promotion.id),
+                    event: .enrollment,
+                    identifier: "\(identifierPrefix)promotion.\(promotion.id.uuidString).enrollment.\(offset)",
+                    title: "CardPilot 报名截止提醒",
+                    body: offset == 0
+                        ? "“\(promotion.title)”今天报名截止。请在银行完成报名后，在 CardPilot 标记已报名。"
+                        : "“\(promotion.title)”将在 \(offset) 天后报名截止（\(deadline)）。请在银行完成报名。",
+                    fireDate: fireDate
+                ))
+            }
+        }
         return plans.sorted {
             if $0.fireDate != $1.fireDate { return $0.fireDate < $1.fireDate }
-            if $0.event != $1.event { return $0.event == .repayment }
+            if $0.event != $1.event { return $0.event.priority < $1.event.priority }
             return $0.identifier < $1.identifier
         }
     }
 
     struct ReminderPlan: Equatable {
-        let accountID: UUID
-        let cycleKey: Int
+        let target: NotificationTarget
         let event: ReminderEvent
         let identifier: String
         let title: String
@@ -244,8 +273,22 @@ final class LocalNotificationScheduler {
     enum ReminderEvent: String, Equatable {
         case statement
         case repayment
+        case enrollment
 
-        var action: String { self == .statement ? "出账" : "到期还款" }
+        var action: String {
+            switch self {
+            case .statement: return "出账"
+            case .repayment: return "到期还款"
+            case .enrollment: return "报名截止"
+            }
+        }
+        var priority: Int {
+            switch self {
+            case .repayment: return 0
+            case .enrollment: return 1
+            case .statement: return 2
+            }
+        }
     }
 }
 
