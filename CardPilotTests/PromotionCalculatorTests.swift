@@ -151,38 +151,74 @@ final class PromotionCalculatorTests: XCTestCase {
         ), 0)
     }
 
-    func testAutomaticSelectionRequiresAnOrdinaryPromotionWithAPositiveSuggestion() {
+    func testAutomaticSelectionRequiresAPositiveSuggestionForBothProgressModes() {
         let ordinary = Promotion(
             title: "累计活动",
             startOn: 20260801,
             endOn: 20260831,
-            perTransactionThreshold: 10,
+            perTransactionThreshold: 20,
             progressCurrencyCode: "CNY"
         )
         let perTransactionBenefit = Promotion(
             title: "逐笔优惠",
             startOn: 20260801,
             endOn: 20260831,
-            perTransactionThreshold: 10,
+            perTransactionThreshold: 20,
             benefitTransactionCap: 10,
             progressCurrencyCode: "CNY"
         )
 
-        XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(
-            ordinary,
-            transactionAmount: 10,
-            transactionCurrencyCode: "CNY"
-        ))
-        XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(
-            ordinary,
-            transactionAmount: 9,
-            transactionCurrencyCode: "CNY"
-        ))
-        XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(
-            perTransactionBenefit,
-            transactionAmount: 10,
-            transactionCurrencyCode: "CNY"
-        ))
+        for promotion in [ordinary, perTransactionBenefit] {
+            for amount: Decimal in [20, 24] {
+                XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(
+                    promotion, transactionAmount: amount, transactionCurrencyCode: "CNY"
+                ))
+            }
+            for amount in [Decimal.zero, Decimal(string: "19.99")!] {
+                XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(
+                    promotion, transactionAmount: amount, transactionCurrencyCode: "CNY"
+                ))
+            }
+            XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(
+                promotion, transactionAmount: 24, transactionCurrencyCode: "HKD"
+            ))
+        }
+    }
+
+    func testAutomaticSelectionStopsAtBenefitCapAndRefundsDoNotReleaseIt() {
+        let card = Card(account: CreditCardAccount(bank: Bank(name: "测试银行")),
+                        productName: "测试卡", networks: [CardNetwork.makeBuiltIns()[0]], lastFour: "1234")
+        let promotion = Promotion(title: "逐笔优惠", startOn: 20260801, endOn: 20260831,
+                                  eligibleCards: [card], perTransactionThreshold: 20,
+                                  benefitTransactionCap: 2, progressCurrencyCode: "CNY")
+        func allocation(kind: TransactionKind = .purchase) -> PromotionAllocation {
+            PromotionAllocation(
+                transaction: Transaction(card: card, kind: kind, transactionOn: 20260801,
+                                         amount: 24, currencyCode: "CNY", merchant: "测试商户"),
+                promotion: promotion, qualifyingAmount: 24, currencyCode: "CNY"
+            )
+        }
+        func isSelected() -> Bool {
+            PromotionCalculator.shouldAutomaticallySelect(
+                promotion, transactionAmount: 24, transactionCurrencyCode: "CNY"
+            )
+        }
+        let first = allocation()
+        promotion.allocations = [first]
+        XCTAssertTrue(isSelected(), "The last available benefit should still be suggested.")
+
+        let second = allocation()
+        promotion.allocations = [first, second]
+        XCTAssertFalse(isSelected(), "Exhausted benefits should not be preselected.")
+
+        promotion.allocations = [first, second, allocation(kind: .refund)]
+        XCTAssertFalse(isSelected(), "Refunds do not release a benefit transaction.")
+
+        second.transaction.status = .reversed
+        XCTAssertTrue(isSelected(), "Reversing the original purchase releases a benefit transaction.")
+
+        promotion.perTransactionThreshold = nil
+        XCTAssertTrue(isSelected(), "A per-transaction amount threshold is optional.")
     }
 
     func testUnknownDateBasisAcceptsEitherTransactionOrPostingDate() {
@@ -215,9 +251,13 @@ final class PromotionCalculatorTests: XCTestCase {
 
     func testUnenrolledPromotionRequiresExplicitSelection() {
         let promotion = Promotion(title: "需报名活动", startOn: 20260901, endOn: 20260930, enrollmentStatus: .notEnrolled, progressCurrencyCode: "CNY")
-        XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(promotion, transactionAmount: 100, transactionCurrencyCode: "CNY"))
-        promotion.enrollmentStatus = .enrolled
-        XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(promotion, transactionAmount: 100, transactionCurrencyCode: "CNY"))
+        for cap: Int? in [nil, 2] {
+            promotion.benefitTransactionCap = cap
+            promotion.enrollmentStatus = .notEnrolled
+            XCTAssertFalse(PromotionCalculator.shouldAutomaticallySelect(promotion, transactionAmount: 100, transactionCurrencyCode: "CNY"))
+            promotion.enrollmentStatus = .enrolled
+            XCTAssertTrue(PromotionCalculator.shouldAutomaticallySelect(promotion, transactionAmount: 100, transactionCurrencyCode: "CNY"))
+        }
     }
 
     func testOverRefundedPromotionIDsUseOnlyOtherActiveRefunds() {

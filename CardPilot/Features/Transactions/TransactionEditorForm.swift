@@ -1001,7 +1001,7 @@ struct TransactionEditorForm: View {
                         promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id))
                     }
                 }
-                Text("已报名或无需报名、金额符合条件的累计活动会预选。不可叠加的多个活动及逐笔优惠活动，请逐项确认。")
+                Text("已报名或无需报名、金额符合条件且未用完上限的活动会预选。多个活动不可叠加时请手动选择，并核对商户、渠道等附加条件。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
