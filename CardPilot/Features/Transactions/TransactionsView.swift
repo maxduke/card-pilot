@@ -467,32 +467,17 @@ struct TransactionRow: View {
     let transaction: Transaction
 
     var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                stackedContent
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                        identity.fixedSize(horizontal: true, vertical: false)
-                        Spacer(minLength: 8)
-                        amount.fixedSize(horizontal: true, vertical: false)
-                    }
-                    stackedContent
-                }
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            identity
+            amount
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.vertical, 7)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(transactionAccessibilityLabel(transaction))
         .accessibilityHint("查看交易详情")
         .accessibilityIdentifier("transaction.\(transaction.merchant)")
-    }
-
-    private var stackedContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            identity
-            amount
-        }
     }
 
     private var identity: some View {
@@ -531,6 +516,8 @@ struct TransactionRow: View {
     private var amount: some View {
         Text(signedAmountText(transaction))
             .font(.subheadline.weight(.semibold).monospacedDigit())
+            .multilineTextAlignment(.trailing)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
             .strikethrough(transaction.status == .reversed)
     }

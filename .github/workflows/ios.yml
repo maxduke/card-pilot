@@ -10,33 +10,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  native_tests:
+    name: Native tests (shard ${{ matrix.shard }})
     runs-on: macos-15
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      UI_TEST_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v5
+      - name: Select complete nonoverlapping test partitions
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          ui_file = root / "CardPilotUITests/CoreFlowsUITests.swift"
+          regular_ui_files = sorted(p for p in (root / "CardPilotUITests").glob("*.swift")
+                                    if not p.read_text().startswith("#if PERFORMANCE_TESTING"))
+          assert regular_ui_files == [ui_file], "Update partition coverage for new UI test files"
+          pattern = r"^\s+func (test\w+)\s*\("
+          ui_tests = sorted(re.findall(pattern, ui_file.read_text(), re.M))
+          assert ui_tests and len(ui_tests) == len(set(ui_tests)), "UI test names must be unique"
+          shard = int(os.environ["UI_TEST_SHARD"])
+          assert shard in (0, 1)
+          selected = ui_tests[shard::2]
+          unit_count = sum(len(re.findall(pattern, p.read_text(), re.M))
+                           for p in (root / "CardPilotTests").glob("*.swift")) if shard == 0 else 0
+          selectors = (["-only-testing:CardPilotTests"] if shard == 0 else [])
+          selectors += [f"-only-testing:CardPilotUITests/CoreFlowsUITests/{name}" for name in selected]
+          Path("test-selections.txt").write_text("\n".join(selectors) + "\n")
+          partition = {"shard": shard, "unitCount": unit_count, "uiTests": selected,
+                       "totalUITestCount": len(ui_tests), "expectedCount": unit_count + len(selected)}
+          Path("test-partition.json").write_text(json.dumps(partition, indent=2) + "\n")
+          print(json.dumps(partition, indent=2))
+          PY
       - name: Build and test
         run: |
           set -euo pipefail
-          xcodebuild -version
+          git rev-parse HEAD > source-revision.txt
+          xcodebuild -version | tee xcode-version.txt
           device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]; print(next(d["udid"] for d in devices if d["name"] == "iPhone 16 Pro"))')
           echo "CARDPILOT_TEST_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
           : > xcodebuild.log
           python3 -u scripts/capture_app_idle.py xcodebuild.log "$device_id" > app-idle-monitor.log 2>&1 &
           monitor_pid=$!
           trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
-          xcodebuild test \
-            -project CardPilot.xcodeproj \
-            -scheme CardPilot \
-            -destination "platform=iOS Simulator,id=$device_id" \
-            -resultBundlePath TestResults.xcresult \
-            -parallel-testing-enabled NO \
-            -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 180 \
-            -maximum-test-execution-time-allowance 300 \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log
+          test_args=(
+            -project CardPilot.xcodeproj -scheme CardPilot
+            -destination "platform=iOS Simulator,id=$device_id"
+            -resultBundlePath TestResults.xcresult
+            -parallel-testing-enabled NO -test-timeouts-enabled YES
+            -default-test-execution-time-allowance 180
+            -maximum-test-execution-time-allowance 300
+            CODE_SIGNING_ALLOWED=NO
+          )
+          while IFS= read -r selector; do test_args+=("$selector"); done < test-selections.txt
+          python3 - "${test_args[@]}" <<'PY'
+          import json, sys
+          from pathlib import Path
+          Path("test-command.json").write_text(json.dumps(["xcodebuild", "test", *sys.argv[1:]], indent=2) + "\n")
+          PY
+          xcodebuild test "${test_args[@]}" 2>&1 | tee xcodebuild.log
       - name: Export native test evidence
         if: always()
         run: |
@@ -55,11 +94,20 @@ jobs:
           PY
           xcrun xcresulttool get test-results summary --path TestResults.xcresult > summary.json
           xcrun xcresulttool export attachments --path TestResults.xcresult --output-path test-attachments
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path("summary.json").read_text())
+          partition = json.loads(Path("test-partition.json").read_text())
+          assert summary["result"] == "Passed", summary
+          assert summary["passedTests"] == summary["totalTestCount"] == partition["expectedCount"], summary
+          assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
+          PY
       - name: Upload native test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ios-test-results
+          name: ios-test-results-${{ matrix.shard }}
           path: |
             TestResults.xcresult
             summary.json
@@ -68,8 +116,24 @@ jobs:
             xcodebuild.log
             app-idle-monitor.log
             app-idle-diagnostics
+            source-revision.txt
+            xcode-version.txt
+            test-command.json
+            test-partition.json
+            test-selections.txt
           retention-days: 7
           if-no-files-found: warn
+
+  test:
+    name: test
+    if: always()
+    needs: native_tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every native test partition to pass
+        env:
+          NATIVE_TEST_RESULT: ${{ needs.native_tests.result }}
+        run: test "$NATIVE_TEST_RESULT" = success
 
   small-screen-ui:
     name: Small-screen UI (SE 3, dark)
@@ -81,7 +145,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
-      - name: Run the two complete small-screen flows
+      - name: Run complete small-screen flows
         run: |
           set -euo pipefail
           git rev-parse HEAD > source-revision.txt
@@ -111,6 +175,9 @@ jobs:
             -resultBundlePath TestResults.xcresult
             -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets
             -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableWithMixedLengthNames
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize
             -parallel-testing-enabled NO -test-timeouts-enabled YES
             -default-test-execution-time-allowance 180
             -maximum-test-execution-time-allowance 300
@@ -155,7 +222,7 @@ jobs:
           assert Path("simulator-appearance-after.txt").read_text().strip() == "dark"
           assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
           assert summary["result"] == "Passed", summary
-          assert summary["passedTests"] == summary["totalTestCount"] == 2, summary
+          assert summary["passedTests"] == summary["totalTestCount"] == 5, summary
           assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
           PY_RESULT
       - name: Upload small-screen test results

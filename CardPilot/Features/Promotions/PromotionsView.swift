@@ -26,12 +26,18 @@ struct PromotionsView: View {
         NavigationStack {
             Group {
                 if groups.isEmpty {
+                    let archivedOnly = trimmedSearchText.isEmpty && !promotions.isEmpty && !showingArchived
                     ContentUnavailableView {
-                        Label(trimmedSearchText.isEmpty ? "还没有促销活动" : "没有匹配的促销", systemImage: trimmedSearchText.isEmpty ? "gift" : "magnifyingglass")
+                        Label(trimmedSearchText.isEmpty ? (archivedOnly ? "活动均已归档" : "还没有促销活动") : "没有匹配的促销", systemImage: trimmedSearchText.isEmpty ? "gift" : "magnifyingglass")
                     } description: {
-                        Text(trimmedSearchText.isEmpty ? "记录一个活动，随时查看还差多少、还能用几次。" : "试试活动标题、银行、卡组织或卡片末四位。")
+                        Text(trimmedSearchText.isEmpty ? (archivedOnly ? "活动仍保存在归档中，可以随时查看。" : "记录一个活动，随时查看还差多少、还能用几次。") : "试试活动标题、银行、卡组织或卡片末四位。")
                     } actions: {
-                        if trimmedSearchText.isEmpty {
+                        if archivedOnly {
+                            Button("查看已归档活动", systemImage: "archivebox") {
+                                showingArchived = true
+                                showingHistory = true
+                            }
+                        } else if trimmedSearchText.isEmpty {
                             Button("添加活动", systemImage: "plus") {
                                 editingPromotion = nil
                                 showingEditor = true
@@ -213,6 +219,7 @@ struct PromotionsView: View {
 
 private struct PromotionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.currentDay) private var currentDay
     let group: PromotionSeriesGroup
     private var promotion: Promotion { group.representative }
     private var progress: PromotionProgress? { try? PromotionCalculator.progress(for: promotion) }
@@ -267,6 +274,12 @@ private struct PromotionRow: View {
                         .foregroundStyle(.orange)
                 }
             }
+            if promotion.enrollmentStatus == .notEnrolled, let deadline = promotion.enrollmentDeadline {
+                Label("报名截止 \(CardPilotUI.dateText(deadline))", systemImage: "calendar.badge.clock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let progress {
                 PromotionProgressSummary(promotion: promotion, progress: progress, compact: true)
             }
@@ -290,11 +303,7 @@ private struct PromotionRow: View {
     }
 
     private var enrollmentText: String {
-        switch promotion.enrollmentStatus {
-        case .notRequired: return "无需报名"
-        case .notEnrolled: return "待报名"
-        case .enrolled: return "已报名"
-        }
+        promotionEnrollmentText(promotion, today: currentDay.today.rawValue)
     }
 
     private var statusText: String {
@@ -333,6 +342,9 @@ private struct PromotionRow: View {
         if promotion.archivedAt != nil { values.append("已归档") }
         if !promotion.rewardDescription.isEmpty { values.append("奖励：\(promotion.rewardDescription)") }
         values += [organizerText, periodText, CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn), enrollmentText]
+        if promotion.enrollmentStatus == .notEnrolled, let deadline = promotion.enrollmentDeadline {
+            values.append("报名截止 \(CardPilotUI.dateText(deadline))")
+        }
         if let progress {
             if let cap = progress.benefitTransactionCap {
                 let remaining = progress.remainingTransactionCount ?? cap

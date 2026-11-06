@@ -10,8 +10,10 @@ struct RootView: View {
     @Query(sort: \Promotion.endOn) private var promotions: [Promotion]
     @AppStorage("cardPilot.statementReminderOffsets") private var statementOffsets = "7,3,1,0"
     @AppStorage("cardPilot.repaymentReminderOffsets") private var repaymentOffsets = "7,3,1,0"
+    @AppStorage("cardPilot.enrollmentReminderOffsets") private var enrollmentOffsets = "1,0"
     @AppStorage("cardPilot.statementRemindersEnabled") private var statementRemindersEnabled = true
     @AppStorage("cardPilot.repaymentRemindersEnabled") private var repaymentRemindersEnabled = true
+    @AppStorage("cardPilot.enrollmentRemindersEnabled") private var enrollmentRemindersEnabled = true
     @AppStorage("cardPilot.reminderTime") private var reminderTime = "09:00"
     @AppStorage("cardPilot.homeTimeZone") private var homeTimeZone = TimeZone.current.identifier
     @AppStorage("cardPilot.appLockEnabled") private var appLockEnabled = false
@@ -23,7 +25,7 @@ struct RootView: View {
     @ObservedObject private var notificationRouter = NotificationRouter.shared
     @State private var dayClock = DayClock(timeZone: CardPilotUI.homeTimeZone)
     @State private var timeChangeRevision = 0
-    @State private var notificationTarget: BillingCycleTarget?
+    @State private var notificationTarget: NotificationTarget?
     @State private var selectedTab = Tab.dashboard
     @State private var showingSettings = false
     @State private var showingTransactionEditor = false
@@ -85,10 +87,15 @@ struct RootView: View {
         }
         .trackedSheet(item: $notificationTarget, onDismiss: handlePendingQuickActions) { target in
             NavigationStack {
-                BillingCycleDestination(target: target)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) {
-                        Button("完成") { notificationTarget = nil }
-                    } }
+                Group {
+                    switch target {
+                    case .billing(let cycle): BillingCycleDestination(target: cycle)
+                    case .promotion(let id): PromotionNotificationDestination(promotionID: id)
+                    }
+                }
+                .toolbar { ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { notificationTarget = nil }
+                } }
             }
         }
         // A separate window also covers presented sheets without destroying their edit state.
@@ -187,7 +194,10 @@ struct RootView: View {
             }.sorted().joined(separator: ",")
             return "\(account.id)-\(CardPilotUI.accountName(account))-\(account.statusRaw)-\(account.closedOn ?? 0)-\(rules)-\(cycles)"
         }.joined(separator: "|")
-        return "\(statementRemindersEnabled)|\(repaymentRemindersEnabled)|\(statementOffsets)|\(repaymentOffsets)|\(reminderTime)|\(homeTimeZone)|\(notificationRevision)|\(dayClock.day.today.rawValue)|\(timeChangeRevision)|\(accountKey)"
+        let promotionKey = promotions.map {
+            "\($0.id)-\($0.title)-\($0.endOn)-\($0.enrollmentStatusRaw)-\($0.enrollmentDeadline ?? 0)-\($0.archivedAt?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: "|")
+        return "\(statementRemindersEnabled)|\(repaymentRemindersEnabled)|\(enrollmentRemindersEnabled)|\(statementOffsets)|\(repaymentOffsets)|\(enrollmentOffsets)|\(reminderTime)|\(homeTimeZone)|\(notificationRevision)|\(dayClock.day.today.rawValue)|\(timeChangeRevision)|\(accountKey)|\(promotionKey)"
     }
 
     private func authenticate() {
@@ -271,7 +281,9 @@ struct RootView: View {
                 repaymentOffsets: repaymentDays,
                 reminderHour: hour,
                 reminderMinute: minute,
-                timeZone: timeZone
+                timeZone: timeZone,
+                promotions: promotions,
+                enrollmentOffsets: enrollmentRemindersEnabled ? parseOffsets(enrollmentOffsets) : []
             )
             let status = await notificationScheduler.authorizationStatus()
             guard requestRevision == notificationRequestRevision, !Task.isCancelled else { return }

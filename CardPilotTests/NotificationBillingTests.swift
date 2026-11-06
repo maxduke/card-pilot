@@ -23,7 +23,7 @@ final class NotificationBillingTests: XCTestCase {
 
     func testColdLaunchAndBackgroundKeepTargetUntilActiveAndAuthenticated() async {
         let router = NotificationRouter()
-        let target = BillingCycleTarget(accountID: UUID(), cycleKey: 202609)
+        let target = NotificationTarget.billing(BillingCycleTarget(accountID: UUID(), cycleKey: 202609))
         var succeeds = false
         let lock = AppLockController(enabled: true, authenticationAvailable: { true },
                                      authenticateDeviceOwner: { succeeds })
@@ -43,8 +43,36 @@ final class NotificationBillingTests: XCTestCase {
         XCTAssertEqual(router.takeTarget(isActive: true, isLocked: lock.isLocked, isBusy: false), target)
     }
 
+    func testNotificationTargetsRoundTripWithoutChangingExistingBillingPayload() {
+        let accountID = UUID(), promotionID = UUID()
+        for target in [NotificationTarget.billing(BillingCycleTarget(accountID: accountID, cycleKey: 202609)),
+                       .promotion(promotionID)] {
+            XCTAssertEqual(NotificationTarget(userInfo: target.userInfo), target)
+        }
+        XCTAssertEqual(BillingCycleTarget(userInfo: NotificationTarget.billing(
+            BillingCycleTarget(accountID: accountID, cycleKey: 202609)).userInfo)?.accountID, accountID)
+        for payload: [AnyHashable: Any] in [
+            ["promotionID": "invalid"], ["promotionID": 123],
+            ["promotionID": promotionID.uuidString, "accountID": accountID.uuidString, "cycleKey": 202609]
+        ] {
+            XCTAssertNil(NotificationTarget(userInfo: payload))
+        }
+    }
+
+    func testPromotionNotificationColdLaunchCoalescesAndWaitsForUnlock() {
+        let router = NotificationRouter()
+        let target = NotificationTarget.promotion(UUID())
+        let deliveredAt = Date(timeIntervalSince1970: 1_780_000_000)
+        router.receive(target, requestID: "enrollment", deliveredAt: deliveredAt, source: .sceneConnection)
+        router.receive(target, requestID: "enrollment", deliveredAt: deliveredAt, source: .notificationCenter)
+        XCTAssertNil(router.takeTarget(isActive: false, isLocked: false, isBusy: false))
+        XCTAssertNil(router.takeTarget(isActive: true, isLocked: true, isBusy: false))
+        XCTAssertEqual(router.takeTarget(isActive: true, isLocked: false, isBusy: false), target)
+        XCTAssertNil(router.pendingTarget)
+    }
+
     func testColdLaunchSourcesCoalesceButLaterNotificationClicksStillOpen() {
-        let target = BillingCycleTarget(accountID: UUID(), cycleKey: 202609)
+        let target = NotificationTarget.billing(BillingCycleTarget(accountID: UUID(), cycleKey: 202609))
         for firstSource: NotificationRouter.ResponseSource in [.sceneConnection, .notificationCenter] {
             let router = NotificationRouter()
             let secondSource: NotificationRouter.ResponseSource = firstSource == .sceneConnection ? .notificationCenter : .sceneConnection
@@ -63,8 +91,8 @@ final class NotificationBillingTests: XCTestCase {
     func testNestedPresentationsAndRestoreDeferLatestNotificationWithoutLosingIt() {
         let router = NotificationRouter()
         let editor = UUID(), picker = UUID()
-        let first = BillingCycleTarget(accountID: UUID(), cycleKey: 202609)
-        let last = BillingCycleTarget(accountID: UUID(), cycleKey: 202610)
+        let first = NotificationTarget.billing(BillingCycleTarget(accountID: UUID(), cycleKey: 202609))
+        let last = NotificationTarget.promotion(UUID())
         router.presentationOpened(editor)
         router.presentationOpened(editor) // Reappearing content is idempotent.
         router.presentationOpened(picker)

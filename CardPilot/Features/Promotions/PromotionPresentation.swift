@@ -1,6 +1,18 @@
 import SwiftData
 import SwiftUI
 
+func promotionEnrollmentText(_ promotion: Promotion, today: Int) -> String {
+    switch promotion.enrollmentStatus {
+    case .notRequired: return "无需报名"
+    case .enrolled: return "已报名"
+    case .notEnrolled:
+        if let deadline = promotion.enrollmentDeadline, deadline < today {
+            return "报名已截止 · 尚未报名"
+        }
+        return "尚未报名"
+    }
+}
+
 enum PromotionPresentationStatus: String, CaseIterable, Hashable, Sendable {
     case active
     case upcoming

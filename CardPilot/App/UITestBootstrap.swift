@@ -18,6 +18,7 @@ enum UITestBootstrap {
         case linkedRefunds
         case refundIdentity
         case transactionFilters
+        case deadlineAndAmounts
         case accountHistory
         case accountBankSelection
         case futureRules
@@ -248,6 +249,29 @@ enum UITestBootstrap {
             for (merchant, date, currency, kind, status) in dates {
                 context.insert(Transaction(card: sibling, kind: kind, transactionOn: date.rawValue,
                                            amount: 10, currencyCode: currency, merchant: merchant, status: status))
+            }
+        }
+        if scenario == .deadlineAndAmounts {
+            let names = ["UI Short", "UI 长商户名称用于验证金额不会随名称长度切换布局", "UI Refund"]
+            let values = ["12.5", "1234567.89", "0.001"]
+            for index in names.indices {
+                let transaction = Transaction(
+                    id: UUID(uuidString: String(format: "78000000-0000-0000-0000-%012d", index + 1))!,
+                    card: index == 1 ? sibling : card,
+                    kind: index == 2 ? .refund : .purchase,
+                    transactionOn: today.rawValue, amount: Decimal(string: values[index])!,
+                    currencyCode: index == 2 ? "HKD" : "CNY", merchant: names[index],
+                    status: index == 2 ? .reversed : .active
+                )
+                context.insert(transaction)
+            }
+            sibling.nickname = "UI 日常生活消费与境内外旅行联名卡"
+            for (title, days) in [("UI Deadline Upcoming", 1), ("UI Deadline Past", -1)] {
+                context.insert(Promotion(
+                    title: title, startOn: today.addingDays(-7).rawValue, endOn: today.addingDays(30).rawValue,
+                    eligibleCards: [card], enrollmentStatus: .notEnrolled,
+                    enrollmentDeadline: today.addingDays(days).rawValue, progressCurrencyCode: "CNY"
+                ))
             }
         }
         if scenario == .accountHistory {

@@ -8,11 +8,13 @@ struct ReminderSettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("cardPilot.statementReminderOffsets") private var storedStatementOffsets = "7,3,1,0"
     @AppStorage("cardPilot.repaymentReminderOffsets") private var storedRepaymentOffsets = "7,3,1,0"
+    @AppStorage("cardPilot.enrollmentReminderOffsets") private var storedEnrollmentOffsets = "1,0"
     @AppStorage("cardPilot.reminderTime") private var storedReminderTime = "09:00"
     @AppStorage("cardPilot.homeTimeZone") private var storedHomeTimeZone = TimeZone.current.identifier
     @AppStorage("cardPilot.notificationRevision") private var notificationAuthorizationRevision = 0
     @AppStorage("cardPilot.statementRemindersEnabled") private var statementRemindersEnabled = true
     @AppStorage("cardPilot.repaymentRemindersEnabled") private var repaymentRemindersEnabled = true
+    @AppStorage("cardPilot.enrollmentRemindersEnabled") private var enrollmentRemindersEnabled = true
     @AppStorage("cardPilot.nextReminderDate") private var nextReminderDate = 0.0
     @AppStorage("cardPilot.firstOmittedReminderDate") private var firstOmittedReminderDate = 0.0
     @AppStorage("cardPilot.scheduledReminderCount") private var scheduledReminderCount = 0
@@ -29,6 +31,7 @@ struct ReminderSettingsView: View {
         Form {
             statementSection
             repaymentSection
+            enrollmentSection
             reminderSection
             scheduleSection
         }
@@ -133,10 +136,29 @@ struct ReminderSettingsView: View {
         }
     }
 
+    private var enrollmentSection: some View {
+        Section {
+            Toggle("报名截止提醒", isOn: $enrollmentRemindersEnabled)
+                .accessibilityIdentifier("reminders.enrollment.enabled")
+            NavigationLink {
+                ReminderOffsetsEditor(title: "报名截止提醒", storedValue: $storedEnrollmentOffsets)
+            } label: {
+                LabeledContent("提醒提前", value: reminderSummary(storedEnrollmentOffsets))
+            }
+            .accessibilityIdentifier("reminders.enrollment.offsets")
+            .accessibilityHint("编辑报名截止前的提醒天数")
+            .disabled(!enrollmentRemindersEnabled)
+        } header: {
+            Text("报名截止提醒")
+        } footer: {
+            Text("仅提醒有截止日期且尚未报名的活动，默认提前 1 天及当天，按下方设定的时刻发送，已过时刻不补发。标记已报名、归档或删除后取消。")
+        }
+    }
+
     private var scheduleSection: some View {
         Section {
-            if !statementRemindersEnabled && !repaymentRemindersEnabled {
-                Text("账单日和还款日提醒均已关闭。请先开启需要的提醒类型。")
+            if !statementRemindersEnabled && !repaymentRemindersEnabled && !enrollmentRemindersEnabled {
+                Text("所有提醒均已关闭。请先开启需要的提醒类型。")
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("reminders.disabled")
             }
@@ -159,7 +181,7 @@ struct ReminderSettingsView: View {
         } header: {
             Text("提醒计划")
         } footer: {
-            Text("最多安排最近 \(LocalNotificationScheduler.requestLimit) 条账务提醒，打开应用时补充后续计划。减少提前提醒节点可以覆盖更长时间。活动报名和结束日期目前仅显示在首页。")
+            Text("账单、还款与报名共用最近 \(LocalNotificationScheduler.requestLimit) 条提醒的额度，按时间先后安排，打开应用时补充后续计划。减少提前提醒节点可以覆盖更长时间。活动结束日期仍仅在应用内提示。")
         }
     }
 

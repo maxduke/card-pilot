@@ -18,6 +18,7 @@ final class CoreFlowsUITests: XCTestCase {
             "-cardPilot.appLockEnabled", "NO",
             "-cardPilot.statementRemindersEnabled", "NO",
             "-cardPilot.repaymentRemindersEnabled", "NO",
+            "-cardPilot.enrollmentRemindersEnabled", "NO",
             "-cardPilot.lastUsedCardID", ""
         ]
     }
@@ -160,7 +161,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.navigationBars["账户详情"].buttons["编辑"])
         let navigationBar = app.navigationBars["编辑信用卡账户"]
         let form = app.collectionViews["account.editor.form"]
-        let picker = app.buttons["account.editor.override.cycle"]
+        let picker = form.buttons["account.editor.override.cycle"]
         let repayment = app.switches["account.editor.override.repayment.enabled"]
         let currentMonth = futureRuleMonth(offset: 0)
         let nextMonth = futureRuleMonth(offset: 1)
@@ -182,18 +183,26 @@ final class CoreFlowsUITests: XCTestCase {
             }
         }
 
+        func assertSelectedMonth(_ month: String) {
+            // Run 41993839392 captured the correct December state after the
+            // immediate assertion had read November during dialog dismissal.
+            let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", month), object: picker)
+            XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 10), .completed)
+            XCTAssertEqual(picker.value as? String, month)
+        }
+
         setBillingDateToggle("account.editor.override.repayment.enabled", enabled: false)
         selectMonth(nextMonth)
         tap(app.buttons["继续编辑"])
-        XCTAssertEqual(picker.value as? String, currentMonth)
+        assertSelectedMonth(currentMonth)
         reveal(repayment, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         XCTAssertEqual(repayment.value as? String, "0", "Cancelling the switch must keep the unsaved input.")
 
         selectMonth(nextMonth)
         tap(app.buttons["放弃日期修改并切换"])
-        XCTAssertEqual(picker.value as? String, nextMonth)
+        assertSelectedMonth(nextMonth)
         selectMonth(currentMonth)
-        XCTAssertEqual(picker.value as? String, currentMonth)
+        assertSelectedMonth(currentMonth)
         reveal(repayment, fullyVisible: true, navigationBar: navigationBar, contentContainer: form)
         XCTAssertEqual(repayment.value as? String, "1")
         captureScreenshot(largestText ? "最大字号切换账期保护未保存日期" : "切换账期保护未保存日期")
@@ -533,9 +542,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testLargeCardHistoryScopesRowsAndRefreshesAfterRecording() {
-        // Run 41232577050 completed this whole Debug flow in 173.927s.
-        // Retain the original 240s budget, including fixture setup.
-        executionTimeAllowance = 240
+        // The full flow completed its last assertions at 243.10s in run
+        // 41993839392, including about 150s of synthetic fixture startup.
+        executionTimeAllowance = 300
         launch("performanceLarge")
         tapRootTab("卡片")
         enter("Baseline Card 19", into: app.searchFields.firstMatch)
@@ -608,6 +617,96 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
         XCTAssertTrue(history.label.contains("共 1001 笔"))
         captureScreenshot("两万笔单卡新增后统计")
+    }
+
+    func testTransactionAmountsRemainReadableWithMixedLengthNames() {
+        verifyTransactionAmountLayout(largestText: false)
+    }
+
+    func testTransactionAmountsRemainReadableAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        verifyTransactionAmountLayout(largestText: true)
+    }
+
+    private func verifyTransactionAmountLayout(largestText: Bool) {
+        launch("deadlineAndAmounts")
+        tapRootTab("交易")
+        let cases = [("UI Short", "12.5 CNY"),
+                     ("UI 长商户名称用于验证金额不会随名称长度切换布局", "1,234,567.89 CNY"),
+                     ("UI Refund", "−0.001 HKD")]
+        for (merchant, amount) in cases {
+            let row = app.buttons["transaction.\(merchant)"]
+            let navigationBar = app.navigationBars["交易"]
+            reveal(row, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+            XCTAssertTrue(row.label.contains(amount))
+            XCTAssertGreaterThanOrEqual(row.frame.minX, app.frame.minX)
+            XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.maxX)
+            captureScreenshot("\(largestText ? "最大字号" : "普通字号")金额布局-\(merchant)")
+            let amountLabel = row.staticTexts[amount]
+            let list = app.collectionViews.firstMatch
+            let resultCount = app.staticTexts["transactions.results.count"]
+            reveal(amountLabel, fullyVisible: true, navigationBar: navigationBar,
+                   contentHeader: resultCount, contentContainer: list)
+            let visibleTop = max(navigationBar.frame.maxY, resultCount.frame.maxY, list.frame.minY)
+            XCTAssertGreaterThanOrEqual(amountLabel.frame.minY, visibleTop)
+            XCTAssertLessThanOrEqual(amountLabel.frame.maxY, contentBottom)
+            captureScreenshot("\(largestText ? "最大字号" : "普通字号")完整金额-\(merchant)")
+            let top = max(row.frame.minY, visibleTop)
+            let bottom = min(row.frame.maxY, contentBottom)
+            XCTAssertGreaterThanOrEqual(bottom - top, 44)
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: row.frame.midX - app.frame.minX, dy: (top + bottom) / 2 - app.frame.minY
+            )).tap()
+            XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts[amount].exists)
+            tap(app.navigationBars["交易详情"].buttons["完成"])
+            XCTAssertTrue(app.navigationBars["交易详情"].waitForNonExistence(timeout: 10))
+        }
+    }
+
+    func testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize() throws {
+        let index = try XCTUnwrap(app.launchArguments.firstIndex(of: "-cardPilot.enrollmentRemindersEnabled"))
+        app.launchArguments.removeSubrange(index...index + 1)
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("deadlineAndAmounts")
+        openPromotion("UI Deadline Upcoming")
+        tap(app.buttons["promotion.enrollment.reminders"])
+        let navigationBar = app.navigationBars["通知与提醒"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let enabled = app.switches["reminders.enrollment.enabled"]
+        reveal(enabled, fullyVisible: true, navigationBar: navigationBar)
+        if enabled.value as? String == "1" { enabled.switches.firstMatch.tap() }
+        XCTAssertEqual(enabled.value as? String, "0")
+        let offsets = app.buttons["reminders.enrollment.offsets"]
+        XCTAssertTrue(offsets.waitForExistence(timeout: 5))
+        XCTAssertFalse(offsets.isEnabled)
+        enabled.switches.firstMatch.tap()
+        XCTAssertEqual(enabled.value as? String, "1")
+        tap(offsets)
+        XCTAssertTrue(app.navigationBars["报名截止提醒"].waitForExistence(timeout: 10))
+        let threeDays = app.switches["提前 3 天"]
+        if threeDays.value as? String != "1" { tap(threeDays.switches.firstMatch) }
+        XCTAssertEqual(threeDays.value as? String, "1")
+        captureScreenshot("最大字号报名截止提醒节点")
+        tap(app.navigationBars["报名截止提醒"].buttons["完成"])
+        app.terminate()
+        app.launch()
+        openPromotion("UI Deadline Upcoming")
+        tap(app.buttons["promotion.enrollment.reminders"])
+        reveal(enabled, fullyVisible: true, navigationBar: navigationBar)
+        XCTAssertEqual(enabled.value as? String, "1")
+        tap(offsets)
+        XCTAssertTrue(app.navigationBars["报名截止提醒"].waitForExistence(timeout: 10))
+        XCTAssertEqual(threeDays.value as? String, "1")
+        captureScreenshot("最大字号报名截止提醒重启读回")
+        tap(app.navigationBars["报名截止提醒"].buttons["完成"])
+        tap(navigationBar.buttons.element(boundBy: 0))
+        tap(app.navigationBars["UI Deadline Upcoming"].buttons.element(boundBy: 0))
+        openPromotionFromList("UI Deadline Past")
+        let status = app.descendants(matching: .any).matching(identifier: "promotion.enrollmentStatus").firstMatch
+        reveal(status, fullyVisible: true)
+        XCTAssertTrue(status.label.contains("报名已截止"))
+        captureScreenshot("最大字号报名已截止状态")
     }
 
     func testFirstCardReminderSettingsPersistAndRemainAccessible() throws {
@@ -723,6 +822,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testPromotionEnrollmentDatesAtLargestTextSizeDiscardChanges() throws {
+        // The complete cancel/relaunch/readback flow reached its screenshot
+        // at 207s in run 41993839392, beyond the former 180s allowance.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("promotionOverview")
         openPromotion("UI Available")
@@ -969,7 +1071,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionCreationKeepsGuidanceAndEditingValidatesOtherSections() {
         launch("core")
-        let promotionsTab = app.tabBars.buttons["促销"]
+        let promotionsTab = rootTabButton("促销")
         reveal(promotionsTab)
         promotionsTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.navigationBars["促销"].waitForExistence(timeout: 10))
@@ -3290,7 +3392,7 @@ final class CoreFlowsUITests: XCTestCase {
 
     private func openNewPromotionEditor() {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
-        let tab = app.tabBars.buttons["促销"]
+        let tab = rootTabButton("促销")
         XCTAssertTrue(tab.waitForExistence(timeout: 10))
         XCTAssertTrue(tab.isEnabled && tab.isHittable)
         XCTAssertTrue(app.frame.contains(tab.frame))
@@ -3324,7 +3426,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.terminate()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
+        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: 10))
     }
 
     func testBackupExportFilenameCancellationAndLargestTextRecord() throws {
@@ -4301,7 +4403,7 @@ final class CoreFlowsUITests: XCTestCase {
     private func selectCardsTab() {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         let tabBar = app.tabBars.firstMatch
-        let cards = tabBar.buttons["卡片"]
+        let cards = rootTabButton("卡片")
         XCTAssertTrue(cards.waitForExistence(timeout: 10))
         XCTAssertTrue(cards.isEnabled)
         XCTAssertTrue(cards.isHittable)
@@ -4860,12 +4962,30 @@ final class CoreFlowsUITests: XCTestCase {
     private func launch(_ scenario: String) {
         app.launchEnvironment["CARDPILOT_UI_SCENARIO"] = scenario
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["卡片"].waitForExistence(timeout: 10))
+        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: 10))
     }
 
     private func openCard(_ name: String) {
         tapRootTab("卡片")
-        tap(app.buttons["card.\(name)"])
+        let navigationBar = app.navigationBars["卡片"]
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
+        let card = app.buttons["card.\(name)"]
+        reveal(card, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+        // A large row can be partly behind the search/navigation or tab bar.
+        // Activate one real visible area rather than its offscreen AX center.
+        let frame = app.frame
+        let viewport = CGRect(x: frame.minX, y: navigationBar.frame.maxY,
+                              width: frame.width, height: contentBottom - navigationBar.frame.maxY)
+        let visible = card.frame.intersection(viewport)
+        XCTAssertGreaterThanOrEqual(visible.width, 44)
+        XCTAssertGreaterThanOrEqual(visible.height, 44)
+        let point = CGVector(dx: visible.midX - frame.minX, dy: visible.midY - frame.minY)
+        let geometry = XCTAttachment(string: "row=\(card.frame); viewport=\(viewport); visible=\(visible); tap=\(point)")
+        geometry.name = "原生卡片入口-\(name)"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
     private func openPromotion(_ name: String) {
@@ -5018,9 +5138,15 @@ final class CoreFlowsUITests: XCTestCase {
         element.typeText(text)
     }
 
+    private func rootTabButton(_ title: String) -> XCUIElement {
+        // Native tab identifiers can use the SF Symbol name. Match the
+        // visible localized label explicitly, independently of that identifier.
+        app.tabBars.buttons.matching(NSPredicate(format: "label == %@", title)).firstMatch
+    }
+
     private func tapRootTab(_ title: String) {
         let tabBar = app.tabBars.element
-        let button = tabBar.buttons[title]
+        let button = rootTabButton(title)
         reveal(button)
         let started = ProcessInfo.processInfo.systemUptime
         let tolerance: CGFloat = 0.001
