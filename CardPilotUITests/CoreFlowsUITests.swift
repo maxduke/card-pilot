@@ -450,6 +450,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountBankPickerPreservesNormalMenuAndSavedSelection() {
+        // Run 42169500319 completed the native menu/save/relaunch/readback
+        // assertions at 197.92s, including a 60s animation notification wait.
+        // Keep the complete flow within the existing 240s allowance.
+        executionTimeAllowance = 240
         verifyAccountBankSelection(largestText: false)
     }
 
