@@ -13,6 +13,7 @@ enum UITestBootstrap {
         case core
         case promotionAmounts
         case allocationFeedback
+        case stackablePromotions
         case promotionOverview
         case dashboardActions
         case linkedRefunds
@@ -127,6 +128,14 @@ enum UITestBootstrap {
                     eligibleCards: [card], qualificationThreshold: 1000, progressCurrencyCode: "CNY"
                 ))
             }
+        }
+        if scenario == .stackablePromotions {
+            promotion.qualificationThreshold = nil
+            context.insert(Promotion(
+                title: "UI Per Transaction", startOn: promotion.startOn,
+                endOn: today.addingDays(31).rawValue, eligibleCards: [card],
+                perTransactionThreshold: 20, benefitTransactionCap: 2, progressCurrencyCode: "CNY"
+            ))
         }
         if scenario == .promotionOverview {
             promotion.rewardDescription = "达标奖励以银行规则为准"

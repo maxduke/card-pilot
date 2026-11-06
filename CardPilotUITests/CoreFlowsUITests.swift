@@ -450,6 +450,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountBankPickerPreservesNormalMenuAndSavedSelection() {
+        // Run 42169500319 completed the native menu/save/relaunch/readback
+        // assertions at 197.92s, including a 60s animation notification wait.
+        // Keep the complete flow within the existing 240s allowance.
+        executionTimeAllowance = 240
         verifyAccountBankSelection(largestText: false)
     }
 
@@ -1759,6 +1763,78 @@ final class CoreFlowsUITests: XCTestCase {
         reveal(promotionTitle, scrollTowardTopWhenMissing: true, fullyVisible: true,
                navigationBar: navigationBar, contentHeader: progress)
         captureScreenshot("最大字号完整促销活动名称")
+    }
+
+    func testStackableCumulativeAndPerTransactionPromotionsAreBothPreselectedAndPersist() {
+        launch("stackablePromotions")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        enter("UI Stacked Purchase", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        for title in ["UI Spend", "UI Per Transaction"] {
+            let toggle = app.switches["allocation.toggle.\(title)"]
+            reveal(toggle)
+            XCTAssertEqual(toggle.value as? String, "1")
+            let amount = app.textFields["allocation.amount.\(title)"]
+            reveal(amount)
+            XCTAssertEqual(amount.value as? String, "24")
+        }
+        captureScreenshot("消费24同时预选累计与单笔满20活动")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Stacked Purchase"])
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        for title in ["UI Spend", "UI Per Transaction"] {
+            let allocation = app.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS %@ AND label CONTAINS %@", "促销 \(title)", "24 CNY"
+            )).firstMatch
+            reveal(allocation)
+            XCTAssertTrue(allocation.exists)
+        }
+    }
+
+    func testAutomaticPromotionSelectionTracksThresholdAndPreservesManualDeselection() {
+        launch("stackablePromotions")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("19", into: app.textFields["transactionAmount"])
+        enter("UI Selection Override", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let ordinary = app.switches["allocation.toggle.UI Spend"]
+        let perTransaction = app.switches["allocation.toggle.UI Per Transaction"]
+        reveal(ordinary)
+        XCTAssertEqual(ordinary.value as? String, "1")
+        reveal(perTransaction)
+        XCTAssertEqual(perTransaction.value as? String, "0")
+
+        tap(app.buttons["返回修改交易"])
+        replaceText("24", in: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        reveal(perTransaction)
+        XCTAssertEqual(perTransaction.value as? String, "1")
+        tap(perTransaction.switches.firstMatch)
+        XCTAssertEqual(perTransaction.value as? String, "0")
+
+        tap(app.buttons["返回修改交易"])
+        replaceText("25", in: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        reveal(ordinary)
+        XCTAssertEqual(ordinary.value as? String, "1")
+        let amount = app.textFields["allocation.amount.UI Spend"]
+        reveal(amount)
+        XCTAssertEqual(amount.value as? String, "25")
+        reveal(perTransaction)
+        XCTAssertEqual(perTransaction.value as? String, "0")
+        XCTAssertFalse(app.textFields["allocation.amount.UI Per Transaction"].exists)
+        captureScreenshot("金额跨门槛后保留手动取消的逐笔活动")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
