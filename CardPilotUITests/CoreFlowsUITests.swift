@@ -2373,6 +2373,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testDraftWithDeletedCardCanSelectReplacementAndSave() {
+        // The complete replacement/save/relaunch readback reached 192.39s in
+        // run 42398583014. Keep this whole flow within the existing 240s budget.
+        executionTimeAllowance = 240
         launch("core")
         openCard("UI Shared")
         tap(app.buttons["card.addTransaction"])
