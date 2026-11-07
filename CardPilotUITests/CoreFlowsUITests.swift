@@ -5045,8 +5045,13 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func openCard(_ name: String) {
-        tapRootTab("卡片")
         let navigationBar = app.navigationBars["卡片"]
+        let tab = rootTabButton("卡片")
+        // Onboarding already returns to this root. Reselecting that same tab
+        // in run 42388026915 added two 60s animation waits before opening a card.
+        let alreadyAtRoot = tab.exists && tab.isSelected
+            && navigationBar.exists && navigationBar.isHittable
+        if !alreadyAtRoot { tapRootTab("卡片") }
         XCTAssertTrue(navigationBar.waitForExistence(timeout: 10))
         let card = app.buttons["card.\(name)"]
         reveal(card, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
@@ -5290,15 +5295,24 @@ final class CoreFlowsUITests: XCTestCase {
         // The middle tab opens an editor (or onboarding), keeping the previous
         // selection. Ordinary tabs must actually become selected after one tap.
         if title != "记一笔" {
-            let selected = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "selected == true"), object: button
-            )
-            let selectionResult = XCTWaiter.wait(for: [selected], timeout: 10)
-            if selectionResult != .completed {
-                persistNativeArtifact(Data("\(observation); target=\(target); selectionResult=\(selectionResult.rawValue)".utf8),
-                                      filename: "root-tab-selection.txt")
+            func selectionIsCurrent() -> Bool {
+                let current = rootTabButton(title)
+                return current.exists && current.isSelected
             }
-            XCTAssertEqual(selectionResult, .completed, "Expected one visible tap to select \(title).")
+            // Resolve the current tab after navigation before starting a timer.
+            // Run 42388026915 showed the correct page and selected trait after
+            // the old expectation timed out while resolving its earlier element.
+            if !selectionIsCurrent() {
+                let selected = XCTNSPredicateExpectation(
+                    predicate: NSPredicate { _, _ in selectionIsCurrent() }, object: app
+                )
+                let selectionResult = XCTWaiter.wait(for: [selected], timeout: 10)
+                if selectionResult != .completed {
+                    persistNativeArtifact(Data("\(observation); target=\(target); selectionResult=\(selectionResult.rawValue)".utf8),
+                                          filename: "root-tab-selection.txt")
+                }
+                XCTAssertEqual(selectionResult, .completed, "Expected one visible tap to select \(title).")
+            }
         }
     }
 

@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1]
+        shard: [0, 1, 2, 3]
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       UI_TEST_SHARD: ${{ matrix.shard }}
@@ -37,14 +37,15 @@ jobs:
           ui_tests = sorted(re.findall(pattern, ui_file.read_text(), re.M))
           assert ui_tests and len(ui_tests) == len(set(ui_tests)), "UI test names must be unique"
           shard = int(os.environ["UI_TEST_SHARD"])
-          assert shard in (0, 1)
-          selected = ui_tests[shard::2]
+          shard_count = 4
+          assert 0 <= shard < shard_count
+          selected = ui_tests[shard::shard_count]
           unit_count = sum(len(re.findall(pattern, p.read_text(), re.M))
                            for p in (root / "CardPilotTests").glob("*.swift")) if shard == 0 else 0
           selectors = (["-only-testing:CardPilotTests"] if shard == 0 else [])
           selectors += [f"-only-testing:CardPilotUITests/CoreFlowsUITests/{name}" for name in selected]
           Path("test-selections.txt").write_text("\n".join(selectors) + "\n")
-          partition = {"shard": shard, "unitCount": unit_count, "uiTests": selected,
+          partition = {"shard": shard, "shardCount": shard_count, "unitCount": unit_count, "uiTests": selected,
                        "totalUITestCount": len(ui_tests), "expectedCount": unit_count + len(selected)}
           Path("test-partition.json").write_text(json.dumps(partition, indent=2) + "\n")
           print(json.dumps(partition, indent=2))
