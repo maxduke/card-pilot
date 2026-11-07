@@ -399,6 +399,9 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountEditorFieldFeedbackAtLargestTextSize() {
+        // Run 42204421317 completed correction/save/relaunch/shared-account
+        // readback at 196.07s. Preserve the full flow within the existing 240s.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         verifyAccountEditorFieldFeedback(largestText: true)
     }
@@ -5274,7 +5277,29 @@ final class CoreFlowsUITests: XCTestCase {
             return
         }
         assertTouchTarget(button)
-        button.tap()
+        // Activate the visible tab at its verified screen position. A native
+        // element tap in run 42204421317 left Home selected despite hittability.
+        let appFrame = app.frame
+        let target = button.frame.intersection(tabBar.frame)
+        XCTAssertGreaterThanOrEqual(target.width, 44)
+        XCTAssertGreaterThanOrEqual(target.height, 44)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+            dx: target.midX - appFrame.minX,
+            dy: target.midY - appFrame.minY
+        )).tap()
+        // The middle tab opens an editor (or onboarding), keeping the previous
+        // selection. Ordinary tabs must actually become selected after one tap.
+        if title != "记一笔" {
+            let selected = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "selected == true"), object: button
+            )
+            let selectionResult = XCTWaiter.wait(for: [selected], timeout: 10)
+            if selectionResult != .completed {
+                persistNativeArtifact(Data("\(observation); target=\(target); selectionResult=\(selectionResult.rawValue)".utf8),
+                                      filename: "root-tab-selection.txt")
+            }
+            XCTAssertEqual(selectionResult, .completed, "Expected one visible tap to select \(title).")
+        }
     }
 
     private func tap(_ element: XCUIElement, scrollTowardTopWhenMissing: Bool = false) {
