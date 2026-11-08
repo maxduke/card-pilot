@@ -750,8 +750,14 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertFalse(app.navigationBars["交易详情"].exists)
         XCTAssertTrue(row.label.replacingOccurrences(of: ",", with: "").contains(exact + " CNY"))
         captureScreenshot("最大字号超长精度金额横向查看")
-        tap(row.staticTexts["UI Long Precision"])
+        // The merchant can be above this tall row's viewport after the pan.
+        // Activate its visible currency outside the nested horizontal scroller.
+        let currency = row.staticTexts["transaction.amount.currency"]
+        reveal(currency, fullyVisible: true, navigationBar: navigationBar,
+               contentHeader: count, contentContainer: list)
+        currency.tap()
         XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[exact + " CNY"].exists)
     }
 
     func testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize() throws {
@@ -2023,8 +2029,11 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func revealInConfirmation(_ element: XCUIElement, towardTop: Bool = false) {
+        let navigationBar = app.navigationBars.matching(NSPredicate(
+            format: "identifier IN %@", argumentArray: [["添加交易", "编辑交易"]]
+        )).firstMatch
         reveal(element, scrollTowardTopWhenMissing: towardTop, fullyVisible: true,
-               navigationBar: app.navigationBars["添加交易"],
+               navigationBar: navigationBar,
                contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch,
                contentContainer: app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch)
     }
