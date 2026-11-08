@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="添加 CardPilot 软件源，通过 SideStore 或 AltStore Classic 安装和更新。">
+  <meta name="color-scheme" content="light dark">
+  <title>CardPilot 软件源</title>
+  <link rel="icon" href="icon.png" type="image/png">
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f7f5f2; color: #25201c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: max(32px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+    main { max-width: 640px; margin: 5vh auto; line-height: 1.65; }
+    .icon { width: 80px; height: 80px; border-radius: 18px; }
+    h1 { margin: 20px 0 12px; font-size: 2.25rem; line-height: 1.2; letter-spacing: -.025em; overflow-wrap: anywhere; }
+    h2 { font-size: 1rem; margin: 28px 0 8px; }
+    p { margin: 12px 0; }
+    .muted { color: #655d55; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 12px; }
+    .button { display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 12px 20px; border-radius: 12px; font: inherit; font-weight: 600; text-decoration: none; border: 1px solid #a73524; background: #b63724; color: #fff; cursor: pointer; }
+    button[hidden] { display: none; }
+    .secondary { color: #a83220; background: transparent; }
+    a { color: #a83220; text-underline-offset: 3px; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #176eb7; outline-offset: 4px; }
+    .source { display: flex; flex-wrap: wrap; gap: 10px; }
+    input { flex: 1 1 280px; min-width: 0; width: 100%; padding: 12px; border: 1px solid #9a9187; border-radius: 10px; color: inherit; background: #fff; font: inherit; }
+    #copy-status { min-height: 1.65em; margin-top: 6px; }
+    footer { border-top: 1px solid #d2cbc3; margin-top: 32px; padding-top: 20px; }
+    footer nav { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+    footer a { display: inline-flex; align-items: center; min-height: 44px; }
+    @media (max-width: 420px) { .actions a { width: 100%; } main { margin: 2vh auto; } }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #181614; color: #f3eee8; }
+      .muted { color: #beb4a9; }
+      a, .secondary { color: #ffb8a7; }
+      .secondary { border-color: #bb8376; }
+      input { background: #25211e; border-color: #82766b; }
+      footer { border-color: #544b43; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="icon" src="icon.png" width="80" height="80" alt="CardPilot 图标">
+    <h1>CardPilot 软件源</h1>
+    <p>信用卡、账单提醒与促销进度，<br>在你的 iPhone 里统一管理。</p>
+    <p class="muted">最新正式版 {{VERSION}} · iOS {{MINIMUM_IOS}} 或更新版本</p>
+    <div class="actions" aria-label="添加软件源">
+      <a class="button" href="{{SIDESTORE_URL}}">添加到 SideStore</a>
+      <a class="button secondary" href="{{ALTSTORE_URL}}">添加到 AltStore</a>
+    </div>
+    <p class="muted">请在已安装相应工具的 iPhone 上打开。添加后可在工具中安装、更新和续签 CardPilot；AltStore 使用 Classic 版本。</p>
+    <h2>手动添加软件源</h2>
+    <p>也可以在工具的“软件源 / Sources”中点“＋”，粘贴下面的地址。</p>
+    <div class="source">
+      <input id="source-url" type="url" value="{{SOURCE_URL}}" aria-label="软件源地址" readonly spellcheck="false">
+      <button class="button secondary" id="copy" type="button" hidden>复制地址</button>
+    </div>
+    <p class="muted" id="copy-status" role="status" aria-live="polite"></p>
+    <footer>
+      <nav aria-label="下载与项目信息"><a href="{{DOWNLOAD_URL}}">下载未签名 IPA</a><a href="https://github.com/maxduke/card-pilot/releases">版本说明</a><a href="https://github.com/maxduke/card-pilot">项目代码</a></nav>
+      <p class="muted">软件源随正式版发布自动更新。安装、签名有效期及续签由所用工具和 Apple 账号管理。</p>
+    </footer>
+  </main>
+  <script>
+    const button = document.getElementById('copy');
+    const field = document.getElementById('source-url');
+    const status = document.getElementById('copy-status');
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(field.value);
+        status.textContent = '已复制软件源地址。';
+      } catch {
+        field.focus();
+        field.select();
+        field.setSelectionRange(0, field.value.length);
+        status.textContent = '地址已选中，请长按并选择“复制”。';
+      }
+    });
+  </script>
+</body>
+</html>
