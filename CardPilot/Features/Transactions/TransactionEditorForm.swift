@@ -11,6 +11,7 @@ struct TransactionEditorForm: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.currentDay) private var currentDay
     let transaction: Transaction?
     let cards: [Card]
     let promotions: [Promotion]
@@ -37,6 +38,7 @@ struct TransactionEditorForm: View {
     @State private var automaticallySelectedPromotionIDs: Set<UUID> = []
     @State private var manuallyDeselectedPromotionIDs: Set<UUID> = []
     @State private var promotionSearchText = ""
+    @State private var expandedPromotionRuleIDs: Set<UUID> = []
     @State private var manuallyEditedAllocationIDs: Set<UUID> = []
     @State private var didInitializePromotions = false
     @State private var editorStep = 0
@@ -205,17 +207,25 @@ struct TransactionEditorForm: View {
                 return suggestion.map { $0 > .zero } ?? true
             }.map(\.id))
         }
-        let automaticCandidates = candidatePromotions.filter { promotion in
-            PromotionCalculator.shouldAutomaticallySelect(
-                promotion,
-                transactionAmount: transactionAmount,
-                transactionCurrencyCode: normalizedCurrency
-            )
-        }
+        let automaticCandidates = automaticallyEligiblePurchasePromotions
         if automaticCandidates.count > 1 && automaticCandidates.contains(where: { !$0.stackingAllowed }) {
             return []
         }
         return Set(automaticCandidates.map(\.id))
+    }
+
+    private var automaticallyEligiblePurchasePromotions: [Promotion] {
+        guard kind == .purchase,
+              let amount = CardPilotUI.decimal(amountText, format: amountFormat),
+              amount > .zero else { return [] }
+        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return candidatePromotions.filter { promotion in
+            PromotionCalculator.shouldAutomaticallySelect(
+                promotion,
+                transactionAmount: amount,
+                transactionCurrencyCode: normalizedCurrency
+            )
+        }
     }
 
     private var isSearchingPromotions: Bool {
@@ -234,7 +244,12 @@ struct TransactionEditorForm: View {
 
     private var visiblePromotions: [Promotion] {
         let visibleIDs = visiblePromotionIDs
-        return promotions.filter { visibleIDs.contains($0.id) }.sorted { $0.endOn < $1.endOn }
+        return promotions.filter { visibleIDs.contains($0.id) }.sorted {
+            if $0.endOn != $1.endOn { return $0.endOn < $1.endOn }
+            let order = $0.title.localizedCaseInsensitiveCompare($1.title)
+            if order != .orderedSame { return order == .orderedAscending }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     private var postingDatePendingPromotions: [Promotion] {
@@ -952,6 +967,9 @@ struct TransactionEditorForm: View {
     private var promotionSection: some View {
         let visible = visiblePromotions
         let pendingPostingIDs = Set(postingDatePendingPromotions.map(\.id))
+        let eligible = automaticallyEligiblePurchasePromotions
+        let conflictingIDs: Set<UUID> = eligible.count > 1 && eligible.contains(where: { !$0.stackingAllowed })
+            ? Set(eligible.map(\.id)) : []
         confirmationGroup("促销分配") {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("搜索")
@@ -982,7 +1000,8 @@ struct TransactionEditorForm: View {
                             .font(.subheadline.weight(.semibold))
                             .accessibilityAddTraits(.isHeader)
                         ForEach(selected, id: \.id) { promotion in
-                            promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id))
+                            promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id),
+                                            stackingConflict: conflictingIDs.contains(promotion.id))
                         }
                     }
                     Text("搜索结果")
@@ -994,11 +1013,13 @@ struct TransactionEditorForm: View {
                             .foregroundStyle(.secondary)
                     }
                     ForEach(results, id: \.id) { promotion in
-                        promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id))
+                        promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id),
+                                        stackingConflict: conflictingIDs.contains(promotion.id))
                     }
                 } else {
                     ForEach(visible, id: \.id) { promotion in
-                        promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id))
+                        promotionChoice(promotion, awaitingPostingDate: pendingPostingIDs.contains(promotion.id),
+                                        stackingConflict: conflictingIDs.contains(promotion.id))
                     }
                 }
                 Text("已报名或无需报名、金额符合条件且未用完上限的活动会预选。多个活动不可叠加时请手动选择，并核对商户、渠道等附加条件。")
@@ -1033,10 +1054,11 @@ struct TransactionEditorForm: View {
     }
 
     @ViewBuilder
-    private func promotionChoice(_ promotion: Promotion, awaitingPostingDate: Bool) -> some View {
+    private func promotionChoice(_ promotion: Promotion, awaitingPostingDate: Bool, stackingConflict: Bool) -> some View {
+        let periodContext = promotionPeriodContext(promotion)
         Toggle(isOn: promotionBinding(promotion.id)) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(promotion.title)
+                Text(promotionChoiceTitle(promotion))
                     .font(.subheadline.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
                 if !dynamicTypeSize.isAccessibilitySize {
@@ -1047,6 +1069,14 @@ struct TransactionEditorForm: View {
             }
         }
         .accessibilityIdentifier("allocation.toggle.\(promotion.title)")
+        .accessibilityHint(periodContext ?? "")
+        if let periodContext {
+            Text(periodContext)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("allocation.period.\(promotion.id)")
+        }
         if dynamicTypeSize.isAccessibilitySize {
             // A long title and summary need separate space at
             // accessibility sizes so the title can scroll fully.
@@ -1073,7 +1103,7 @@ struct TransactionEditorForm: View {
                 .environment(\.locale, amountFormat.locale)
                 .focused($focusedInput, equals: .allocation(promotion.id))
                 .textFieldStyle(.plain)
-                .accessibilityLabel("\(promotion.title)计入金额（\(promotion.progressCurrencyCode)）")
+                .accessibilityLabel("\(promotionChoiceTitle(promotion))计入金额（\(promotion.progressCurrencyCode)）")
                 .accessibilityIdentifier("allocation.amount.\(promotion.title)")
                 if showingAllocationErrors && positiveAllocationAmount(for: promotion.id) == nil {
                     InlineErrorView(message: "计入金额应为大于 0 的数字。")
@@ -1095,14 +1125,103 @@ struct TransactionEditorForm: View {
             Text("需补入账日期，不会自动勾选。")
                 .font(.caption)
                 .foregroundStyle(.orange)
+        } else if !selectedPromotionIDs.contains(promotion.id),
+                  let hint = unselectedPromotionHint(promotion, stackingConflict: stackingConflict) {
+            Text(hint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("allocation.hint.\(promotion.id)")
+        }
+        if !promotion.rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !promotion.exclusions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            DisclosureGroup(isExpanded: Binding(
+                get: { expandedPromotionRuleIDs.contains(promotion.id) },
+                set: { expanded in
+                    if expanded { expandedPromotionRuleIDs.insert(promotion.id) }
+                    else { expandedPromotionRuleIDs.remove(promotion.id) }
+                }
+            )) {
+                if !promotion.rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    promotionRuleText(title: "规则", text: promotion.rules)
+                }
+                if !promotion.exclusions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    promotionRuleText(title: "排除项", text: promotion.exclusions)
+                }
+            } label: {
+                Text("查看规则")
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("allocation.rules.\(promotion.id)")
+            .accessibilityHint("\(promotionChoiceTitle(promotion))的规则与排除项")
         }
         Divider()
+    }
+
+    private func promotionChoiceTitle(_ promotion: Promotion) -> String {
+        guard let index = promotion.seriesIndex else { return promotion.title }
+        return "\(promotion.title) · 第 \(index + 1) 期"
+    }
+
+    private func promotionPeriodContext(_ promotion: Promotion) -> String? {
+        let today = currentDay.today.rawValue
+        let status = PromotionPresentation.status(of: promotion, today: today)
+        guard isSearchingPromotions || promotion.seriesIndex != nil || status != .active else { return nil }
+        let state: String
+        switch status {
+        case .active: state = "进行中"
+        case .upcoming: state = "未开始"
+        case .history: state = promotion.archivedAt == nil ? "已结束" : "已归档"
+        }
+        return "\(CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn)) · \(state)"
+    }
+
+    private func promotionRuleText(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    private func unselectedPromotionHint(_ promotion: Promotion, stackingConflict: Bool) -> String? {
+        if manuallyDeselectedPromotionIDs.contains(promotion.id) {
+            return "已手动取消，可重新勾选。"
+        }
+        guard kind == .purchase else { return nil }
+        if promotion.archivedAt != nil { return "已归档，不会自动勾选。" }
+        if !candidatePromotions.contains(where: { $0.id == promotion.id }) {
+            return "卡片或活动日期不匹配，需手动确认。"
+        }
+        if promotion.enrollmentStatus == .notEnrolled {
+            return "\(promotionEnrollmentText(promotion, today: currentDay.today.rawValue))，不会自动勾选。"
+        }
+        let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if normalizedCurrency != promotion.progressCurrencyCode {
+            return "币种不同，需手动填写合格金额。"
+        }
+        guard let progress = try? PromotionCalculator.progress(for: promotion) else {
+            return "活动进度无法计算，请核对已有记录。"
+        }
+        if progress.remainingTransactionCount == 0 { return "优惠笔数已用完，可手动核对或修正。" }
+        if progress.remainingCap == .zero { return "累计计入额度已用完，可手动核对或修正。" }
+        if let amount = CardPilotUI.decimal(amountText, format: amountFormat),
+           let threshold = promotion.perTransactionThreshold, amount < threshold {
+            return "单笔未满 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))，不会自动勾选。"
+        }
+        return stackingConflict ? "候选活动中有不可叠加项，请手动选择。" : nil
     }
 
     private func promotionSummary(_ promotion: Promotion) -> String {
         var parts = [promotion.progressCurrencyCode]
         if let benefitTransactionCap = promotion.benefitTransactionCap {
-            parts.append("最多 \(benefitTransactionCap) 笔")
+            if let remaining = try? PromotionCalculator.progress(for: promotion).remainingTransactionCount {
+                parts.append("优惠剩余 \(remaining)/\(benefitTransactionCap) 笔")
+            } else {
+                parts.append("最多 \(benefitTransactionCap) 笔 · 进度待核对")
+            }
         }
         if let threshold = promotion.qualificationThreshold {
             parts.append("达标 \(CardPilotUI.amountText(threshold))")

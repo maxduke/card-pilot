@@ -14,12 +14,15 @@ enum UITestBootstrap {
         case promotionAmounts
         case allocationFeedback
         case stackablePromotions
+        case confirmationGuidance
+        case confirmationConflict
         case promotionOverview
         case dashboardActions
         case linkedRefunds
         case refundIdentity
         case transactionFilters
         case deadlineAndAmounts
+        case amountPrecision
         case accountHistory
         case accountBankSelection
         case futureRules
@@ -135,6 +138,55 @@ enum UITestBootstrap {
                 title: "UI Per Transaction", startOn: promotion.startOn,
                 endOn: today.addingDays(31).rawValue, eligibleCards: [card],
                 perTransactionThreshold: 20, benefitTransactionCap: 2, progressCurrencyCode: "CNY"
+            ))
+        }
+        if scenario == .confirmationGuidance || scenario == .confirmationConflict {
+            let month = try LocalDate(year: today.year, month: today.month, day: 1)
+            let seriesID = UUID()
+            promotion.title = "UI Monthly"
+            promotion.seriesID = seriesID
+            promotion.seriesIndex = 1
+            promotion.stackingAllowed = scenario != .confirmationConflict
+            promotion.startOn = month.rawValue
+            promotion.endOn = month.addingMonths(1).addingDays(-1).rawValue
+            for (index, offset) in [(0, -1), (2, 1), (3, 2)] {
+                context.insert(Promotion(
+                    seriesID: seriesID, seriesIndex: index, title: promotion.title,
+                    startOn: month.addingMonths(offset).rawValue,
+                    endOn: month.addingMonths(offset + 1).addingDays(-1).rawValue,
+                    eligibleCards: [card], progressCurrencyCode: "CNY",
+                    archivedAt: index == 3 ? Date() : nil
+                ))
+            }
+            let remaining = Promotion(
+                title: "UI Remaining", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], perTransactionThreshold: 20, benefitTransactionCap: 3,
+                progressCurrencyCode: "CNY", rules: "指定商户及线上支付适用。",
+                exclusions: "不含退款与现金交易。"
+            )
+            let exhausted = Promotion(
+                title: "UI Exhausted", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], benefitTransactionCap: 2, progressCurrencyCode: "CNY"
+            )
+            context.insert(remaining)
+            context.insert(exhausted)
+            for index in 0..<2 {
+                let used = Transaction(card: card, kind: .purchase, transactionOn: today.rawValue,
+                                       amount: 50, currencyCode: "CNY", merchant: "UI Used \(index)")
+                context.insert(used)
+                for target in [remaining, exhausted] {
+                    context.insert(PromotionAllocation(transaction: used, promotion: target,
+                                                       qualifyingAmount: 50, currencyCode: "CNY"))
+                }
+            }
+            context.insert(Promotion(
+                title: "UI Enrollment", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], enrollmentStatus: .notEnrolled,
+                enrollmentDeadline: today.addingDays(-1).rawValue, progressCurrencyCode: "CNY"
+            ))
+            context.insert(Promotion(
+                title: "UI Foreign Currency", startOn: promotion.startOn, endOn: promotion.endOn,
+                eligibleCards: [card], progressCurrencyCode: "HKD"
             ))
         }
         if scenario == .promotionOverview {
@@ -260,9 +312,10 @@ enum UITestBootstrap {
                                            amount: 10, currencyCode: currency, merchant: merchant, status: status))
             }
         }
-        if scenario == .deadlineAndAmounts {
-            let names = ["UI Short", "UI 长商户名称用于验证金额不会随名称长度切换布局", "UI Refund"]
-            let values = ["12.5", "1234567.89", "0.001"]
+        if scenario == .deadlineAndAmounts || scenario == .amountPrecision {
+            let precise = scenario == .amountPrecision
+            let names = ["UI Short", precise ? "UI Long Precision" : "UI 长商户名称用于验证金额不会随名称长度切换布局", "UI Refund"]
+            let values = ["12.5", precise ? "12345678901234567890.123456789012345678" : "1234567.89", "0.001"]
             for index in names.indices {
                 let transaction = Transaction(
                     id: UUID(uuidString: String(format: "78000000-0000-0000-0000-%012d", index + 1))!,

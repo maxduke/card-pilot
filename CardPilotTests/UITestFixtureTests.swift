@@ -5,6 +5,39 @@ import XCTest
 
 @MainActor
 final class UITestFixtureTests: XCTestCase {
+    func testConfirmationGuidanceFixtureKeepsPeriodIdentityAndRemainingBenefitsAcrossBackup() throws {
+        for rawDate in [20260101, 20260228, 20261108] {
+            let container = try CardPilotPersistence.makeContainer(inMemory: true)
+            try UITestBootstrap.seed(container.mainContext, scenario: .confirmationGuidance,
+                                     today: LocalDate(rawValue: rawDate))
+            let records = try BackupRecords.capture(container.mainContext)
+            let restored = try records.validatedContainer()
+            XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+            let promotions = try restored.mainContext.fetch(FetchDescriptor<Promotion>())
+            let periods = promotions.filter { $0.title == "UI Monthly" }.sorted { $0.startOn < $1.startOn }
+            XCTAssertEqual(periods.map(\.seriesIndex), [0, 1, 2, 3])
+            XCTAssertEqual(Set(periods.compactMap(\.seriesID)).count, 1)
+            XCTAssertEqual(Set(periods.map(\.id)).count, 4)
+            XCTAssertNotNil(periods.last?.archivedAt)
+            let remaining = try XCTUnwrap(promotions.first { $0.title == "UI Remaining" })
+            XCTAssertEqual(try PromotionCalculator.progress(for: remaining).remainingTransactionCount, 1)
+            let exhausted = try XCTUnwrap(promotions.first { $0.title == "UI Exhausted" })
+            XCTAssertEqual(try PromotionCalculator.progress(for: exhausted).remainingTransactionCount, 0)
+        }
+    }
+
+    func testLongPrecisionAmountFixturePreservesEveryDigitAcrossBackup() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        try UITestBootstrap.seed(container.mainContext, scenario: .amountPrecision)
+        let records = try BackupRecords.capture(container.mainContext)
+        let restored = try records.validatedContainer()
+        XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+        let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+        let precise = try XCTUnwrap(transactions.first { $0.merchant == "UI Long Precision" })
+        XCTAssertEqual(precise.amount, Decimal(string: "12345678901234567890.123456789012345678"))
+        XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(precise.amount)), precise.amount)
+    }
+
     func testFutureRuleFixtureRestoresValidAndInvalidCancellationScenarios() throws {
         let timeZone = TimeZone(identifier: "Asia/Shanghai")!
         for rawDate in [20260101, 20260910, 20261231] {

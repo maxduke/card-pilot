@@ -464,6 +464,7 @@ func groupedTransactionsByDate(_ transactions: [Transaction]) -> [(date: Int, tr
 
 struct TransactionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var amountScrollHeight: CGFloat = 24
     let transaction: Transaction
 
     var body: some View {
@@ -514,12 +515,52 @@ struct TransactionRow: View {
     }
 
     private var amount: some View {
-        Text(signedAmountText(transaction))
+        // The amount keeps the whole row width regardless of merchant/card text.
+        // Move the currency to its own line before allowing a number to break.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                numericAmount
+                amountCurrency
+            }
+            .fixedSize()
+            VStack(alignment: .trailing, spacing: 2) {
+                numericAmount
+                amountCurrency
+            }
+            .fixedSize()
+            // Even an exact 38-digit Decimal stays readable without rounding,
+            // truncating digits, or shrinking accessibility text.
+            VStack(alignment: .trailing, spacing: 2) {
+                ScrollView(.horizontal) {
+                    numericAmount
+                }
+                .frame(height: max(44, amountScrollHeight))
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .accessibilityIdentifier("transaction.amount.scroll")
+                amountCurrency
+                Text("左右滑动查看完整金额")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var numericAmount: some View {
+        Text("\(transaction.kind == .refund ? "−" : "")\(CardPilotUI.amountText(transaction.amount))")
             .font(.subheadline.weight(.semibold).monospacedDigit())
-            .multilineTextAlignment(.trailing)
-            .fixedSize(horizontal: false, vertical: true)
+            .fixedSize()
             .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
             .strikethrough(transaction.status == .reversed)
+            .accessibilityIdentifier("transaction.amount.value")
+    }
+
+    private var amountCurrency: some View {
+        Text(transaction.currencyCode)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(transaction.status == .reversed ? .secondary : .primary)
+            .strikethrough(transaction.status == .reversed)
+            .accessibilityIdentifier("transaction.amount.currency")
     }
 
     private func transactionTag(_ title: String, color: Color) -> some View {

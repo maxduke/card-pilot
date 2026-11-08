@@ -178,6 +178,8 @@ jobs:
             -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
             -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableWithMixedLengthNames
             -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testLongPrecisionAmountScrollsWithoutSplittingOrChangingDigitsAtLargestTextSize
+            -only-testing:CardPilotUITests/CoreFlowsUITests/testPromotionConfirmationGuidanceAndRulesPreserveManualAmountsAtLargestTextSize
             -only-testing:CardPilotUITests/CoreFlowsUITests/testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize
             -parallel-testing-enabled NO -test-timeouts-enabled YES
             -default-test-execution-time-allowance 180
@@ -223,7 +225,7 @@ jobs:
           assert Path("simulator-appearance-after.txt").read_text().strip() == "dark"
           assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
           assert summary["result"] == "Passed", summary
-          assert summary["passedTests"] == summary["totalTestCount"] == 5, summary
+          assert summary["passedTests"] == summary["totalTestCount"] == 7, summary
           assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
           PY_RESULT
       - name: Upload small-screen test results

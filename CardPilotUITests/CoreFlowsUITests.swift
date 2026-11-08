@@ -638,10 +638,12 @@ final class CoreFlowsUITests: XCTestCase {
     private func verifyTransactionAmountLayout(largestText: Bool) {
         launch("deadlineAndAmounts")
         tapRootTab("交易")
-        let cases = [("UI Short", "12.5 CNY"),
-                     ("UI 长商户名称用于验证金额不会随名称长度切换布局", "1,234,567.89 CNY"),
-                     ("UI Refund", "−0.001 HKD")]
-        for (merchant, amount) in cases {
+        let cases = [("UI Short", "12.5", "CNY"),
+                     ("UI 长商户名称用于验证金额不会随名称长度切换布局", "1,234,567.89", "CNY"),
+                     ("UI Refund", "−0.001", "HKD")]
+        var singleLineHeight: CGFloat?
+        for (merchant, numeric, currency) in cases {
+            let amount = "\(numeric) \(currency)"
             let row = app.buttons["transaction.\(merchant)"]
             let navigationBar = app.navigationBars["交易"]
             reveal(row, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
@@ -649,7 +651,8 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(row.frame.minX, app.frame.minX)
             XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.maxX)
             captureScreenshot("\(largestText ? "最大字号" : "普通字号")金额布局-\(merchant)")
-            let amountLabel = row.staticTexts[amount]
+            let amountLabel = row.staticTexts["transaction.amount.value"]
+            XCTAssertEqual(amountLabel.label, numeric)
             let list = app.collectionViews.firstMatch
             let resultCount = app.staticTexts["transactions.results.count"]
             reveal(amountLabel, fullyVisible: true, navigationBar: navigationBar,
@@ -657,6 +660,20 @@ final class CoreFlowsUITests: XCTestCase {
             let visibleTop = max(navigationBar.frame.maxY, resultCount.frame.maxY, list.frame.minY)
             XCTAssertGreaterThanOrEqual(amountLabel.frame.minY, visibleTop)
             XCTAssertLessThanOrEqual(amountLabel.frame.maxY, contentBottom)
+            XCTAssertGreaterThanOrEqual(amountLabel.frame.minX + 0.001, row.frame.minX)
+            XCTAssertLessThanOrEqual(amountLabel.frame.maxX, row.frame.maxX + 0.001)
+            if let singleLineHeight {
+                XCTAssertEqual(amountLabel.frame.height, singleLineHeight, accuracy: 1,
+                               "The full numeric value, including its fraction, must stay on one line.")
+            } else {
+                singleLineHeight = amountLabel.frame.height
+            }
+            let currencyLabel = row.staticTexts["transaction.amount.currency"]
+            XCTAssertEqual(currencyLabel.label, currency)
+            reveal(currencyLabel, fullyVisible: true, navigationBar: navigationBar,
+                   contentHeader: resultCount, contentContainer: list)
+            XCTAssertGreaterThanOrEqual(currencyLabel.frame.minX + 0.001, row.frame.minX)
+            XCTAssertLessThanOrEqual(currencyLabel.frame.maxX, row.frame.maxX + 0.001)
             captureScreenshot("\(largestText ? "最大字号" : "普通字号")完整金额-\(merchant)")
             let top = max(row.frame.minY, visibleTop)
             let bottom = min(row.frame.maxY, contentBottom)
@@ -669,6 +686,34 @@ final class CoreFlowsUITests: XCTestCase {
             tap(app.navigationBars["交易详情"].buttons["完成"])
             XCTAssertTrue(app.navigationBars["交易详情"].waitForNonExistence(timeout: 10))
         }
+    }
+
+    func testLongPrecisionAmountScrollsWithoutSplittingOrChangingDigitsAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("amountPrecision")
+        tapRootTab("交易")
+        let row = app.buttons["transaction.UI Long Precision"]
+        let navigationBar = app.navigationBars["交易"]
+        reveal(row, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+        let scroll = row.scrollViews["transaction.amount.scroll"]
+        reveal(scroll, fullyVisible: true, navigationBar: navigationBar,
+               contentHeader: app.staticTexts["transactions.results.count"],
+               contentContainer: app.collectionViews.firstMatch)
+        XCTAssertTrue(scroll.isHittable)
+        XCTAssertGreaterThanOrEqual(scroll.frame.height, 44)
+        let number = row.staticTexts["transaction.amount.value"]
+        let exact = "12345678901234567890.123456789012345678"
+        XCTAssertEqual(number.label.replacingOccurrences(of: ",", with: ""), exact)
+        XCTAssertTrue(row.label.replacingOccurrences(of: ",", with: "").contains(exact + " CNY"))
+        let initialX = number.frame.minX
+        captureScreenshot("最大字号超长精度金额起始位置")
+        scroll.swipeLeft()
+        XCTAssertLessThan(number.frame.minX, initialX - 20)
+        XCTAssertFalse(app.navigationBars["交易详情"].exists)
+        XCTAssertEqual(number.label.replacingOccurrences(of: ",", with: ""), exact)
+        captureScreenshot("最大字号超长精度金额横向查看")
+        tap(row.staticTexts["UI Long Precision"])
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
     }
 
     func testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize() throws {
@@ -1815,6 +1860,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(ordinary.value as? String, "1")
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "0")
+        let belowThreshold = app.staticTexts["单笔未满 20 CNY，不会自动勾选。"]
+        reveal(belowThreshold)
+        XCTAssertTrue(belowThreshold.exists)
 
         tap(app.buttons["返回修改交易"])
         replaceText("24", in: app.textFields["transactionAmount"])
@@ -1834,10 +1882,166 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(amount.value as? String, "25")
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "0")
+        let manuallyCancelled = app.staticTexts["已手动取消，可重新勾选。"]
+        reveal(manuallyCancelled)
+        XCTAssertTrue(manuallyCancelled.exists)
         XCTAssertFalse(app.textFields["allocation.amount.UI Per Transaction"].exists)
         captureScreenshot("金额跨门槛后保留手动取消的逐笔活动")
         tap(app.buttons["saveTransaction"])
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+    }
+
+    func testPromotionConfirmationGuidanceAndRulesPreserveManualAmountsAtLargestTextSize() {
+        // Read five independently scrolling promotion rows and both rule sections.
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("confirmationGuidance")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        for message in ["报名已截止 · 尚未报名，不会自动勾选。",
+                        "优惠笔数已用完，可手动核对或修正。",
+                        "币种不同，需手动填写合格金额。"] {
+            let hint = app.staticTexts[message]
+            reveal(hint, fullyVisible: true)
+            XCTAssertTrue(hint.exists)
+            captureScreenshot("最大字号未预选说明-\(message)")
+        }
+        let remaining = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "优惠剩余 1/3 笔")).firstMatch
+        reveal(remaining, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        XCTAssertTrue(remaining.exists)
+        let exhausted = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "优惠剩余 0/2 笔")).firstMatch
+        reveal(exhausted, scrollTowardTopWhenMissing: true, fullyVisible: true)
+        XCTAssertTrue(exhausted.exists)
+        let amount = app.textFields["allocation.amount.UI Remaining"]
+        replaceText("22.25", in: amount)
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        let rules = app.buttons["查看规则"]
+        tap(rules)
+        for text in ["指定商户及线上支付适用。", "不含退款与现金交易。"] {
+            let clause = app.staticTexts[text]
+            reveal(clause, fullyVisible: true)
+            XCTAssertTrue(clause.exists)
+        }
+        captureScreenshot("最大字号确认页直接查阅规则与排除项")
+        reveal(rules, scrollTowardTopWhenMissing: true)
+        tap(rules)
+        XCTAssertEqual(amount.value as? String, "22.25")
+
+        let spent = app.switches["allocation.toggle.UI Exhausted"]
+        reveal(spent, scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(spent.value as? String, "0")
+        tap(spent.switches.firstMatch)
+        XCTAssertEqual(spent.value as? String, "1")
+        let manual = app.textFields["allocation.amount.UI Exhausted"]
+        reveal(manual)
+        XCTAssertEqual(manual.value as? String, "24")
+        tap(app.buttons["返回修改交易"])
+        tap(app.buttons["saveTransaction"])
+        reveal(amount)
+        XCTAssertEqual(amount.value as? String, "22.25")
+        reveal(spent, scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(spent.value as? String, "1")
+        captureScreenshot("最大字号规则查阅和返回后保留人工分配")
+    }
+
+    func testPromotionSearchDistinguishesSameTitlePeriodsAndPersistsHistoricalChoice() {
+        executionTimeAllowance = 240
+        launch("confirmationGuidance")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        enter("UI Period Choice", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        func periodToggle(_ number: Int) -> XCUIElement {
+            app.switches.matching(NSPredicate(format: "label BEGINSWITH %@", "UI Monthly · 第 \(number) 期")).firstMatch
+        }
+        let current = periodToggle(2)
+        reveal(current)
+        XCTAssertEqual(current.value as? String, "1")
+        tap(current.switches.firstMatch)
+        let search = app.textFields["allocation.search"]
+        reveal(search, scrollTowardTopWhenMissing: true)
+        enter("UI Monthly", into: search)
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        for number in 1...4 {
+            let period = periodToggle(number)
+            reveal(period, fullyVisible: true)
+            XCTAssertTrue(period.exists)
+        }
+        for state in ["已结束", "未开始", "已归档"] {
+            let metadata = app.staticTexts.matching(NSPredicate(
+                format: "identifier BEGINSWITH 'allocation.period.' AND label CONTAINS %@", state
+            )).firstMatch
+            reveal(metadata, scrollTowardTopWhenMissing: state == "已结束", fullyVisible: true)
+            XCTAssertTrue(metadata.label.contains("年"))
+            XCTAssertTrue(metadata.label.contains("–"))
+            captureScreenshot("同名活动搜索-\(state)")
+        }
+        let previous = periodToggle(1)
+        reveal(previous, scrollTowardTopWhenMissing: true)
+        tap(previous.switches.firstMatch)
+        let allocation = app.textFields["allocation.amount.UI Monthly"]
+        replaceText("17.5", in: allocation)
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        reveal(search, scrollTowardTopWhenMissing: true)
+        replaceText("", in: search)
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        reveal(previous, scrollTowardTopWhenMissing: true)
+        XCTAssertEqual(previous.value as? String, "1")
+        XCTAssertEqual(current.value as? String, "0")
+        XCTAssertEqual(allocation.value as? String, "17.5")
+        captureScreenshot("同名月度活动显示期次与日期并保留历史选择")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Period Choice"])
+        tap(app.navigationBars["交易详情"].buttons["编辑"])
+        tap(app.buttons["saveTransaction"])
+        reveal(previous)
+        XCTAssertEqual(previous.value as? String, "1")
+        XCTAssertEqual(current.value as? String, "0")
+        XCTAssertEqual(app.textFields["allocation.amount.UI Monthly"].value as? String, "17.5")
+    }
+
+    func testNonstackingCandidatesExplainManualChoiceAndAllowSinglePromotionSave() {
+        launch("confirmationConflict")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        enter("UI Manual Stacking", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let monthly = app.switches["allocation.toggle.UI Monthly"]
+        reveal(monthly)
+        XCTAssertEqual(monthly.value as? String, "0")
+        let remaining = app.switches["allocation.toggle.UI Remaining"]
+        reveal(remaining)
+        XCTAssertEqual(remaining.value as? String, "0")
+        let explanation = app.staticTexts.matching(NSPredicate(
+            format: "label == %@", "候选活动中有不可叠加项，请手动选择。"
+        )).firstMatch
+        reveal(explanation, scrollTowardTopWhenMissing: true)
+        XCTAssertTrue(explanation.exists)
+        tap(remaining.switches.firstMatch)
+        XCTAssertEqual(remaining.value as? String, "1")
+        XCTAssertEqual(app.textFields["allocation.amount.UI Remaining"].value as? String, "24")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Manual Stacking"])
+        let allocation = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Remaining", "24 CNY"
+        )).firstMatch
+        reveal(allocation)
+        XCTAssertTrue(allocation.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "促销 UI Monthly")).firstMatch.exists)
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
