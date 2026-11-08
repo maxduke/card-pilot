@@ -638,10 +638,12 @@ final class CoreFlowsUITests: XCTestCase {
     private func verifyTransactionAmountLayout(largestText: Bool) {
         launch("deadlineAndAmounts")
         tapRootTab("交易")
-        let cases = [("UI Short", "12.5 CNY"),
-                     ("UI 长商户名称用于验证金额不会随名称长度切换布局", "1,234,567.89 CNY"),
-                     ("UI Refund", "−0.001 HKD")]
-        for (merchant, amount) in cases {
+        let cases = [("UI Short", "12.5", "CNY"),
+                     ("UI 长商户名称用于验证金额不会随名称长度切换布局", "1,234,567.89", "CNY"),
+                     ("UI Refund", "−0.001", "HKD")]
+        var singleLineHeight: CGFloat?
+        for (merchant, numeric, currency) in cases {
+            let amount = "\(numeric) \(currency)"
             let row = app.buttons["transaction.\(merchant)"]
             let navigationBar = app.navigationBars["交易"]
             reveal(row, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
@@ -649,14 +651,29 @@ final class CoreFlowsUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual(row.frame.minX, app.frame.minX)
             XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.maxX)
             captureScreenshot("\(largestText ? "最大字号" : "普通字号")金额布局-\(merchant)")
-            let amountLabel = row.staticTexts[amount]
+            let amountLabel = row.staticTexts["transaction.amount.value"]
             let list = app.collectionViews.firstMatch
             let resultCount = app.staticTexts["transactions.results.count"]
             reveal(amountLabel, fullyVisible: true, navigationBar: navigationBar,
                    contentHeader: resultCount, contentContainer: list)
+            XCTAssertEqual(amountLabel.label, numeric)
             let visibleTop = max(navigationBar.frame.maxY, resultCount.frame.maxY, list.frame.minY)
             XCTAssertGreaterThanOrEqual(amountLabel.frame.minY, visibleTop)
             XCTAssertLessThanOrEqual(amountLabel.frame.maxY, contentBottom)
+            XCTAssertGreaterThanOrEqual(amountLabel.frame.minX + 0.001, row.frame.minX)
+            XCTAssertLessThanOrEqual(amountLabel.frame.maxX, row.frame.maxX + 0.001)
+            if let singleLineHeight {
+                XCTAssertEqual(amountLabel.frame.height, singleLineHeight, accuracy: 1,
+                               "The full numeric value, including its fraction, must stay on one line.")
+            } else {
+                singleLineHeight = amountLabel.frame.height
+            }
+            let currencyLabel = row.staticTexts["transaction.amount.currency"]
+            XCTAssertEqual(currencyLabel.label, currency)
+            reveal(currencyLabel, fullyVisible: true, navigationBar: navigationBar,
+                   contentHeader: resultCount, contentContainer: list)
+            XCTAssertGreaterThanOrEqual(currencyLabel.frame.minX + 0.001, row.frame.minX)
+            XCTAssertLessThanOrEqual(currencyLabel.frame.maxX, row.frame.maxX + 0.001)
             captureScreenshot("\(largestText ? "最大字号" : "普通字号")完整金额-\(merchant)")
             let top = max(row.frame.minY, visibleTop)
             let bottom = min(row.frame.maxY, contentBottom)
@@ -669,6 +686,78 @@ final class CoreFlowsUITests: XCTestCase {
             tap(app.navigationBars["交易详情"].buttons["完成"])
             XCTAssertTrue(app.navigationBars["交易详情"].waitForNonExistence(timeout: 10))
         }
+    }
+
+    func testLongPrecisionAmountScrollsWithoutSplittingOrChangingDigitsAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("amountPrecision")
+        tapRootTab("交易")
+        let row = app.buttons["transaction.UI Long Precision"]
+        let navigationBar = app.navigationBars["交易"]
+        reveal(row, fullyVisible: true, navigationBar: navigationBar, allowOversizedButton: true)
+        // The row owns the complete VoiceOver label. Its native scroll viewport
+        // remains addressable within this uniquely identified transaction row.
+        let scroll = row.scrollViews.firstMatch
+        let list = app.collectionViews.firstMatch
+        let count = app.staticTexts["transactions.results.count"]
+        reveal(row.staticTexts["transaction.amount.currency"], fullyVisible: true,
+               navigationBar: navigationBar, contentHeader: count, contentContainer: list)
+        func visibleViewport() -> CGRect {
+            let top = max(navigationBar.frame.maxY, count.frame.maxY, list.frame.minY)
+            let bottom = min(contentBottom, list.frame.maxY)
+            return CGRect(x: list.frame.minX, y: top, width: list.frame.width, height: bottom - top)
+        }
+        // The raw scroll child is hidden from VoiceOver by the owning row.
+        // Align its entire physical viewport, then prove the actual user pan.
+        // Requiring an AX activation point here oscillated above/below the header.
+        for _ in 0..<8 {
+            let viewport = visibleViewport()
+            let target = scroll.frame
+            if viewport.insetBy(dx: -0.001, dy: -0.001).contains(target) { break }
+            let distance = target.minY < viewport.minY
+                ? viewport.minY + 24 - target.minY
+                : viewport.maxY - 24 - target.maxY
+            let shift = max(-120, min(120, distance))
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: app.frame.width * 0.03, dy: viewport.midY))
+            let end = origin.withOffset(CGVector(dx: app.frame.width * 0.03, dy: viewport.midY + shift))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        let viewport = visibleViewport()
+        let scrollFrame = scroll.frame
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(row.isEnabled)
+        XCTAssertTrue(viewport.insetBy(dx: -0.001, dy: -0.001).contains(scrollFrame))
+        XCTAssertGreaterThanOrEqual(scrollFrame.width, 44)
+        XCTAssertGreaterThanOrEqual(scroll.frame.height, 44)
+        let exact = "0.0000000000000000000000000001"
+        XCTAssertTrue(row.label.replacingOccurrences(of: ",", with: "").contains(exact + " CNY"))
+        let content = scroll.children(matching: .other).firstMatch
+        XCTAssertGreaterThan(content.frame.width, scroll.frame.width)
+        XCTAssertLessThanOrEqual(content.frame.height, scroll.frame.height + 0.001)
+        let initialX = content.frame.minX
+        let bounds = XCTAttachment(string: "viewport=\(viewport); scroll=\(scrollFrame); content=\(content.frame)")
+        bounds.name = "超长金额实际滚动区域"
+        bounds.lifetime = .keepAlways
+        add(bounds)
+        captureScreenshot("最大字号超长精度金额起始位置")
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let inset = max(22, scrollFrame.width * 0.1)
+        let start = origin.withOffset(CGVector(dx: scrollFrame.maxX - inset, dy: scrollFrame.midY))
+        let end = origin.withOffset(CGVector(dx: scrollFrame.minX + inset, dy: scrollFrame.midY))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertLessThan(content.frame.minX, initialX - 20)
+        XCTAssertFalse(app.navigationBars["交易详情"].exists)
+        XCTAssertTrue(row.label.replacingOccurrences(of: ",", with: "").contains(exact + " CNY"))
+        captureScreenshot("最大字号超长精度金额横向查看")
+        // The merchant can be above this tall row's viewport after the pan.
+        // Activate its visible currency outside the nested horizontal scroller.
+        let currency = row.staticTexts["transaction.amount.currency"]
+        reveal(currency, fullyVisible: true, navigationBar: navigationBar,
+               contentHeader: count, contentContainer: list)
+        currency.tap()
+        XCTAssertTrue(app.navigationBars["交易详情"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[exact + " CNY"].exists)
     }
 
     func testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize() throws {
@@ -1815,6 +1904,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(ordinary.value as? String, "1")
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "0")
+        let belowThreshold = app.staticTexts["单笔未满 20 CNY"]
+        reveal(belowThreshold)
+        XCTAssertTrue(belowThreshold.exists)
 
         tap(app.buttons["返回修改交易"])
         replaceText("24", in: app.textFields["transactionAmount"])
@@ -1834,10 +1926,219 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertEqual(amount.value as? String, "25")
         reveal(perTransaction)
         XCTAssertEqual(perTransaction.value as? String, "0")
+        let manuallyCancelled = app.staticTexts["已手动取消，可重新勾选。"]
+        reveal(manuallyCancelled)
+        XCTAssertTrue(manuallyCancelled.exists)
         XCTAssertFalse(app.textFields["allocation.amount.UI Per Transaction"].exists)
         captureScreenshot("金额跨门槛后保留手动取消的逐笔活动")
         tap(app.buttons["saveTransaction"])
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+    }
+
+    func testPromotionConfirmationGuidanceAndManualOverrideAtLargestTextSize() {
+        executionTimeAllowance = 240
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("confirmationGuidance")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        for message in ["报名已截止 · 尚未报名", "优惠笔数已用完，可手动修正。", "币种不同，合格金额需手填。"] {
+            let hint = app.staticTexts[message]
+            revealInConfirmation(hint)
+            XCTAssertTrue(hint.exists)
+            captureScreenshot("最大字号未预选说明-\(message)")
+        }
+        let remaining = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "剩余 1/3 笔")).firstMatch
+        revealInConfirmation(remaining)
+        XCTAssertTrue(remaining.exists)
+        let exhausted = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "剩余 0/2 笔")).firstMatch
+        revealInConfirmation(exhausted, towardTop: true)
+        XCTAssertTrue(exhausted.exists)
+        let spent = app.switches["allocation.toggle.UI Exhausted"]
+        revealInConfirmation(spent, towardTop: true)
+        XCTAssertEqual(spent.value as? String, "0")
+        tap(spent.switches.firstMatch)
+        XCTAssertEqual(spent.value as? String, "1")
+        let manual = app.textFields["allocation.amount.UI Exhausted"]
+        revealInConfirmation(manual)
+        XCTAssertEqual(manual.value as? String, "24")
+        tap(app.buttons["返回修改交易"])
+        tap(app.buttons["saveTransaction"])
+        revealInConfirmation(spent)
+        XCTAssertEqual(spent.value as? String, "1")
+        captureScreenshot("最大字号未预选原因与人工修正读回")
+    }
+
+    func testPromotionInlineRulesKeepManualAmountThroughNavigationSaveAndRelaunchAtLargestTextSize() {
+        // The complete SE flow reached both saved-allocation readbacks and
+        // teardown at 248.11s in the 9bd16a1 source run. Keep every assertion
+        // and user interaction within the existing native maximum.
+        executionTimeAllowance = 300
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("confirmationGuidance")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        tap(app.buttons["saveTransaction"])
+        let search = app.textFields["allocation.search"]
+        revealInConfirmation(search)
+        enter("UI Remaining", into: search)
+        tap(app.keyboards.buttons["完成"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let remaining = app.switches["allocation.toggle.UI Remaining"]
+        revealInConfirmation(remaining)
+        XCTAssertEqual(remaining.value as? String, "1")
+        let amount = app.textFields["allocation.amount.UI Remaining"]
+        revealInConfirmation(amount)
+        replaceText("22.25", in: amount)
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        let rules = app.buttons["查看规则"]
+        revealInConfirmation(rules)
+        tap(rules)
+        for text in ["指定商户及线上支付适用。", "不含退款与现金交易。"] {
+            let clause = app.staticTexts[text]
+            revealInConfirmation(clause)
+            XCTAssertTrue(clause.exists)
+        }
+        captureScreenshot("最大字号确认页直接查阅规则与排除项")
+        revealInConfirmation(rules, towardTop: true)
+        tap(rules)
+        revealInConfirmation(amount, towardTop: true)
+        XCTAssertEqual(amount.value as? String, "22.25")
+        tap(app.buttons["返回修改交易"])
+        tap(app.buttons["saveTransaction"])
+        revealInConfirmation(remaining)
+        XCTAssertEqual(remaining.value as? String, "1")
+        revealInConfirmation(amount)
+        XCTAssertEqual(amount.value as? String, "22.25")
+        XCTAssertEqual(app.textFields["allocation.amount.UI Monthly"].value as? String, "24")
+        captureScreenshot("最大字号规则查阅和返回后保留人工分配")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        // Only this new transaction leaves the optional merchant blank.
+        tap(app.buttons["transaction."])
+        for (title, amount) in [("UI Remaining", "22.25 CNY"), ("UI Monthly", "24 CNY")] {
+            let allocation = app.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS %@ AND label CONTAINS %@", "促销 \(title)", amount
+            )).firstMatch
+            reveal(allocation, fullyVisible: true)
+            XCTAssertTrue(allocation.exists)
+        }
+    }
+
+    private func revealInConfirmation(_ element: XCUIElement, towardTop: Bool = false) {
+        let navigationBar = app.navigationBars.matching(NSPredicate(
+            format: "identifier IN %@", argumentArray: [["添加交易", "编辑交易"]]
+        )).firstMatch
+        reveal(element, scrollTowardTopWhenMissing: towardTop, fullyVisible: true,
+               navigationBar: navigationBar,
+               contentHeader: app.descendants(matching: .any).matching(identifier: "transaction.steps").firstMatch,
+               contentContainer: app.descendants(matching: .any).matching(identifier: "transaction.form").firstMatch)
+    }
+
+    func testPromotionSearchDistinguishesSameTitlePeriodsAndPersistsHistoricalChoice() {
+        executionTimeAllowance = 240
+        launch("confirmationGuidance")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        enter("UI Period Choice", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        func periodToggle(_ number: Int) -> XCUIElement {
+            app.switches.matching(NSPredicate(format: "label BEGINSWITH %@", "UI Monthly · 第 \(number) 期")).firstMatch
+        }
+        let current = periodToggle(2)
+        revealInConfirmation(current)
+        XCTAssertEqual(current.value as? String, "1")
+        tap(current.switches.firstMatch)
+        let search = app.textFields["allocation.search"]
+        revealInConfirmation(search, towardTop: true)
+        enter("UI Monthly", into: search)
+        tap(app.keyboards.buttons["完成"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        for number in 1...4 {
+            let period = periodToggle(number)
+            revealInConfirmation(period)
+            XCTAssertTrue(period.exists)
+        }
+        for state in ["已结束", "未开始", "已归档"] {
+            let metadata = app.staticTexts.matching(NSPredicate(
+                format: "identifier BEGINSWITH 'allocation.period.' AND label CONTAINS %@", state
+            )).firstMatch
+            revealInConfirmation(metadata, towardTop: state == "已结束")
+            XCTAssertTrue(metadata.label.contains("年"))
+            XCTAssertTrue(metadata.label.contains("–"))
+            captureScreenshot("同名活动搜索-\(state)")
+        }
+        let previous = periodToggle(1)
+        revealInConfirmation(previous, towardTop: true)
+        tap(previous.switches.firstMatch)
+        let allocation = app.textFields["allocation.amount.UI Monthly"]
+        replaceText("17.5", in: allocation)
+        tap(app.buttons["transaction.keyboard.dismiss"])
+        revealInConfirmation(search, towardTop: true)
+        replaceText("", in: search)
+        tap(app.keyboards.buttons["完成"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        revealInConfirmation(previous, towardTop: true)
+        XCTAssertEqual(previous.value as? String, "1")
+        XCTAssertEqual(current.value as? String, "0")
+        XCTAssertEqual(allocation.value as? String, "17.5")
+        captureScreenshot("同名月度活动显示期次与日期并保留历史选择")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Period Choice"])
+        tap(app.navigationBars["交易详情"].buttons["编辑"])
+        tap(app.buttons["saveTransaction"])
+        revealInConfirmation(previous)
+        XCTAssertEqual(previous.value as? String, "1")
+        XCTAssertEqual(current.value as? String, "0")
+        XCTAssertEqual(app.textFields["allocation.amount.UI Monthly"].value as? String, "17.5")
+    }
+
+    func testNonstackingCandidatesExplainManualChoiceAndAllowSinglePromotionSave() {
+        launch("confirmationConflict")
+        openCard("UI Primary")
+        tap(app.buttons["card.addTransaction"])
+        enter("24", into: app.textFields["transactionAmount"])
+        enter("UI Manual Stacking", into: app.textFields["商户（可选）"])
+        tap(app.buttons["saveTransaction"])
+        let monthly = app.switches["allocation.toggle.UI Monthly"]
+        reveal(monthly)
+        XCTAssertEqual(monthly.value as? String, "0")
+        let remaining = app.switches["allocation.toggle.UI Remaining"]
+        reveal(remaining)
+        XCTAssertEqual(remaining.value as? String, "0")
+        let explanation = app.staticTexts.matching(NSPredicate(
+            format: "label == %@", "叠加条件冲突，请手动选择。"
+        )).firstMatch
+        reveal(explanation, scrollTowardTopWhenMissing: true)
+        XCTAssertTrue(explanation.exists)
+        tap(remaining.switches.firstMatch)
+        XCTAssertEqual(remaining.value as? String, "1")
+        XCTAssertEqual(app.textFields["allocation.amount.UI Remaining"].value as? String, "24")
+        tap(app.buttons["saveTransaction"])
+        XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openCard("UI Primary")
+        tap(app.buttons["card.transactions"])
+        tap(app.buttons["transaction.UI Manual Stacking"])
+        let allocation = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@", "促销 UI Remaining", "24 CNY"
+        )).firstMatch
+        reveal(allocation)
+        XCTAssertTrue(allocation.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "促销 UI Monthly")).firstMatch.exists)
     }
 
     func testTransactionAllocationPersistsAndUpdatesPromotion() {
@@ -2160,6 +2461,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
+        // The 9bd16a1 source run finished every assertion by 176.76s and
+        // reported 180.131s including termination. Preserve the full flow
+        // within the same 240s allowance used for other long UI cases.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
         tapRootTab("交易")
@@ -2782,7 +3087,15 @@ final class CoreFlowsUITests: XCTestCase {
         let transaction = app.buttons["transaction.UI Accessibility Coffee"]
         XCTAssertTrue(transaction.waitForExistence(timeout: 10))
         XCTAssertTrue(transaction.label.contains("12,345.6789 CNY"))
-        let normalAmountHeight = app.staticTexts["12,345.6789 CNY"].frame.height
+        let number = transaction.staticTexts["transaction.amount.value"]
+        let currency = transaction.staticTexts["transaction.amount.currency"]
+        let navigationBar = app.navigationBars["交易"]
+        let count = app.staticTexts["transactions.results.count"]
+        let list = app.collectionViews.firstMatch
+        reveal(number, fullyVisible: true, navigationBar: navigationBar, contentHeader: count, contentContainer: list)
+        XCTAssertEqual(number.label, "12,345.6789")
+        XCTAssertEqual(currency.label, "CNY")
+        let normalAmountHeight = number.frame.height
         XCTAssertGreaterThan(normalAmountHeight, 0)
         let normalSearchHeight = app.searchFields["搜索交易"].frame.height
         XCTAssertGreaterThan(normalSearchHeight, 0)
@@ -2792,10 +3105,13 @@ final class CoreFlowsUITests: XCTestCase {
         relaunchAtLargestTextSize()
         tapRootTab("交易")
         reveal(transaction)
-        XCTAssertGreaterThan(app.staticTexts["12,345.6789 CNY"].frame.height, normalAmountHeight * 1.3)
+        reveal(number, fullyVisible: true, navigationBar: navigationBar, contentHeader: count, contentContainer: list)
+        XCTAssertGreaterThan(number.frame.height, normalAmountHeight * 1.3)
+        XCTAssertEqual(number.label, "12,345.6789")
+        XCTAssertEqual(currency.label, "CNY")
         XCTAssertGreaterThan(app.searchFields["搜索交易"].frame.height, normalSearchHeight * 1.3)
         captureScreenshot("最大字号交易列表")
-        reveal(app.staticTexts["12,345.6789 CNY"], fullyVisible: true)
+        reveal(currency, fullyVisible: true, navigationBar: navigationBar, contentHeader: count, contentContainer: list)
         captureScreenshot("最大字号精确金额")
         try auditAccessibility(for: [.textClipped])
 
@@ -2823,6 +3139,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountCycleHistoryFindsOlderPaidCyclesAndClearsFilters() {
+        // Run 42440714278 reached teardown at 208.85s after every original
+        // filter/detail/clear assertion. It included a 60s native animation
+        // notification wait; retain that unresolved observation and the flow.
+        executionTimeAllowance = 240
         launch("accountHistory")
         openCard("UI Shared")
         tap(app.buttons["card.account"])
@@ -5245,16 +5565,20 @@ final class CoreFlowsUITests: XCTestCase {
         }
         var previousBarFrame = tabBar.frame
         var previousButtonFrame = button.frame
-        var observation = "tab=\(title); readiness predicate has not run"
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+        var observation = "tab=\(title); readiness observation has not run"
+        func observeReadiness() -> Bool {
+            // Run 42436311752 reported missing elements for its earlier query;
+            // the later screen and fresh hierarchy showed the real root bar.
+            let currentBar = self.app.tabBars.element
+            let currentButton = self.rootTabButton(title)
             let state = self.app.state
-            let barExists = tabBar.exists
-            let buttonExists = button.exists
+            let barExists = currentBar.exists
+            let buttonExists = currentButton.exists
             observation = "tab=\(title); elapsed=\(ProcessInfo.processInfo.systemUptime - started); state=\(state.rawValue); barExists=\(barExists); buttonExists=\(buttonExists)"
             guard state == .runningForeground, barExists, buttonExists else { return false }
             let appFrame = self.app.frame
-            let barFrame = tabBar.frame
-            let buttonFrame = button.frame
+            let barFrame = currentBar.frame
+            let buttonFrame = currentButton.frame
             defer {
                 previousBarFrame = barFrame
                 previousButtonFrame = buttonFrame
@@ -5265,16 +5589,26 @@ final class CoreFlowsUITests: XCTestCase {
             let geometryReady = !barFrame.isEmpty && !buttonFrame.isEmpty
                 && framesStable && framesContained
                 && buttonFrame.width >= 44 && buttonFrame.height >= 44
-            let enabled = button.isEnabled
+            let enabled = currentButton.isEnabled
             observation += "; app=\(appFrame); bar=\(barFrame); button=\(buttonFrame); stable=\(framesStable); contained=\(framesContained); geometryReady=\(geometryReady); enabled=\(enabled)"
             let hitTested = geometryReady && enabled
-            let hittable = hitTested && button.isHittable
+            let hittable = hitTested && currentButton.isHittable
             observation += "; hitTested=\(hitTested); hittable=\(hittable)"
             return geometryReady && enabled && hittable
-        }, object: button)
-        let result = XCTWaiter.wait(for: [ready], timeout: 10)
+        }
+        let result: XCTWaiter.Result
+        if observeReadiness() {
+            result = .completed
+        } else {
+            // Resolve the first ordinary snapshot before starting the existing
+            // wait window; do not bind the predicate to an earlier tab element.
+            let ready = XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in observeReadiness() }, object: app
+            )
+            result = XCTWaiter.wait(for: [ready], timeout: 10)
+        }
         observation += "; waitResult=\(result.rawValue)"
-        if result == .completed { observation += "; selected=\(button.isSelected)" }
+        if result == .completed { observation += "; selected=\(rootTabButton(title).isSelected)" }
         let geometry = XCTAttachment(string: observation)
         geometry.name = "原生底栏入口-\(title)"
         geometry.lifetime = .keepAlways
@@ -5284,11 +5618,13 @@ final class CoreFlowsUITests: XCTestCase {
             XCTFail("Expected a foreground, enabled tab with stable visible geometry: \(title). \(observation)")
             return
         }
-        assertTouchTarget(button)
+        let currentButton = rootTabButton(title)
+        let currentBar = app.tabBars.element
+        assertTouchTarget(currentButton)
         // Activate the visible tab at its verified screen position. A native
         // element tap in run 42204421317 left Home selected despite hittability.
         let appFrame = app.frame
-        let target = button.frame.intersection(tabBar.frame)
+        let target = currentButton.frame.intersection(currentBar.frame)
         XCTAssertGreaterThanOrEqual(target.width, 44)
         XCTAssertGreaterThanOrEqual(target.height, 44)
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(

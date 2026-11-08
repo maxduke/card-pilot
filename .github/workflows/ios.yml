@@ -128,22 +128,30 @@ jobs:
   test:
     name: test
     if: always()
-    needs: native_tests
+    needs: [native_tests, small-screen-ui]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every native test partition to pass
+      - name: Require every native and small-screen partition to pass
         env:
           NATIVE_TEST_RESULT: ${{ needs.native_tests.result }}
-        run: test "$NATIVE_TEST_RESULT" = success
+          SMALL_SCREEN_TEST_RESULT: ${{ needs['small-screen-ui'].result }}
+        run: |
+          test "$NATIVE_TEST_RESULT" = success
+          test "$SMALL_SCREEN_TEST_RESULT" = success
 
   small-screen-ui:
-    name: Small-screen UI (SE 3, dark)
+    name: Small-screen UI (SE 3, dark, ${{ matrix.group }})
     runs-on: macos-15
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [amounts, forms]
     permissions:
       contents: read
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      SE_TEST_GROUP: ${{ matrix.group }}
     steps:
       - uses: actions/checkout@v5
       - name: Run complete small-screen flows
@@ -170,20 +178,42 @@ jobs:
           assert Path("simulator-appearance-before.txt").read_text().strip() == "dark"
           assert Path("simulator-contrast-before.txt").read_text().strip() == "enabled"
           PY_APPEARANCE
+          python3 - <<'PY_PARTITION'
+          import json, os
+          from pathlib import Path
+          groups = {
+              "amounts": [
+                  "testTransactionAmountsRemainReadableWithMixedLengthNames",
+                  "testTransactionAmountsRemainReadableAtLargestTextSize",
+                  "testLongPrecisionAmountScrollsWithoutSplittingOrChangingDigitsAtLargestTextSize",
+                  "testNumericKeyboardDismissalAtLargestTextSize"
+              ],
+              "forms": [
+                  "testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets",
+                  "testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize",
+                  "testPromotionConfirmationGuidanceAndManualOverrideAtLargestTextSize",
+                  "testPromotionInlineRulesKeepManualAmountThroughNavigationSaveAndRelaunchAtLargestTextSize"
+              ]
+          }
+          group = os.environ["SE_TEST_GROUP"]
+          tests = groups[group]
+          all_tests = [name for values in groups.values() for name in values]
+          assert len(all_tests) == len(set(all_tests)) == 8
+          Path("test-selections.txt").write_text("\n".join(
+              "-only-testing:CardPilotUITests/CoreFlowsUITests/" + name for name in tests) + "\n")
+          Path("test-partition.json").write_text(json.dumps(
+              {"group": group, "tests": tests, "expectedCount": len(tests), "totalSmallScreenCount": len(all_tests)}, indent=2) + "\n")
+          PY_PARTITION
           test_args=(
             -project CardPilot.xcodeproj -scheme CardPilot
             -destination "platform=iOS Simulator,id=$device_id"
             -resultBundlePath TestResults.xcresult
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testBillingSchedulesAtLargestTextSizeSupportAccessibleTextAndNavigationTargets
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testNumericKeyboardDismissalAtLargestTextSize
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableWithMixedLengthNames
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testTransactionAmountsRemainReadableAtLargestTextSize
-            -only-testing:CardPilotUITests/CoreFlowsUITests/testEnrollmentDeadlineAndReminderSettingsRemainDiscoverableAtLargestTextSize
             -parallel-testing-enabled NO -test-timeouts-enabled YES
             -default-test-execution-time-allowance 180
             -maximum-test-execution-time-allowance 300
             CODE_SIGNING_ALLOWED=NO
           )
+          while IFS= read -r selector; do test_args+=("$selector"); done < test-selections.txt
           python3 - "${test_args[@]}" <<'PY_COMMAND'
           import json, sys
           from pathlib import Path
@@ -220,17 +250,18 @@ jobs:
           import json
           from pathlib import Path
           summary = json.loads(Path("summary.json").read_text())
+          partition = json.loads(Path("test-partition.json").read_text())
           assert Path("simulator-appearance-after.txt").read_text().strip() == "dark"
           assert Path("simulator-contrast-after.txt").read_text().strip() == "enabled"
           assert summary["result"] == "Passed", summary
-          assert summary["passedTests"] == summary["totalTestCount"] == 5, summary
+          assert summary["passedTests"] == summary["totalTestCount"] == partition["expectedCount"], summary
           assert summary["failedTests"] == summary["skippedTests"] == summary["expectedFailures"] == 0, summary
           PY_RESULT
       - name: Upload small-screen test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ios-small-screen-test-results
+          name: ios-small-screen-test-results-${{ matrix.group }}
           path: |
             TestResults.xcresult
             summary.json
@@ -241,6 +272,8 @@ jobs:
             app-idle-diagnostics
             source-revision.txt
             test-command.json
+            test-selections.txt
+            test-partition.json
             xcode-version.txt
             macos-version.txt
             architecture.txt
