@@ -71,8 +71,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testAccountBillingDateWheelsAtLargestTextSizeSaveAndPreserveRepayment() throws {
-        // The two native selection pages and restart readback are one flow.
-        executionTimeAllowance = 240
+        // Main run 42460638797 completed every date/status/repayment assertion
+        // and reached teardown at 243.24s. Keep both native selection pages
+        // and restart readback within the existing native maximum.
+        executionTimeAllowance = 300
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         try verifyAccessibleBillingDateSave(accountEditor: true)
     }
