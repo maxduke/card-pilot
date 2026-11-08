@@ -112,6 +112,9 @@ struct CardEditorView: View {
                     }
                 }
                 .scrollDismissesKeyboard(.immediately)
+                // Leave room for the numeric accessory as the Form settles;
+                // its last input row can otherwise extend under the toolbar.
+                .safeAreaPadding(.bottom, focusedField == .lastFour ? 16 : 0)
                 .accessibilityIdentifier("card.editor.form")
                 .onChange(of: focusedField) { _, field in
                     guard field == .lastFour else { return }
