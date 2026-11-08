@@ -1,0 +1,93 @@
+name: App source
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/app-source.yml
+      - scripts/build_app_source.py
+      - scripts/tests/test_app_source.py
+      - source/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/app-source.yml
+      - scripts/build_app_source.py
+      - scripts/tests/test_app_source.py
+      - source/**
+  workflow_dispatch:
+  # Releases created by GITHUB_TOKEN do not trigger another release workflow.
+  # Read published Releases after the unsigned-IPA workflow has finished instead.
+  workflow_run:
+    workflows: [Unsigned IPA]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-source-${{ github.event_name == 'pull_request' && github.event.number || 'publish' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate app source
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # For workflow_run, github.sha is on the default branch. Never run
+          # code or consume artifacts from the triggering IPA build's ref.
+          ref: ${{ github.sha }}
+      - name: Test source generation and release validation
+        run: python3 -m unittest discover -s scripts/tests -p test_app_source.py -v
+
+  publish:
+    name: Publish app source
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Select the latest complete stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]' | jq -s '.' > releases.json
+          python3 scripts/build_app_source.py select --repository "$GITHUB_REPOSITORY" \
+            --releases releases.json --output selected-release.json
+      - name: Download and verify the published package
+        env:
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          ipa_url=$(jq -r '.assets[] | select(.name == "CardPilot-unsigned.ipa") | .browser_download_url' selected-release.json)
+          checksum_url=$(jq -r '.assets[] | select(.name == "CardPilot-unsigned.ipa.sha256") | .browser_download_url' selected-release.json)
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 "$ipa_url" -o package/CardPilot-unsigned.ipa
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 "$checksum_url" -o package/CardPilot-unsigned.ipa.sha256
+          python3 scripts/build_app_source.py build --repository "$GITHUB_REPOSITORY" \
+            --release selected-release.json --ipa package/CardPilot-unsigned.ipa \
+            --checksum package/CardPilot-unsigned.ipa.sha256 --base-url "$PAGES_BASE_URL" --output _site
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Deploy source and install page
+        id: deployment
+        uses: actions/deploy-pages@v4
