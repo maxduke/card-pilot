@@ -977,6 +977,8 @@ struct TransactionEditorForm: View {
                     .fixedSize()
                 TextField("", text: $promotionSearchText)
                     .focused($focusedInput, equals: .promotionSearch)
+                    .submitLabel(.done)
+                    .onSubmit { focusedInput = nil }
                     .accessibilityLabel("搜索其他促销")
                     .accessibilityIdentifier("allocation.search")
             }
@@ -1191,34 +1193,34 @@ struct TransactionEditorForm: View {
             return "已手动取消，可重新勾选。"
         }
         guard kind == .purchase else { return nil }
-        if promotion.archivedAt != nil { return "已归档，不会自动勾选。" }
+        if promotion.archivedAt != nil { return "已归档，不会预选。" }
         if !candidatePromotions.contains(where: { $0.id == promotion.id }) {
-            return "卡片或活动日期不匹配，需手动确认。"
+            return "卡片或日期不匹配，需手动确认。"
         }
         if promotion.enrollmentStatus == .notEnrolled {
-            return "\(promotionEnrollmentText(promotion, today: currentDay.today.rawValue))，不会自动勾选。"
+            return promotionEnrollmentText(promotion, today: currentDay.today.rawValue)
         }
         let normalizedCurrency = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if normalizedCurrency != promotion.progressCurrencyCode {
-            return "币种不同，需手动填写合格金额。"
+            return "币种不同，合格金额需手填。"
         }
         guard let progress = try? PromotionCalculator.progress(for: promotion) else {
             return "活动进度无法计算，请核对已有记录。"
         }
-        if progress.remainingTransactionCount == 0 { return "优惠笔数已用完，可手动核对或修正。" }
-        if progress.remainingCap == .zero { return "累计计入额度已用完，可手动核对或修正。" }
+        if progress.remainingTransactionCount == 0 { return "优惠笔数已用完，可手动修正。" }
+        if progress.remainingCap == .zero { return "累计计入已满，可手动修正。" }
         if let amount = CardPilotUI.decimal(amountText, format: amountFormat),
            let threshold = promotion.perTransactionThreshold, amount < threshold {
-            return "单笔未满 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))，不会自动勾选。"
+            return "单笔未满 \(CardPilotUI.amountText(threshold, currencyCode: promotion.progressCurrencyCode))"
         }
-        return stackingConflict ? "候选活动中有不可叠加项，请手动选择。" : nil
+        return stackingConflict ? "叠加条件冲突，请手动选择。" : nil
     }
 
     private func promotionSummary(_ promotion: Promotion) -> String {
         var parts = [promotion.progressCurrencyCode]
         if let benefitTransactionCap = promotion.benefitTransactionCap {
             if let remaining = try? PromotionCalculator.progress(for: promotion).remainingTransactionCount {
-                parts.append("优惠剩余 \(remaining)/\(benefitTransactionCap) 笔")
+                parts.append("剩余 \(remaining)/\(benefitTransactionCap) 笔")
             } else {
                 parts.append("最多 \(benefitTransactionCap) 笔 · 进度待核对")
             }

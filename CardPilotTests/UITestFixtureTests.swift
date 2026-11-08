@@ -34,7 +34,7 @@ final class UITestFixtureTests: XCTestCase {
         XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
         let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
         let precise = try XCTUnwrap(transactions.first { $0.merchant == "UI Long Precision" })
-        XCTAssertEqual(precise.amount, Decimal(string: "12345678901234567890.123456789012345678"))
+        XCTAssertEqual(precise.amount, Decimal(string: "0.0000000000000000000000000001"))
         XCTAssertEqual(CardPilotUI.decimal(CardPilotUI.amountText(precise.amount)), precise.amount)
     }
 

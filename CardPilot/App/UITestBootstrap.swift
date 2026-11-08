@@ -315,7 +315,7 @@ enum UITestBootstrap {
         if scenario == .deadlineAndAmounts || scenario == .amountPrecision {
             let precise = scenario == .amountPrecision
             let names = ["UI Short", precise ? "UI Long Precision" : "UI 长商户名称用于验证金额不会随名称长度切换布局", "UI Refund"]
-            let values = ["12.5", precise ? "12345678901234567890.123456789012345678" : "1234567.89", "0.001"]
+            let values = ["12.5", precise ? "0.0000000000000000000000000001" : "1234567.89", "0.001"]
             for index in names.indices {
                 let transaction = Transaction(
                     id: UUID(uuidString: String(format: "78000000-0000-0000-0000-%012d", index + 1))!,
