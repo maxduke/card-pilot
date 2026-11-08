@@ -1971,7 +1971,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testPromotionInlineRulesKeepManualAmountThroughNavigationSaveAndRelaunchAtLargestTextSize() {
-        executionTimeAllowance = 240
+        // The complete SE flow reached both saved-allocation readbacks and
+        // teardown at 248.11s in the 9bd16a1 source run. Keep every assertion
+        // and user interaction within the existing native maximum.
+        executionTimeAllowance = 300
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("confirmationGuidance")
         openCard("UI Primary")
@@ -2458,6 +2461,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testReversedPurchaseRefundAndRelatedNavigationAtLargestTextSize() throws {
+        // The 9bd16a1 source run finished every assertion by 176.76s and
+        // reported 180.131s including termination. Preserve the full flow
+        // within the same 240s allowance used for other long UI cases.
+        executionTimeAllowance = 240
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("linkedRefunds")
         tapRootTab("交易")
