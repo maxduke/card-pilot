@@ -132,7 +132,6 @@ struct PromotionDetailView: View {
                     ForEach(sortedAllocations, id: \.id) { allocation in
                         Button {
                             editingAllocation = allocation
-                            showingAllocationEditor = true
                         } label: {
                             allocationRow(allocation)
                         }
@@ -269,7 +268,10 @@ struct PromotionDetailView: View {
             PromotionEditorView(promotion: displayedPromotion, banks: banks, networks: networks, cards: cards, initialStep: step)
         }
         .trackedSheet(isPresented: $showingAllocationEditor) {
-            AllocationEditorView(promotion: displayedPromotion, allocation: editingAllocation)
+            AllocationEditorView(promotion: displayedPromotion, allocation: nil)
+        }
+        .trackedSheet(item: $editingAllocation) { allocation in
+            AllocationEditorView(promotion: displayedPromotion, allocation: allocation)
         }
         .confirmationDialog("复制到下个月？", isPresented: $showingCopyConfirmation, titleVisibility: .visible) {
             Button("复制活动", action: copyToNextMonth)
@@ -427,6 +429,7 @@ struct PromotionDetailView: View {
                 .disabled(displayedPeriodIndex >= seriesPromotions.count - 1)
                 .accessibilityLabel("下一期")
             }
+            .buttonStyle(.borderless)
             Text("本期、往期和后续期都保留独立进度；可从这里快速切换。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -594,7 +597,6 @@ struct PromotionDetailView: View {
     }
 
     private func addAllocation() {
-        editingAllocation = nil
         showingAllocationEditor = true
     }
 

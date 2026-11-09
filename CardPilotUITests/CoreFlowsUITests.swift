@@ -884,7 +884,7 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["promotion.keyboard.dismiss"])
         replaceText("2000", in: cap)
         tap(app.buttons["promotion.keyboard.dismiss"])
-        let warning = app.descendants(matching: .any).matching(identifier: "promotion.editor.amountRuleWarning").firstMatch
+        let warning = app.staticTexts["promotion.editor.amountRuleWarning"]
         reveal(warning, fullyVisible: true, navigationBar: app.navigationBars["编辑促销"])
         captureScreenshot("活动金额条件矛盾提醒")
         replaceText("3000", in: cap)
@@ -952,6 +952,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         openPromotion("UI Monthly")
         let allocation = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Manual Purchase")).firstMatch
+        XCTAssertTrue(allocation.label.contains("计入 24.5 CNY"))
         tap(allocation)
         XCTAssertTrue(app.navigationBars["编辑促销分配"].waitForExistence(timeout: 10))
         reveal(amount)
@@ -970,11 +971,13 @@ final class CoreFlowsUITests: XCTestCase {
         captureScreenshot("系列归档明确单期范围")
         tap(app.buttons["归档本期"])
         tap(app.buttons["下一期"])
+        XCTAssertTrue(app.staticTexts["第 3 期，共 3 期"].waitForExistence(timeout: 10))
         tap(app.buttons["promotion.more"])
         XCTAssertTrue(app.buttons["归档本期"].waitForExistence(timeout: 10))
         tap(app.buttons["归档本期"])
         tap(app.buttons["取消"])
         tap(app.buttons["上一期"])
+        XCTAssertTrue(app.staticTexts["第 2 期，共 3 期"].waitForExistence(timeout: 10))
         tap(app.buttons["promotion.more"])
         tap(app.buttons["恢复本期"])
         XCTAssertTrue(scope.waitForExistence(timeout: 10))
