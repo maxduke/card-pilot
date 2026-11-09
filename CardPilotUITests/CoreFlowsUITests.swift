@@ -1665,9 +1665,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testNumericKeyboardDismissalAtLargestTextSize() throws {
-        // Both font audits change text sizes. Include restoring
-        // and checking each screen within the workflow's existing maximum.
-        executionTimeAllowance = 240
+        // SE 3 run 42586090019 completed both keyboard flows and font audits
+        // at 285s, after exceeding 240s. Keep the full flow within the
+        // workflow's existing 300s maximum without dropping either audit.
+        executionTimeAllowance = 300
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("core")
         openCard("UI Primary")
