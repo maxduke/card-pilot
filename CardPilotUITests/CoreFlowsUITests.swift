@@ -952,6 +952,7 @@ final class CoreFlowsUITests: XCTestCase {
         app.launch()
         openPromotion("UI Monthly")
         let allocation = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Manual Purchase")).firstMatch
+        reveal(allocation, fullyVisible: true, navigationBar: app.navigationBars["UI Monthly"])
         XCTAssertTrue(allocation.label.contains("计入 24.5 CNY"))
         tap(allocation)
         XCTAssertTrue(app.navigationBars["编辑促销分配"].waitForExistence(timeout: 10))
