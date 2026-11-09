@@ -5639,8 +5639,39 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func selectPromotionEditorSection(_ section: String) {
-        tap(app.buttons["promotion.editor.section"], scrollTowardTopWhenMissing: true)
-        tap(app.buttons[section])
+        let picker = app.buttons["promotion.editor.section"]
+        tap(picker, scrollTowardTopWhenMissing: true)
+        let option = app.buttons[section]
+        XCTAssertTrue(option.waitForExistence(timeout: 10))
+        // Native menu options can have a fully visible frame while XCTest
+        // rejects their AX activation point. Use the same physical selection
+        // contract as the promotion edit dialog: stable geometry, one tap,
+        // and an explicit check of the resulting selection.
+        var previousFrame = option.frame
+        var selectionPoint: CGVector?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, option.exists else { return false }
+            let frame = option.frame
+            defer { previousFrame = frame }
+            let applicationFrame = self.app.frame
+            guard !frame.isEmpty, frame == previousFrame,
+                  applicationFrame.contains(frame), option.isEnabled else { return false }
+            selectionPoint = CGVector(dx: frame.midX - applicationFrame.minX,
+                                      dy: frame.midY - applicationFrame.minY)
+            return true
+        }, object: option)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        guard let selectionPoint else {
+            XCTFail("Expected a stable, enabled promotion section option")
+            return
+        }
+        let geometry = XCTAttachment(string: "section=\(section); frame=\(option.frame); tap=\(selectionPoint)")
+        geometry.name = "原生促销分组菜单选择"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(selectionPoint).tap()
+        XCTAssertTrue(option.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(picker.label.contains(section) || (picker.value as? String ?? "").contains(section))
     }
 
     private func focusLastFour(
