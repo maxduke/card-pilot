@@ -5551,7 +5551,11 @@ final class CoreFlowsUITests: XCTestCase {
         geometry.name = "原生卡片入口-\(name)"
         geometry.lifetime = .keepAlways
         add(geometry)
-        app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        if card.frame.height > viewport.height {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        } else {
+            card.tap()
+        }
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
