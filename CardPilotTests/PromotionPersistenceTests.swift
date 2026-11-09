@@ -17,7 +17,8 @@ final class PromotionPersistenceTests: XCTestCase {
         ), through: 20260331)
         try PromotionCreationActions.save(periods, context: context)
         let selected = periods[1]
-        let transaction = Transaction(card: card, transactionOn: 20260205, amount: 60, currencyCode: "CNY")
+        let transaction = Transaction(card: card, transactionOn: 20260205, amount: 60,
+                                      currencyCode: "CNY", merchant: "测试商户")
         context.insert(transaction)
         try PromotionAllocationActions.save(60, transaction: transaction, promotion: selected,
                                             allocation: nil, context: context)
