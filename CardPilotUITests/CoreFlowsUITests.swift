@@ -2174,8 +2174,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
         app.terminate()
         app.launch()
-        openCard("UI Primary")
-        tap(app.buttons["card.transactions"])
+        // Read back through the transaction tab after relaunch; repeating
+        // the large card-detail navigation is unrelated to rule persistence.
+        tapRootTab("交易")
         // Only this new transaction leaves the optional merchant blank.
         tap(app.buttons["transaction."])
         for (title, amount) in [("UI Remaining", "22.25 CNY"), ("UI Monthly", "24 CNY")] {
