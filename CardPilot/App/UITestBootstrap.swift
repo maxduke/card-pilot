@@ -17,6 +17,7 @@ enum UITestBootstrap {
         case confirmationGuidance
         case confirmationConflict
         case promotionOverview
+        case promotionManagement
         case dashboardActions
         case linkedRefunds
         case refundIdentity
@@ -121,6 +122,31 @@ enum UITestBootstrap {
         if scenario == .promotionAmounts {
             promotion.qualifyingCap = 5000
             promotion.perTransactionThreshold = 100
+        }
+        if scenario == .promotionManagement {
+            let month = try LocalDate(year: today.year, month: today.month, day: 1)
+            let seriesID = UUID()
+            promotion.title = "UI Monthly"
+            promotion.seriesID = seriesID
+            promotion.seriesIndex = 1
+            promotion.startOn = month.rawValue
+            promotion.endOn = month.addingMonths(1).addingDays(-1).rawValue
+            for (index, offset) in [(0, -1), (2, 1)] {
+                context.insert(Promotion(
+                    seriesID: seriesID, seriesIndex: index, title: promotion.title,
+                    startOn: month.addingMonths(offset).rawValue,
+                    endOn: month.addingMonths(offset + 1).addingDays(-1).rawValue,
+                    eligibleCards: [card], progressCurrencyCode: "CNY"
+                ))
+            }
+            context.insert(Transaction(
+                card: card, transactionOn: today.rawValue, amount: 80,
+                currencyCode: "CNY", merchant: "UI Recommended Purchase"
+            ))
+            context.insert(Transaction(
+                card: sibling, transactionOn: today.rawValue, amount: 35,
+                currencyCode: "CNY", merchant: "UI Manual Purchase"
+            ))
         }
         if scenario == .allocationFeedback {
             promotion.title = allocationFeedbackFirstTitle

@@ -1,6 +1,12 @@
 import SwiftData
 import SwiftUI
 
+func promotionPeriodDescription(_ promotion: Promotion) -> String {
+    let dates = CardPilotUI.dateRangeText(start: promotion.startOn, end: promotion.endOn)
+    guard let index = promotion.seriesIndex else { return dates }
+    return "第 \(index + 1) 期（\(dates)）"
+}
+
 func promotionEnrollmentText(_ promotion: Promotion, today: Int) -> String {
     switch promotion.enrollmentStatus {
     case .notRequired: return "无需报名"

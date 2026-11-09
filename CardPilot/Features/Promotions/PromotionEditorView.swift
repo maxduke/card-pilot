@@ -374,6 +374,7 @@ struct PromotionEditorView: View {
                      : "不适用的规则留空；填写的金额必须大于 0。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                amountRuleWarning
             }
         }
     }
@@ -494,7 +495,14 @@ struct PromotionEditorView: View {
                 LabeledContent("有效期", value: CardPilotUI.dateRangeText(start: CardPilotUI.rawDate(startDate), end: CardPilotUI.rawDate(endDate)))
                 LabeledContent("主办方", value: organizerSummary)
                 LabeledContent("适用卡", value: selectedCardIDs.isEmpty ? "尚未选择" : "\(selectedCardIDs.count) 张")
-                LabeledContent("进度规则", value: progressSummary)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("进度规则")
+                    Text(progressSummary)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("promotion.editor.progressSummary")
+                }
+                amountRuleWarning
                 LabeledContent("报名", value: enrollmentSummary)
                 if promotion == nil && repeatsMonthly {
                     Text("后续各期需要分别报名；首期的已报名状态和日期不会复制到后续期。")
@@ -573,13 +581,38 @@ struct PromotionEditorView: View {
     }
 
     private var progressSummary: String {
+        var values: [String] = []
         if progressMode == .perTransaction {
             let cap = benefitTransactionCapText.trimmingCharacters(in: .whitespacesAndNewlines)
-            return cap.isEmpty ? "逐笔优惠，未填写笔数上限" : "逐笔优惠，最多 \(cap) 笔"
+            values.append(cap.isEmpty ? "逐笔优惠，未填写笔数上限" : "最多优惠 \(cap) 笔")
+        } else {
+            if let threshold = parseOptionalAmount(qualificationThresholdText).value {
+                values.append("累计满 \(CardPilotUI.amountText(threshold, currencyCode: currencyCode)) 达标")
+            } else {
+                values.append("累计记录金额")
+            }
+            if let cap = parseOptionalAmount(qualifyingCapText).value {
+                values.append("最多计入 \(CardPilotUI.amountText(cap, currencyCode: currencyCode))")
+            }
         }
-        return qualificationThresholdText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "累计记录"
-            : "累计达标"
+        if let threshold = parseOptionalAmount(perTransactionThresholdText).value {
+            values.append("每笔至少 \(CardPilotUI.amountText(threshold, currencyCode: currencyCode))")
+        }
+        return values.joined(separator: "；")
+    }
+
+    @ViewBuilder
+    private var amountRuleWarning: some View {
+        if progressMode == .cumulative,
+           let threshold = parseOptionalAmount(qualificationThresholdText).value,
+           let cap = parseOptionalAmount(qualifyingCapText).value,
+           threshold > cap {
+            Label("累计达标门槛高于计入上限，按建议金额计入将无法达标。请核对银行条款；仍可保存并手动修正计入金额。", systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("promotion.editor.amountRuleWarning")
+        }
     }
 
     private func selectionSummary(title: String, value: String, systemImage: String) -> some View {

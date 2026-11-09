@@ -20,6 +20,7 @@ struct PromotionDetailView: View {
     @State private var allocationPendingDeletion: PromotionAllocation?
     @State private var showingAllocationDeleteConfirmation = false
     @State private var showingCopyConfirmation = false
+    @State private var showingArchiveConfirmation = false
     @State private var showingCopyCompleted = false
     @State private var copiedPeriod: PromotionPeriod?
     @State private var errorMessage: String?
@@ -238,6 +239,20 @@ struct PromotionDetailView: View {
                     .accessibilityLabel("复制到下个月")
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showingArchiveConfirmation = true
+                    } label: {
+                        Label(archiveActionTitle, systemImage: displayedPromotion.archivedAt == nil ? "archivebox" : "arrow.uturn.backward")
+                    }
+                } label: {
+                    Label("更多操作", systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityIdentifier("promotion.more")
+            }
         }
         .confirmationDialog("编辑促销", isPresented: $showingEditOptions, titleVisibility: .visible) {
             ForEach(PromotionEditorStep.allCases) { item in
@@ -263,6 +278,16 @@ struct PromotionDetailView: View {
             if let period = nextCopyPeriod {
                 Text("将新建 \(CardPilotUI.dateRangeText(start: period.startOn, end: period.endOn)) 的独立活动。进度和已报名记录不会复制。")
             }
+        }
+        .confirmationDialog(archiveActionTitle + "？", isPresented: $showingArchiveConfirmation, titleVisibility: .visible) {
+            Button(archiveActionTitle, action: toggleArchived)
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("\(displayedPromotion.title) · \(promotionPeriodDescription(displayedPromotion))。"
+                 + (displayedPromotion.archivedAt == nil
+                    ? "归档后退出自动推荐和首页，已有交易与进度保留。"
+                    : "恢复后按有效期和报名状态参与推荐。")
+                 + (displayedPromotion.seriesID == nil ? "" : "此操作只影响本期，其他期保持原状。"))
         }
         .alert("复制完成", isPresented: $showingCopyCompleted) {
             Button("好", role: .cancel) {}
@@ -549,6 +574,22 @@ struct PromotionDetailView: View {
         } catch {
             modelContext.rollback()
             errorMessage = "报名状态未保存：\(error.localizedDescription)"
+        }
+    }
+
+    private var archiveActionTitle: String {
+        if displayedPromotion.seriesID != nil {
+            return displayedPromotion.archivedAt == nil ? "归档本期" : "恢复本期"
+        }
+        return displayedPromotion.archivedAt == nil ? "归档活动" : "恢复活动"
+    }
+
+    private func toggleArchived() {
+        do {
+            try PromotionArchiveActions.setArchived(displayedPromotion.archivedAt == nil,
+                                                   for: displayedPromotion, context: modelContext)
+        } catch {
+            errorMessage = "归档状态未保存：\(error.localizedDescription)"
         }
     }
 
