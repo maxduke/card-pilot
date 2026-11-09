@@ -64,3 +64,5 @@
 `42f0811` 的[完整检查](https://github.com/maxduke/card-pilot/actions/runs/42638626341) 中，主测试 364 项及小屏金额组通过，表单组在第 4 项执行中因作业总时限取消。保留该不完整运行后，只对取消的作业及其依赖做了一次同 HEAD 定向恢复；恢复运行发现规则查阅用例超过 300 秒，不能继续按基础设施问题重试。完整日志在约 321 秒完成原有两笔金额读回，超时失败和测试进程重启保留。
 
 该用例重启后改从交易 Tab 直接进入同一条已保存交易，省去重复卡片详情导航；首次仍从卡片记账，保留返回卡片详情、规则与排除项全文、人工金额、返回修改、保存、重启以及 22.25／24 CNY 两笔只读分配检查。300 秒单项上限和全部视口／点击条件保留。新提交仍须通过完整 PR 与合并主线门禁。
+
+`8052de0` 的[下一轮检查](https://github.com/maxduke/card-pilot/actions/runs/42660545059) 和一次同 HEAD 定向恢复中，主测试作业未拿到运行器：`runner_id=0`、执行步骤为空，GitHub 明确给出 macOS arm64 容量约束及 hosted runner acquisition 失败注释，不能算作测试执行或通过。改用标准 `macos-15-intel` 执行主测试和 Release IPA 构建；Xcode 16.4、iOS 18.5、完整主测试分区和全部断言保持原样，小屏仍使用现有 arm64 作业。GitHub 的[运行器文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)及[Intel 镜像清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md)已核对该标准标签、Xcode 与两种所需模拟器。IPA 仍需单独核对设备 arm64 架构，不把宿主架构替换描述为真机验证。

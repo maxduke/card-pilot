@@ -12,7 +12,8 @@ concurrency:
 jobs:
   native_tests:
     name: Native tests (shard ${{ matrix.shard }})
-    runs-on: macos-15
+    # Keep Xcode/iOS fixed while avoiding the arm64 pool's acquisition failures.
+    runs-on: macos-15-intel
     timeout-minutes: 180
     strategy:
       fail-fast: false
