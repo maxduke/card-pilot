@@ -66,3 +66,5 @@
 该用例重启后改从交易 Tab 直接进入同一条已保存交易，省去重复卡片详情导航；首次仍从卡片记账，保留返回卡片详情、规则与排除项全文、人工金额、返回修改、保存、重启以及 22.25／24 CNY 两笔只读分配检查。300 秒单项上限和全部视口／点击条件保留。新提交仍须通过完整 PR 与合并主线门禁。
 
 `8052de0` 的[下一轮检查](https://github.com/maxduke/card-pilot/actions/runs/42660545059) 和一次同 HEAD 定向恢复中，主测试作业未拿到运行器：`runner_id=0`、执行步骤为空，GitHub 明确给出 macOS arm64 容量约束及 hosted runner acquisition 失败注释，不能算作测试执行或通过。改用标准 `macos-15-intel` 执行主测试和 Release IPA 构建；Xcode 16.4、iOS 18.5、完整主测试分区和全部断言保持原样，小屏仍使用现有 arm64 作业。GitHub 的[运行器文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)及[Intel 镜像清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md)已核对该标准标签、Xcode 与两种所需模拟器。IPA 仍需单独核对设备 arm64 架构，不把宿主架构替换描述为真机验证。
+
+`1fd1623` 的[Intel 完整检查](https://github.com/maxduke/card-pilot/actions/runs/42668044247) 出现多项既有 UI 输入／耗时失败。该提交相对前驱没有应用或测试源码改动，工具链可用并不足以证明新宿主与既有原生交互基线等效；不为 Intel 环境批量放宽断言或时限。主测试恢复已有验证的 arm64，四个主分区依次申请运行器，随后两组小屏依次执行；前序失败时仍运行全部分区，完整汇总门禁继续要求所有结果成功。该安排减少容量受限时的并发申请，不重复测试、不增加执行额度。IPA 构建继续使用已固定 Xcode 16.4 的标准 Intel 运行器交叉构建设备 arm64 包，平台、版本、结构与校验和仍须实际核验。
