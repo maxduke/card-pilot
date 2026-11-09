@@ -287,6 +287,8 @@ private struct PromotionRow: View {
                 PromotionProgressSummary(promotion: promotion, progress: progress, compact: true)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .padding(.vertical, 5)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)

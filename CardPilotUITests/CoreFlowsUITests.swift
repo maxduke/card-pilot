@@ -820,6 +820,8 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["onboarding.advance"])
         enter("UI Reminders", into: app.textFields["卡产品名称"])
         enter("1357", into: app.textFields["末四位"])
+        tap(app.buttons["onboarding.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         tap(app.buttons["onboarding.advance"])
         tap(app.buttons["onboarding.reminders.configure"])
         XCTAssertTrue(app.navigationBars["通知与提醒"].waitForExistence(timeout: 10))
