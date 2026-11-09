@@ -6,6 +6,60 @@ import XCTest
 final class PromotionPersistenceTests: XCTestCase {
     private enum SaveError: Error { case failed }
 
+    func testArchivingOnePeriodPreservesAllocationsAndOtherPeriodsAcrossReadback() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        context.autosaveEnabled = false
+        let (_, _, card) = try makeCard(in: context)
+        let periods = Promotion.makeMonthlySeries(startingWith: Promotion(
+            title: "月度活动", startOn: 20260101, endOn: 20260131,
+            eligibleCards: [card], qualificationThreshold: 100, progressCurrencyCode: "CNY"
+        ), through: 20260331)
+        try PromotionCreationActions.save(periods, context: context)
+        let selected = periods[1]
+        let transaction = Transaction(card: card, transactionOn: 20260205, amount: 60,
+                                      currencyCode: "CNY", merchant: "测试商户")
+        context.insert(transaction)
+        try PromotionAllocationActions.save(60, transaction: transaction, promotion: selected,
+                                            allocation: nil, context: context)
+        let date = Date(timeIntervalSince1970: 1_000)
+        try PromotionArchiveActions.setArchived(true, for: selected, context: context, now: date)
+        try PromotionArchiveActions.setArchived(true, for: selected, context: context, now: date.addingTimeInterval(60))
+
+        let reader = ModelContext(container)
+        let saved = try reader.fetch(FetchDescriptor<Promotion>())
+        let archived = try XCTUnwrap(saved.first { $0.id == selected.id })
+        XCTAssertEqual(archived.archivedAt, date)
+        XCTAssertEqual(saved.filter { $0.archivedAt == nil }.count, 2)
+        XCTAssertEqual(archived.allocations.count, 1)
+        XCTAssertEqual(try PromotionCalculator.progress(for: archived).qualifiedAmount, 60)
+        XCTAssertEqual(archived.eligibleCards.map(\.id), [card.id])
+        XCTAssertFalse(PromotionCalculator.includes(transaction, in: selected))
+
+        try PromotionArchiveActions.setArchived(false, for: selected, context: context)
+        XCTAssertTrue(PromotionCalculator.includes(transaction, in: selected))
+        XCTAssertEqual(try PromotionCalculator.progress(for: selected).qualifiedAmount, 60)
+        XCTAssertTrue(try ModelContext(container).fetch(FetchDescriptor<Promotion>()).allSatisfy { $0.archivedAt == nil })
+    }
+
+    func testArchiveAndRestoreFailuresKeepThePreviouslySavedState() throws {
+        let container = try CardPilotPersistence.makeContainer(inMemory: true)
+        let context = container.mainContext
+        context.autosaveEnabled = false
+        let promotion = Promotion(title: "活动", startOn: 20260101, endOn: 20260131, progressCurrencyCode: "CNY")
+        try PromotionCreationActions.save([promotion], context: context)
+        let date = Date(timeIntervalSince1970: 1_000)
+        for previouslyArchived in [false, true] {
+            try PromotionArchiveActions.setArchived(previouslyArchived, for: promotion, context: context, now: date)
+            XCTAssertThrowsError(try PromotionArchiveActions.setArchived(!previouslyArchived, for: promotion,
+                context: context, persist: { _ in throw SaveError.failed }))
+            XCTAssertEqual(promotion.archivedAt, previouslyArchived ? date : nil)
+            XCTAssertFalse(context.hasChanges)
+            let saved = try XCTUnwrap(ModelContext(container).fetch(FetchDescriptor<Promotion>()).first)
+            XCTAssertEqual(saved.archivedAt, previouslyArchived ? date : nil)
+        }
+    }
+
     func testMonthlySeriesWithPersistedRelationshipsReopensWithoutStandaloneTemplate() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

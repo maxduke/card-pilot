@@ -118,8 +118,8 @@ struct PromotionsView: View {
             .trackedSheet(isPresented: $showingEditor) {
                 PromotionEditorView(promotion: editingPromotion, banks: banks, networks: networks, cards: cards)
             }
-            .confirmationDialog("确认删除促销？", isPresented: $showingDeleteConfirmation) {
-                Button("永久删除", role: .destructive) {
+            .confirmationDialog(promotionPendingDeletion?.seriesID == nil ? "确认删除活动？" : "确认删除此期？", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+                Button(promotionPendingDeletion?.seriesID == nil ? "永久删除" : "仅删除此期", role: .destructive) {
                     if let promotionPendingDeletion {
                         delete(promotionPendingDeletion)
                     }
@@ -129,7 +129,10 @@ struct PromotionsView: View {
                     promotionPendingDeletion = nil
                 }
             } message: {
-                Text("将永久删除“" + (promotionPendingDeletion?.title ?? "该促销") + "”。")
+                if let target = promotionPendingDeletion {
+                    Text("将永久删除“\(target.title)” · \(promotionPeriodDescription(target))。"
+                         + (target.seriesID == nil ? "" : "其他期及其进度会保留。"))
+                }
             }
             .alert("无法完成操作", isPresented: errorPresented) {
                 Button("好", role: .cancel) { errorMessage = nil }
@@ -284,6 +287,8 @@ private struct PromotionRow: View {
                 PromotionProgressSummary(promotion: promotion, progress: progress, compact: true)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .padding(.vertical, 5)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)

@@ -2,6 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct AllocationEditorView: View {
+    private enum Field: Hashable { case search, amount }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let promotion: Promotion
@@ -15,6 +17,8 @@ struct AllocationEditorView: View {
     @State private var didInitialize = false
     @State private var errorMessage: String?
     @State private var overRefundWarningMessage: String?
+    @State private var showingAmountError = false
+    @FocusState private var focusedField: Field?
 
     init(promotion: Promotion, allocation: PromotionAllocation?) {
         self.promotion = promotion
@@ -47,7 +51,38 @@ struct AllocationEditorView: View {
         let availableTransactions = PromotionAllocationSelection.availableTransactions(transactions, for: promotion, editing: allocation)
         let matches = filteredTransactions(in: availableTransactions)
         NavigationStack {
-            editorForm(availableTransactions: availableTransactions, matches: matches)
+            ScrollViewReader { scrollProxy in
+                editorForm(availableTransactions: availableTransactions, matches: matches)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("保存") {
+                                focusedField = nil
+                                errorMessage = nil
+                                showingAmountError = true
+                                if positiveAmount == nil {
+                                    Task { @MainActor in
+                                        await Task.yield()
+                                        guard showingAmountError, positiveAmount == nil else { return }
+                                        scrollProxy.scrollTo(Field.amount, anchor: .top)
+                                    }
+                                } else {
+                                    save()
+                                }
+                            }
+                            .disabled(selectedTransaction == nil)
+                            .accessibilityIdentifier("allocation.editor.save")
+                        }
+                        if focusedField == .amount {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("收起键盘") { focusedField = nil }
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .accessibilityIdentifier("allocation.editor.keyboard.dismiss")
+                            }
+                        }
+                    }
+            }
             .onAppear {
                 guard !didInitialize else { return }
                 setInitialAmount()
@@ -61,13 +96,6 @@ struct AllocationEditorView: View {
                 }
             }
             .navigationTitle(allocation == nil ? "添加促销分配" : "编辑促销分配")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { EditorCancelButton() }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }
-                        .disabled(selectedTransaction == nil)
-                }
-            }
             .alert("退款分配超出可退范围", isPresented: overRefundWarningPresented) {
                 Button("取消", role: .cancel) {}
                 Button("仍然保存", role: .destructive) { save(allowingOverRefund: true) }
@@ -85,6 +113,8 @@ struct AllocationEditorView: View {
                 InlineErrorView(message: errorMessage)
             }
         }
+        .scrollDismissesKeyboard(.immediately)
+        .accessibilityIdentifier("allocation.editor.form")
     }
 
     private func transactionSection(availableTransactions: [Transaction], matches: [Transaction]) -> some View {
@@ -106,23 +136,20 @@ struct AllocationEditorView: View {
                     DisclosureGroup(isExpanded: $showingTransactionChoices) {
                         TextField("搜索商户、日期、卡片或末四位", text: $transactionSearchText)
                             .textInputAutocapitalization(.never)
+                            .focused($focusedField, equals: .search)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                         if matches.isEmpty {
                             Text("没有匹配的交易。")
                                 .foregroundStyle(.secondary)
                         } else {
-                            ForEach(matches, id: \.id) { transaction in
-                                Button {
-                                    transactionID = transaction.id
-                                    showingTransactionChoices = false
-                                } label: {
-                                    transactionRow(transaction)
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            transactionChoices(matches.filter { PromotionCalculator.includes($0, in: promotion) }, title: "推荐交易")
+                            transactionChoices(matches.filter { !PromotionCalculator.includes($0, in: promotion) }, title: "其他交易（手动核对）")
                         }
                     } label: {
                         Label("\(selectedTransaction == nil ? "选择交易" : "更换交易")（\(matches.count) 笔）", systemImage: "magnifyingglass")
                     }
+                    .accessibilityIdentifier("allocation.editor.transactions")
                 }
                 if allocation != nil {
                     Text("编辑现有分配时不能更换交易；如需更换，请新建分配。")
@@ -135,8 +162,23 @@ struct AllocationEditorView: View {
                         .foregroundStyle(.orange)
                 }
             }
-            TextField("计入活动的金额（\(promotion.progressCurrencyCode)）", text: $amountText)
-                .keyboardType(.decimalPad)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("计入活动的金额（\(promotion.progressCurrencyCode)）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("金额", text: $amountText)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .amount)
+                    .accessibilityLabel("计入活动的金额（\(promotion.progressCurrencyCode)）")
+                    .accessibilityIdentifier("allocation.editor.amount")
+                if showingAmountError && positiveAmount == nil {
+                    InlineErrorView(message: "计入金额应为大于 0 的数字。")
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("allocation.editor.amountError")
+                }
+            }
+            .id(Field.amount)
             if let selectedTransaction, selectedTransaction.currencyCode != promotion.progressCurrencyCode {
                 Text("交易币种为 \(selectedTransaction.currencyCode)，请填写银行认可的合格金额。")
                     .font(.caption)
@@ -147,6 +189,31 @@ struct AllocationEditorView: View {
                     .foregroundStyle(.orange)
             }
         }
+    }
+
+    @ViewBuilder
+    private func transactionChoices(_ transactions: [Transaction], title: String) -> some View {
+        if !transactions.isEmpty {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            ForEach(transactions, id: \.id) { transaction in
+                Button {
+                    focusedField = nil
+                    transactionID = transaction.id
+                    showingTransactionChoices = false
+                } label: {
+                    transactionRow(transaction)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("allocation.editor.transaction.\(transaction.id)")
+            }
+        }
+    }
+
+    private var positiveAmount: Decimal? {
+        guard let amount = CardPilotUI.decimal(amountText), amount > .zero else { return nil }
+        return amount
     }
 
     private func selectedTransactionRow(_ transaction: Transaction) -> some View {
@@ -279,14 +346,16 @@ struct AllocationEditorView: View {
 
     private func setInitialAmountIfBlank() {
         guard allocation == nil else { return }
+        showingAmountError = false
         amountText = ""
         setInitialAmount()
     }
 
     private func save(allowingOverRefund: Bool = false) {
+        errorMessage = nil
         guard let transaction = selectedTransaction else { errorMessage = "请选择交易。"; return }
-        guard let amount = CardPilotUI.decimal(amountText), amount > .zero else {
-            errorMessage = "合格金额应为大于 0 的数字。"
+        guard let amount = positiveAmount else {
+            showingAmountError = true
             return
         }
         if allocation == nil && promotion.allocations.contains(where: { $0.transaction.id == transaction.id }) {

@@ -5,6 +5,26 @@ import XCTest
 
 @MainActor
 final class UITestFixtureTests: XCTestCase {
+    func testPromotionManagementFixturePreservesSeriesAndManualCandidatesAcrossBackup() throws {
+        for rawDate in [20260101, 20260228, 20261231] {
+            let container = try CardPilotPersistence.makeContainer(inMemory: true)
+            try UITestBootstrap.seed(container.mainContext, scenario: .promotionManagement,
+                                     today: LocalDate(rawValue: rawDate))
+            let records = try BackupRecords.capture(container.mainContext)
+            let restored = try records.validatedContainer()
+            XCTAssertEqual(try BackupRecords.capture(restored.mainContext), records)
+            let periods = try restored.mainContext.fetch(FetchDescriptor<Promotion>()).sorted { $0.startOn < $1.startOn }
+            XCTAssertEqual(periods.map(\.seriesIndex), [0, 1, 2])
+            XCTAssertEqual(Set(periods.compactMap(\.seriesID)).count, 1)
+            let transactions = try restored.mainContext.fetch(FetchDescriptor<Transaction>())
+            XCTAssertEqual(PromotionAllocationSelection.initialTransaction(in: transactions, for: periods[1])?.merchant,
+                           "UI Recommended Purchase")
+            let manual = try XCTUnwrap(transactions.first { $0.merchant == "UI Manual Purchase" })
+            XCTAssertFalse(PromotionCalculator.includes(manual, in: periods[1]))
+            XCTAssertEqual(PromotionAllocationSelection.availableTransactions(transactions, for: periods[1]).count, 2)
+        }
+    }
+
     func testConfirmationGuidanceFixtureKeepsPeriodIdentityAndRemainingBenefitsAcrossBackup() throws {
         for rawDate in [20260101, 20260228, 20261108] {
             let container = try CardPilotPersistence.makeContainer(inMemory: true)

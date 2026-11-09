@@ -108,6 +108,25 @@ enum PromotionCreationActions {
 }
 
 @MainActor
+enum PromotionArchiveActions {
+    static func setArchived(_ archived: Bool, for promotion: Promotion, context: ModelContext,
+                            now: Date = Date(),
+                            persist: (ModelContext) throws -> Void = { try $0.save() }) throws {
+        let previous = promotion.archivedAt
+        promotion.archivedAt = archived ? (previous ?? now) : nil
+        context.processPendingChanges()
+        do {
+            try persist(context)
+        } catch {
+            promotion.archivedAt = previous
+            context.processPendingChanges()
+            context.rollback()
+            throw error
+        }
+    }
+}
+
+@MainActor
 enum PromotionAllocationActions {
     static func save(_ amount: Decimal, transaction: Transaction, promotion: Promotion,
                      allocation: PromotionAllocation?, context: ModelContext,

@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 180
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         shard: [0, 1, 2, 3]
     env:
@@ -141,10 +142,17 @@ jobs:
 
   small-screen-ui:
     name: Small-screen UI (SE 3, dark, ${{ matrix.group }})
+    # Request one hosted Mac at a time, while retaining every test partition
+    # even if an earlier partition failed.
+    needs: native_tests
+    if: always()
     runs-on: macos-15
-    timeout-minutes: 25
+    # The forms group completed its tests in run 42593717618 but hit 25m
+    # during the job's remaining work. Keep its full evidence upload in budget.
+    timeout-minutes: ${{ matrix.group == 'forms' && 30 || 25 }}
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         group: [amounts, forms]
     permissions:

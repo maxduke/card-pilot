@@ -820,6 +820,8 @@ final class CoreFlowsUITests: XCTestCase {
         tap(app.buttons["onboarding.advance"])
         enter("UI Reminders", into: app.textFields["卡产品名称"])
         enter("1357", into: app.textFields["末四位"])
+        tap(app.buttons["onboarding.keyboard.dismiss"])
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         tap(app.buttons["onboarding.advance"])
         tap(app.buttons["onboarding.reminders.configure"])
         XCTAssertTrue(app.navigationBars["通知与提醒"].waitForExistence(timeout: 10))
@@ -872,6 +874,157 @@ final class CoreFlowsUITests: XCTestCase {
 
     func testPromotionCreationTitleFeedbackCorrectsAndPersists() {
         verifyPromotionCreationTitleFeedback(largestText: false)
+    }
+
+    func testPromotionRuleSummaryWarnsWithoutRejectingManualRules() {
+        launch("promotionAmounts")
+        openPromotion("UI Spend")
+        openPromotionEditor("基本信息")
+        let threshold = app.textFields["累计达标门槛（可选）"]
+        let cap = app.textFields["累计计入上限（可选）"]
+        replaceText("3000", in: threshold)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        replaceText("2000", in: cap)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        let warning = app.staticTexts["promotion.editor.amountRuleWarning"]
+        reveal(warning, fullyVisible: true, navigationBar: app.navigationBars["编辑促销"])
+        captureScreenshot("活动金额条件矛盾提醒")
+        replaceText("3000", in: cap)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        XCTAssertFalse(warning.exists)
+        replaceText("2000", in: cap)
+        tap(app.buttons["promotion.keyboard.dismiss"])
+        selectPromotionEditorSection("报名与规则")
+        let summary = app.staticTexts["promotion.editor.progressSummary"]
+        reveal(summary, fullyVisible: true, navigationBar: app.navigationBars["编辑促销"])
+        XCTAssertEqual(summary.label, "累计满 3,000 CNY 达标；最多计入 2,000 CNY；每笔至少 100 CNY")
+        reveal(warning, fullyVisible: true, navigationBar: app.navigationBars["编辑促销"])
+        captureScreenshot("保存前完整活动金额规则")
+        tap(app.buttons["promotion.editor.save"])
+        XCTAssertTrue(app.navigationBars["UI Spend"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openPromotion("UI Spend")
+        openPromotionEditor("基本信息")
+        reveal(threshold)
+        XCTAssertEqual(threshold.value as? String, "3000")
+        reveal(cap)
+        XCTAssertEqual(cap.value as? String, "2000")
+        reveal(warning)
+        XCTAssertTrue(warning.exists)
+    }
+
+    func testExistingTransactionAllocationSupportsKeyboardErrorsAndManualChoiceAtLargestTextSize() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        launch("promotionManagement")
+        openPromotion("UI Monthly")
+        tap(app.buttons["allocateExistingTransaction"])
+        let navigation = app.navigationBars["添加促销分配"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 10))
+        let form = app.descendants(matching: .any).matching(identifier: "allocation.editor.form").firstMatch
+        let choices = app.buttons["allocation.editor.transactions"]
+        tap(choices)
+        let recommended = app.staticTexts["推荐交易"]
+        let manual = app.staticTexts["其他交易（手动核对）"]
+        reveal(recommended, fullyVisible: true, navigationBar: navigation, contentContainer: form)
+        reveal(manual, fullyVisible: true, navigationBar: navigation, contentContainer: form)
+        let manualTransaction = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Manual Purchase")).firstMatch
+        tap(manualTransaction)
+        let amount = app.textFields["allocation.editor.amount"]
+        reveal(amount, fullyVisible: true, navigationBar: navigation, contentContainer: form)
+        XCTAssertEqual(amount.value as? String, "35")
+        replaceText("0", in: amount)
+        let dismissKeyboard = app.buttons["allocation.editor.keyboard.dismiss"]
+        XCTAssertTrue(dismissKeyboard.waitForExistence(timeout: 10))
+        assertTouchTarget(dismissKeyboard)
+        dismissKeyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        tap(app.buttons["allocation.editor.save"])
+        let error = app.staticTexts["allocation.editor.amountError"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(amount.frame.minY + 0.001, navigation.frame.maxY)
+        XCTAssertLessThanOrEqual(error.frame.maxY, min(contentBottom, form.frame.maxY))
+        captureScreenshot("最大字号已有交易计入金额就地错误")
+        replaceText("24.5", in: amount)
+        XCTAssertFalse(error.exists)
+        tap(dismissKeyboard)
+        tap(app.buttons["allocation.editor.save"])
+        XCTAssertTrue(navigation.waitForNonExistence(timeout: 10))
+        app.terminate()
+        app.launch()
+        openPromotion("UI Monthly")
+        let allocation = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Manual Purchase")).firstMatch
+        reveal(allocation, fullyVisible: true, navigationBar: app.navigationBars["UI Monthly"])
+        XCTAssertTrue(allocation.label.contains("计入 24.5 CNY"))
+        tap(allocation)
+        XCTAssertTrue(app.navigationBars["编辑促销分配"].waitForExistence(timeout: 10))
+        reveal(amount)
+        XCTAssertEqual(amount.value as? String, "24.5")
+        captureScreenshot("已有交易手动计入金额重启读回")
+    }
+
+    func testSeriesArchiveAndRestoreAffectOnlyTheSelectedPeriod() {
+        launch("promotionManagement")
+        openPromotion("UI Monthly")
+        tap(app.buttons["promotion.more"])
+        tap(app.buttons["归档本期"])
+        let scope = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "此操作只影响本期，其他期保持原状。")).firstMatch
+        XCTAssertTrue(scope.waitForExistence(timeout: 10))
+        XCTAssertTrue(scope.label.contains("第 2 期"))
+        captureScreenshot("系列归档明确单期范围")
+        tap(app.buttons["归档本期"])
+        tap(app.buttons["下一期"])
+        XCTAssertTrue(app.staticTexts["第 3 期，共 3 期"].waitForExistence(timeout: 10))
+        tap(app.buttons["promotion.more"])
+        XCTAssertTrue(app.buttons["归档本期"].waitForExistence(timeout: 10))
+        tap(app.buttons["归档本期"])
+        tap(app.buttons["取消"])
+        tap(app.buttons["上一期"])
+        XCTAssertTrue(app.staticTexts["第 2 期，共 3 期"].waitForExistence(timeout: 10))
+        tap(app.buttons["promotion.more"])
+        tap(app.buttons["恢复本期"])
+        XCTAssertTrue(scope.waitForExistence(timeout: 10))
+        XCTAssertTrue(scope.label.contains("第 2 期"))
+        tap(app.buttons["恢复本期"])
+        app.terminate()
+        app.launch()
+        openPromotion("UI Monthly")
+        tap(app.buttons["promotion.more"])
+        XCTAssertTrue(app.buttons["归档本期"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["恢复本期"].exists)
+    }
+
+    func testSeriesDeletionNamesThePeriodAndPreservesItsNeighbors() {
+        launch("promotionManagement")
+        tapRootTab("促销")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI Monthly")).firstMatch
+        reveal(row, fullyVisible: true, navigationBar: app.navigationBars["促销"])
+        row.press(forDuration: 1)
+        tap(app.buttons["删除此期"])
+        let scope = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "其他期及其进度会保留。")).firstMatch
+        XCTAssertTrue(scope.waitForExistence(timeout: 10))
+        XCTAssertTrue(scope.label.contains("第 2 期"))
+        captureScreenshot("系列删除确认具体期次")
+        tap(app.buttons["取消"])
+        XCTAssertTrue(row.label.contains("第 2 期"))
+        row.press(forDuration: 1)
+        tap(app.buttons["删除此期"])
+        tap(app.buttons["仅删除此期"])
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertTrue(row.label.contains("第 3 期"))
+        app.terminate()
+        app.launch()
+        openPromotion("UI Monthly")
+        let selector = app.buttons["选择促销期"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        tap(app.buttons["上一期"])
+        selector.tap()
+        let first = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "第 1 期")).firstMatch
+        let third = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "第 3 期")).firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertTrue(third.exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "第 2 期")).firstMatch.exists)
+        captureScreenshot("删除一期后保留相邻期")
     }
 
     func testPromotionCreationTitleFeedbackAtLargestTextSize() {
@@ -1514,9 +1667,10 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     func testNumericKeyboardDismissalAtLargestTextSize() throws {
-        // Both font audits change text sizes. Include restoring
-        // and checking each screen within the workflow's existing maximum.
-        executionTimeAllowance = 240
+        // SE 3 run 42586090019 completed both keyboard flows and font audits
+        // at 285s, after exceeding 240s. Keep the full flow within the
+        // workflow's existing 300s maximum without dropping either audit.
+        executionTimeAllowance = 300
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
         launch("core")
         openCard("UI Primary")
@@ -2020,8 +2174,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
         app.terminate()
         app.launch()
-        openCard("UI Primary")
-        tap(app.buttons["card.transactions"])
+        // Read back through the transaction tab after relaunch; repeating
+        // the large card-detail navigation is unrelated to rule persistence.
+        tapRootTab("交易")
         // Only this new transaction leaves the optional merchant blank.
         tap(app.buttons["transaction."])
         for (title, amount) in [("UI Remaining", "22.25 CNY"), ("UI Monthly", "24 CNY")] {
@@ -5366,7 +5521,11 @@ final class CoreFlowsUITests: XCTestCase {
     private func launch(_ scenario: String) {
         app.launchEnvironment["CARDPILOT_UI_SCENARIO"] = scenario
         app.launch()
-        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: 10))
+        // Seeding the 20k-row synthetic store and its first SwiftUI render can
+        // outlast launch()'s idle wait. Allow that known fixture to reach the
+        // real root without relaunching or changing ordinary UI readiness.
+        let readinessTimeout: TimeInterval = scenario == "performanceLarge" ? 180 : 10
+        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: readinessTimeout))
     }
 
     private func openCard(_ name: String) {
@@ -5393,7 +5552,11 @@ final class CoreFlowsUITests: XCTestCase {
         geometry.name = "原生卡片入口-\(name)"
         geometry.lifetime = .keepAlways
         add(geometry)
-        app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        if card.frame.height > viewport.height {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        } else {
+            card.tap()
+        }
         XCTAssertTrue(app.navigationBars["卡片详情"].waitForExistence(timeout: 10))
     }
 
@@ -5488,8 +5651,39 @@ final class CoreFlowsUITests: XCTestCase {
     }
 
     private func selectPromotionEditorSection(_ section: String) {
-        tap(app.buttons["promotion.editor.section"], scrollTowardTopWhenMissing: true)
-        tap(app.buttons[section])
+        let picker = app.buttons["promotion.editor.section"]
+        tap(picker, scrollTowardTopWhenMissing: true)
+        let option = app.buttons[section]
+        XCTAssertTrue(option.waitForExistence(timeout: 10))
+        // Native menu options can have a fully visible frame while XCTest
+        // rejects their AX activation point. Use the same physical selection
+        // contract as the promotion edit dialog: stable geometry, one tap,
+        // and an explicit check of the resulting selection.
+        var previousFrame = option.frame
+        var selectionPoint: CGVector?
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, option.exists else { return false }
+            let frame = option.frame
+            defer { previousFrame = frame }
+            let applicationFrame = self.app.frame
+            guard !frame.isEmpty, frame == previousFrame,
+                  applicationFrame.contains(frame), option.isEnabled else { return false }
+            selectionPoint = CGVector(dx: frame.midX - applicationFrame.minX,
+                                      dy: frame.midY - applicationFrame.minY)
+            return true
+        }, object: option)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        guard let selectionPoint else {
+            XCTFail("Expected a stable, enabled promotion section option")
+            return
+        }
+        let geometry = XCTAttachment(string: "section=\(section); frame=\(option.frame); tap=\(selectionPoint)")
+        geometry.name = "原生促销分组菜单选择"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(selectionPoint).tap()
+        XCTAssertTrue(option.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(picker.label.contains(section) || (picker.value as? String ?? "").contains(section))
     }
 
     private func focusLastFour(
