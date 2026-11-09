@@ -142,7 +142,9 @@ jobs:
   small-screen-ui:
     name: Small-screen UI (SE 3, dark, ${{ matrix.group }})
     runs-on: macos-15
-    timeout-minutes: 25
+    # The forms group completed its tests in run 42593717618 but hit 25m
+    # during the job's remaining work. Keep its full evidence upload in budget.
+    timeout-minutes: ${{ matrix.group == 'forms' && 30 || 25 }}
     strategy:
       fail-fast: false
       matrix:

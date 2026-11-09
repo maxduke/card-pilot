@@ -5518,7 +5518,11 @@ final class CoreFlowsUITests: XCTestCase {
     private func launch(_ scenario: String) {
         app.launchEnvironment["CARDPILOT_UI_SCENARIO"] = scenario
         app.launch()
-        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: 10))
+        // Seeding the 20k-row synthetic store and its first SwiftUI render can
+        // outlast launch()'s idle wait. Allow that known fixture to reach the
+        // real root without relaunching or changing ordinary UI readiness.
+        let readinessTimeout: TimeInterval = scenario == "performanceLarge" ? 180 : 10
+        XCTAssertTrue(rootTabButton("卡片").waitForExistence(timeout: readinessTimeout))
     }
 
     private func openCard(_ name: String) {
