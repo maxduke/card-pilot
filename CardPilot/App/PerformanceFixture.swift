@@ -108,7 +108,9 @@ enum PerformanceFixture {
                 postingOn: date.rawValue, amount: Decimal(50 + index % 950) / 10,
                 currencyCode: "CNY", merchant: merchant, category: "Baseline Category \(index % 8)"
             )
-            context.insert(transaction)
+            // A relationship to an inserted card can already register the new
+            // model. Reinserting it walks an ever-growing synthetic graph.
+            if transaction.modelContext == nil { context.insert(transaction) }
             try transaction.validate()
             if index.isMultiple(of: 10) || index == transactionCount - 1 {
                 for promotion in promotions where promotion.startOn <= date.rawValue && date.rawValue <= promotion.endOn {
@@ -116,7 +118,7 @@ enum PerformanceFixture {
                         id: id(9, allocationCount), transaction: transaction, promotion: promotion,
                         qualifyingAmount: transaction.amount, currencyCode: "CNY"
                     )
-                    context.insert(allocation)
+                    if allocation.modelContext == nil { context.insert(allocation) }
                     try allocation.validate()
                     allocationCount += 1
                 }
